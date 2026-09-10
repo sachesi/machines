@@ -1,0 +1,39 @@
+# cargo deny check: known vulnerabilities, licences that can go into a GPL-3.0-or-later
+# program, and crates only from crates.io.
+
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+
+[advisories]
+unmaintained = "workspace"
+
+[licenses]
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "GPL-3.0-or-later",
+    "LGPL-2.1-or-later",
+    "MIT",
+    "Unicode-3.0",
+]
+
+# The virt bindings declare the deprecated "LGPL-2.1"; virt's source headers grant 2.1 "or
+# (at your option) any later version", and virt-sys, which carries no licence text of its
+# own, comes from the same libvirt-rust repository.
+[[licenses.clarify]]
+crate = "virt"
+expression = "LGPL-2.1-or-later"
+license-files = []
+
+[[licenses.clarify]]
+crate = "virt-sys"
+expression = "LGPL-2.1-or-later"
+license-files = []
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

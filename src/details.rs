@@ -1,0 +1,421 @@
+//! The Details page of a machine: what it is made of, and the settings that can change
+//! without editing its XML.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::Duration;
+
+use gettextrs::gettext;
+
+use crate::adw::prelude::*;
+use crate::domain_xml::{Disk, DiskDevice, Firmware, MachineConfig, Nic};
+use crate::hypervisor::MachineInfo;
+use crate::machine_view::MachineView;
+use crate::window::MachinesWindow;
+use crate::{adw, gio, glib, gtk};
+
+/// How long a spin row has to rest before its value is saved.
+const SETTLE: Duration = Duration::from_millis(700);
+
+pub fn page(view: &MachineView, info: &MachineInfo) -> adw::PreferencesPage {
+    let page = adw::PreferencesPage::new();
+    let Some(config) = &info.config else {
+        let group = adw::PreferencesGroup::builder()
+            .description(gettext(
+                "The definition of this virtual machine cannot be read.",
+            ))
+            .build();
+        page.add(&group);
+        return page;
+    };
+    page.add(&overview(view, info, config));
+    page.add(&resources(view, info, config));
+    page.add(&storage(view, config));
+    page.add(&network(view, info, config));
+    page.add(&display(config));
+    page
+}
+
+fn window(view: &MachineView) -> Option<MachinesWindow> {
+    view.root().and_downcast()
+}
+
+fn info_row(title: &str, subtitle: &str) -> adw::ActionRow {
+    adw::ActionRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .subtitle_selectable(true)
+        .css_classes(["property"])
+        .build()
+}
+
+fn overview(
+    view: &MachineView,
+    info: &MachineInfo,
+    config: &MachineConfig,
+) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::new();
+    if let Some(os) = config.os_id.as_deref().and_then(os_name) {
+        group.add(&info_row(&gettext("Operating System"), &os));
+    }
+    let firmware = match config.firmware {
+        Firmware::Uefi => "UEFI",
+        Firmware::Bios => "BIOS",
+    };
+    group.add(&info_row(&gettext("Firmware"), firmware));
+    let hypervisor = match config.virt_type.as_str() {
+        "kvm" => "KVM".to_owned(),
+        "qemu" => gettext("QEMU (emulated)"),
+        other => other.to_owned(),
+    };
+    group.add(&info_row(
+        &gettext("Machine"),
+        &format!("{hypervisor} · {} · {}", config.machine, config.arch),
+    ));
+    if info.persistent {
+        let autostart = adw::SwitchRow::builder()
+            .title(gettext("Start With the Host"))
+            .subtitle(gettext(
+                "Start when libvirt starts, at boot for the system connection",
+            ))
+            .active(info.autostart)
+            .build();
+        autostart.connect_active_notify(glib::clone!(
+            #[weak]
+            view,
+            move |row| {
+                let on = row.is_active();
+                view.run(move |hv, uuid| hv.set_autostart(uuid, on));
+            }
+        ));
+        group.add(&autostart);
+    }
+    group
+}
+
+/// "http://fedoraproject.org/fedora/41" as "fedora 41".
+fn os_name(id: &str) -> Option<String> {
+    let path = id.split("://").nth(1)?.split_once('/')?.1;
+    Some(path.replace('/', " "))
+}
+
+fn resources(
+    view: &MachineView,
+    info: &MachineInfo,
+    config: &MachineConfig,
+) -> adw::PreferencesGroup {
+    let host = window(view).map(|w| w.host()).unwrap_or_default();
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Processor and Memory"))
+        .build();
+    if info.state.is_active() {
+        group.set_description(Some(&gettext(
+            "Changes take effect the next time the virtual machine starts.",
+        )));
+    }
+    let vcpus = adw::SpinRow::builder()
+        .title(gettext("Processors"))
+        .adjustment(&gtk::Adjustment::new(
+            f64::from(config.vcpus),
+            1.0,
+            f64::from(host.cpus.max(config.vcpus)),
+            1.0,
+            4.0,
+            0.0,
+        ))
+        .build();
+    on_settled(
+        &vcpus,
+        glib::clone!(
+            #[weak]
+            view,
+            move |row| {
+                let n = row.value() as u32;
+                view.run(move |hv, uuid| hv.set_vcpus(uuid, n));
+            }
+        ),
+    );
+    group.add(&vcpus);
+
+    let gib = |mib: u64| mib as f64 / 1024.0;
+    let memory = adw::SpinRow::builder()
+        .title(gettext("Memory"))
+        .subtitle(gettext("GiB"))
+        .digits(2)
+        .adjustment(&gtk::Adjustment::new(
+            gib(config.memory_mib),
+            gib(config.memory_mib).min(0.5),
+            gib(host.memory_mib.max(config.memory_mib)),
+            0.5,
+            2.0,
+            0.0,
+        ))
+        .build();
+    on_settled(
+        &memory,
+        glib::clone!(
+            #[weak]
+            view,
+            move |row| {
+                let mib = (row.value() * 1024.0).round() as u64;
+                view.run(move |hv, uuid| hv.set_memory(uuid, mib));
+            }
+        ),
+    );
+    group.add(&memory);
+    group
+}
+
+/// Call `f` once the row's value has stopped changing for [`SETTLE`], so dragging or
+/// holding a button does not redefine the machine at every step.
+fn on_settled(row: &adw::SpinRow, f: impl Fn(&adw::SpinRow) + 'static) {
+    let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::default();
+    let f = Rc::new(f);
+    row.connect_value_notify(move |row| {
+        if let Some(source) = pending.take() {
+            source.remove();
+        }
+        let source = glib::timeout_add_local_once(
+            SETTLE,
+            glib::clone!(
+                #[weak]
+                row,
+                #[strong]
+                pending,
+                #[strong]
+                f,
+                move || {
+                    pending.take();
+                    f(&row);
+                }
+            ),
+        );
+        pending.replace(Some(source));
+    });
+}
+
+fn storage(view: &MachineView, config: &MachineConfig) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Storage"))
+        .build();
+    for disk in &config.disks {
+        group.add(&disk_row(view, disk));
+    }
+    if config.disks.is_empty() {
+        group.set_description(Some(&gettext("No disks")));
+    }
+    group
+}
+
+fn disk_row(view: &MachineView, disk: &Disk) -> adw::ActionRow {
+    let title = match disk.device {
+        DiskDevice::Cdrom => gettext("CD/DVD Drive"),
+        DiskDevice::Floppy => gettext("Floppy Drive"),
+        DiskDevice::Disk | DiskDevice::Lun => gettext("Disk"),
+    };
+    let mut subtitle = disk.source.clone().unwrap_or_else(|| gettext("Empty"));
+    let bus = [
+        Some(disk.target.as_str()),
+        Some(disk.bus.as_str()),
+        disk.format.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|s| !s.is_empty())
+    .collect::<Vec<_>>()
+    .join(" · ");
+    if !bus.is_empty() {
+        subtitle = format!("{subtitle}\n{bus}");
+    }
+    let row = adw::ActionRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .subtitle_selectable(true)
+        .css_classes(["property"])
+        .build();
+    if disk.device != DiskDevice::Cdrom {
+        return row;
+    }
+    let choose = gtk::Button::builder()
+        .icon_name("document-open-symbolic")
+        .tooltip_text(gettext("Insert Disc Image"))
+        .valign(gtk::Align::Center)
+        .css_classes(["flat"])
+        .build();
+    choose.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        disk,
+        move |_| {
+            let disk = disk.clone();
+            glib::spawn_future_local(glib::clone!(
+                #[weak]
+                view,
+                async move {
+                    if let Some(path) = choose_iso(&view).await {
+                        view.run(move |hv, uuid| hv.change_media(uuid, &disk, Some(&path)));
+                    }
+                }
+            ));
+        }
+    ));
+    row.add_suffix(&choose);
+    if disk.source.is_some() {
+        let eject = gtk::Button::builder()
+            .icon_name("media-eject-symbolic")
+            .tooltip_text(gettext("Eject"))
+            .valign(gtk::Align::Center)
+            .css_classes(["flat"])
+            .build();
+        eject.connect_clicked(glib::clone!(
+            #[weak]
+            view,
+            #[strong]
+            disk,
+            move |_| {
+                let disk = disk.clone();
+                view.run(move |hv, uuid| hv.change_media(uuid, &disk, None));
+            }
+        ));
+        row.add_suffix(&eject);
+    }
+    row
+}
+
+pub async fn choose_iso(parent: &impl IsA<gtk::Widget>) -> Option<String> {
+    let filter = gtk::FileFilter::new();
+    filter.set_name(Some(&gettext("Disc Images")));
+    filter.add_suffix("iso");
+    filter.add_mime_type("application/x-cd-image");
+    let filters = gio::ListStore::new::<gtk::FileFilter>();
+    filters.append(&filter);
+    let dialog = gtk::FileDialog::builder()
+        .title(gettext("Insert Disc Image"))
+        .filters(&filters)
+        .build();
+    let window = parent.root().and_downcast::<gtk::Window>();
+    let file = dialog.open_future(window.as_ref()).await.ok()?;
+    file.path().map(|p| p.to_string_lossy().into_owned())
+}
+
+fn network(
+    view: &MachineView,
+    info: &MachineInfo,
+    config: &MachineConfig,
+) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Network"))
+        .build();
+    let mut rows = Vec::new();
+    for nic in &config.nics {
+        let row = nic_row(nic);
+        group.add(&row);
+        rows.push((nic.mac.clone(), row));
+    }
+    if config.nics.is_empty() {
+        group.set_description(Some(&gettext("No network interfaces")));
+    }
+    if info.state.is_active() && !rows.is_empty() {
+        let (Some(win), uuid) = (window(view), info.uuid.clone()) else {
+            return group;
+        };
+        glib::spawn_future_local(async move {
+            let Some(Ok(found)) = win.call(move |hv| Ok(hv.addresses(&uuid))).await else {
+                return;
+            };
+            for (mac, row) in rows {
+                let addresses: Vec<String> = found
+                    .iter()
+                    .filter(|a| {
+                        mac.as_deref()
+                            .is_none_or(|m| m.eq_ignore_ascii_case(&a.mac))
+                    })
+                    .flat_map(|a| a.addresses.clone())
+                    .collect();
+                if !addresses.is_empty() {
+                    row.set_subtitle(&format!(
+                        "{}\n{}",
+                        row.subtitle().unwrap_or_default(),
+                        addresses.join(", ")
+                    ));
+                }
+            }
+        });
+    }
+    group
+}
+
+fn nic_row(nic: &Nic) -> adw::ActionRow {
+    let source = nic.source.clone().unwrap_or_default();
+    let title = match nic.kind.as_str() {
+        "network" => gettext("Virtual Network “{name}”").replace("{name}", &source),
+        "bridge" => gettext("Bridge {name}").replace("{name}", &source),
+        "direct" => gettext("Host Device {name}").replace("{name}", &source),
+        "user" => gettext("User Networking"),
+        other => other.to_owned(),
+    };
+    let subtitle = [nic.model.as_deref(), nic.mac.as_deref()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" · ");
+    adw::ActionRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .subtitle_selectable(true)
+        .css_classes(["property"])
+        .build()
+}
+
+fn display(config: &MachineConfig) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Display"))
+        .build();
+    let graphics = if config.graphics.is_empty() {
+        gettext("None")
+    } else {
+        config
+            .graphics
+            .iter()
+            .map(|g| g.to_uppercase())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let subtitle = match &config.video {
+        Some(video) => format!("{graphics} · {video}"),
+        None => graphics,
+    };
+    let row = info_row(&gettext("Graphics"), &subtitle);
+    if config.graphics.iter().any(|g| g == "spice") {
+        let switch = gtk::Button::builder()
+            .label(gettext("Switch to VNC"))
+            .tooltip_text(gettext(
+                "The console shows VNC displays; the change applies from the next start",
+            ))
+            .action_name("machine.use-vnc")
+            .valign(gtk::Align::Center)
+            .build();
+        row.add_suffix(&switch);
+    }
+    group.add(&row);
+    group
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn os_names_come_from_the_id_path() {
+        assert_eq!(
+            os_name("http://fedoraproject.org/fedora/41").as_deref(),
+            Some("fedora 41")
+        );
+        assert_eq!(
+            os_name("http://microsoft.com/win/11").as_deref(),
+            Some("win 11")
+        );
+        assert_eq!(os_name("nonsense"), None);
+    }
+}

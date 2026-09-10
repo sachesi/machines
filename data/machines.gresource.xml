@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/io/github/sachesi/machines">
+    <file>style.css</file>
+    <file preprocess="xml-stripblanks">ui/window.ui</file>
+    <file preprocess="xml-stripblanks">ui/machine_view.ui</file>
+    <file preprocess="xml-stripblanks" alias="icons/scalable/apps/io.github.sachesi.machines.svg">icons/hicolor/scalable/apps/io.github.sachesi.machines.svg</file>
+    <file preprocess="xml-stripblanks" alias="icons/symbolic/apps/io.github.sachesi.machines-symbolic.svg">icons/hicolor/symbolic/apps/io.github.sachesi.machines-symbolic.svg</file>
+  </gresource>
+</gresources>

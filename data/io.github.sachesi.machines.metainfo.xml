@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.sachesi.machines</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Machines</name>
+  <summary>Create and run virtual machines</summary>
+  <description>
+    <p>Machines manages the QEMU/KVM virtual machines of a libvirt connection, the system one or your user session, built with GTK 4 and libadwaita.</p>
+    <ul>
+      <li>Start, shut down, pause, reboot and force off machines, and follow their state as it changes</li>
+      <li>A built-in VNC console that scales the guest's display to the window and passes the keyboard and pointer through</li>
+      <li>New machines from an installation ISO or an existing disk image, with a disk in libvirt's default storage pool</li>
+      <li>Processors, memory, autostart and the CD-ROM drive changed from the details page</li>
+      <li>Machines made with virt-manager, including SPICE ones, which can be switched to VNC</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.sachesi.machines.desktop</launchable>
+  <url type="homepage">https://github.com/sachesi/machines</url>
+  <url type="bugtracker">https://github.com/sachesi/machines/issues</url>
+  <url type="vcs-browser">https://github.com/sachesi/machines</url>
+  <developer id="io.github.sachesi"><name>sachesi</name></developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-09-23"/>
+  </releases>
+</component>

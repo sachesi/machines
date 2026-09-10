@@ -1,0 +1,208 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $MachinesMachineView: Adw.BreakpointBin {
+  width-request: 300;
+  height-request: 200;
+
+  Adw.Breakpoint {
+    condition ("max-width: 480sp")
+
+    setters {
+      view_toggle.visible: false;
+      switcher_bar.reveal: true;
+    }
+  }
+
+  child: Adw.ToolbarView toolbar {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle title {};
+
+      [start]
+      Adw.ToggleGroup view_toggle {
+        active-name: bind view_stack.visible-child-name bidirectional;
+
+        Adw.Toggle {
+          name: "console";
+          icon-name: "video-display-symbolic";
+          tooltip: _("Console");
+        }
+
+        Adw.Toggle {
+          name: "details";
+          icon-name: "document-properties-symbolic";
+          tooltip: _("Details");
+        }
+      }
+
+      [end]
+      MenuButton {
+        icon-name: "view-more-symbolic";
+        menu-model: machine_menu;
+        tooltip-text: _("Machine Menu");
+      }
+
+      [end]
+      Button shut_down_button {
+        icon-name: "system-shutdown-symbolic";
+        tooltip-text: _("Shut Down");
+        action-name: "machine.shut-down";
+      }
+
+      [end]
+      Button start_button {
+        icon-name: "media-playback-start-symbolic";
+        tooltip-text: _("Start");
+        action-name: "machine.start";
+      }
+
+      [end]
+      Button fullscreen_button {
+        icon-name: "view-restore-symbolic";
+        tooltip-text: _("Leave Fullscreen");
+        action-name: "machine.fullscreen";
+        visible: false;
+      }
+    }
+
+    [bottom]
+    Adw.ViewSwitcherBar switcher_bar {
+      stack: view_stack;
+    }
+
+    content: Adw.ViewStack view_stack {
+      vexpand: true;
+
+      Adw.ViewStackPage {
+        name: "console";
+        title: _("Console");
+        icon-name: "video-display-symbolic";
+
+        child: Stack console_stack {
+          transition-type: crossfade;
+
+          StackPage {
+            name: "display";
+
+            child: $MachinesConsole console {
+              hexpand: true;
+              vexpand: true;
+            };
+          }
+
+          StackPage {
+            name: "connecting";
+
+            child: Adw.Spinner {
+              halign: center;
+              valign: center;
+              width-request: 32;
+              height-request: 32;
+            };
+          }
+
+          StackPage {
+            name: "message";
+
+            child: Adw.StatusPage console_message {
+              child: Button console_button {
+                use-underline: true;
+                halign: center;
+
+                styles [
+                  "pill",
+                  "suggested-action",
+                ]
+              };
+            };
+          }
+        };
+      }
+
+      Adw.ViewStackPage {
+        name: "details";
+        title: _("Details");
+        icon-name: "document-properties-symbolic";
+
+        child: Adw.Bin details_bin {};
+      }
+    };
+  };
+}
+
+menu machine_menu {
+  section {
+    item {
+      label: _("_Fullscreen");
+      action: "machine.fullscreen";
+    }
+  }
+
+  section {
+    item {
+      label: _("_Pause");
+      action: "machine.pause";
+    }
+
+    item {
+      label: _("_Reboot");
+      action: "machine.reboot";
+    }
+  }
+
+  section {
+    item {
+      label: _("Force _Reset");
+      action: "machine.reset";
+    }
+
+    item {
+      label: _("Force _Off");
+      action: "machine.force-off";
+    }
+  }
+
+  section {
+    submenu {
+      label: _("Send _Key");
+
+      item {
+        label: "Ctrl+Alt+Del";
+        action: "machine.send-keys";
+        target: "ctrl-alt-delete";
+      }
+
+      item {
+        label: "Ctrl+Alt+Backspace";
+        action: "machine.send-keys";
+        target: "ctrl-alt-backspace";
+      }
+
+      item {
+        label: "Ctrl+Alt+F1";
+        action: "machine.send-keys";
+        target: "ctrl-alt-f1";
+      }
+
+      item {
+        label: "Ctrl+Alt+F2";
+        action: "machine.send-keys";
+        target: "ctrl-alt-f2";
+      }
+
+      item {
+        label: "Ctrl+Alt+F7";
+        action: "machine.send-keys";
+        target: "ctrl-alt-f7";
+      }
+    }
+  }
+
+  section {
+    item {
+      label: _("_Delete…");
+      action: "machine.delete";
+    }
+  }
+}

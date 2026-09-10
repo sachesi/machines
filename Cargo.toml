@@ -1,0 +1,24 @@
+[package]
+name = "machines"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "GPL-3.0-or-later"
+description = "A GTK4 manager for libvirt virtual machines"
+repository = "https://github.com/sachesi/machines"
+readme = "README.md"
+
+[dependencies]
+gtk4 = { version = "0.11", features = ["v4_22"] }
+libadwaita = { version = "0.9", features = ["v1_9"] }
+gettext-rs = { version = "0.8", features = ["gettext-system"] }
+gvnc = "0.7"
+roxmltree = "0.21"
+virt = "0.4.3"
+
+[build-dependencies]
+glib-build-tools = "0.22"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

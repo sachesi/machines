@@ -1,0 +1,529 @@
+//! The libvirt connection. Every call here blocks, some for as long as a polkit prompt is
+//! up, so the window makes them from `gio::spawn_blocking`.
+
+use std::path::{Path, PathBuf};
+
+use gettextrs::gettext;
+use virt::connect::Connect;
+use virt::domain::Domain;
+use virt::error::ErrorNumber;
+use virt::network::Network;
+use virt::storage_pool::StoragePool;
+use virt::storage_vol::StorageVol;
+use virt::sys;
+
+use crate::domain_xml::{self, Disk, GuestOs, MachineConfig, NetworkSource, NewMachine};
+use crate::glib;
+
+pub type Result<T> = std::result::Result<T, String>;
+
+fn message(e: virt::error::Error) -> String {
+    e.message().to_owned()
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, glib::Enum)]
+#[enum_type(name = "MachinesMachineState")]
+pub enum MachineState {
+    #[default]
+    ShutOff,
+    Running,
+    Paused,
+    ShuttingDown,
+    Crashed,
+    Suspended,
+}
+
+impl MachineState {
+    fn from_raw(state: sys::virDomainState) -> Self {
+        match state {
+            sys::VIR_DOMAIN_RUNNING | sys::VIR_DOMAIN_BLOCKED => Self::Running,
+            sys::VIR_DOMAIN_PAUSED => Self::Paused,
+            sys::VIR_DOMAIN_SHUTDOWN => Self::ShuttingDown,
+            sys::VIR_DOMAIN_CRASHED => Self::Crashed,
+            sys::VIR_DOMAIN_PMSUSPENDED => Self::Suspended,
+            _ => Self::ShutOff,
+        }
+    }
+
+    pub fn label(self) -> String {
+        match self {
+            Self::ShutOff => gettext("Shut Off"),
+            Self::Running => gettext("Running"),
+            Self::Paused => gettext("Paused"),
+            Self::ShuttingDown => gettext("Shutting Down"),
+            Self::Crashed => gettext("Crashed"),
+            Self::Suspended => gettext("Suspended"),
+        }
+    }
+
+    /// Whether QEMU is up for this machine, whatever the guest is doing.
+    pub fn is_active(self) -> bool {
+        !matches!(self, Self::ShutOff | Self::Crashed)
+    }
+}
+
+/// One machine as the last listing saw it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MachineInfo {
+    pub uuid: String,
+    pub name: String,
+    pub state: MachineState,
+    pub persistent: bool,
+    pub autostart: bool,
+    /// What the machine boots with next: the inactive definition where there is one.
+    pub config: Option<MachineConfig>,
+    /// The graphics devices QEMU is running with, which differ from `config` after an edit
+    /// until the next start.
+    pub live_graphics: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InterfaceAddresses {
+    pub mac: String,
+    pub addresses: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum InstallSource {
+    /// Boot an installer ISO with a new, empty disk of this many GiB.
+    Media { iso: String, disk_gib: u64 },
+    /// Boot a disk image that already has a system on it.
+    Import { image: String },
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateRequest {
+    pub name: String,
+    pub os: GuestOs,
+    pub uefi: bool,
+    pub memory_mib: u64,
+    pub vcpus: u32,
+    pub source: InstallSource,
+}
+
+/// What the host can give its machines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Host {
+    pub cpus: u32,
+    pub memory_mib: u64,
+}
+
+impl Default for Host {
+    fn default() -> Self {
+        Self {
+            cpus: 1,
+            memory_mib: 1024,
+        }
+    }
+}
+
+pub struct Hypervisor {
+    conn: Connect,
+    uri: String,
+}
+
+impl Hypervisor {
+    pub fn open(uri: &str) -> Result<Self> {
+        let conn = Connect::open(Some(uri)).map_err(message)?;
+        Ok(Self {
+            conn,
+            uri: uri.to_owned(),
+        })
+    }
+
+    pub fn is_session(&self) -> bool {
+        self.uri.contains("/session")
+    }
+
+    pub fn host(&self) -> Host {
+        let info = self.conn.get_node_info().ok();
+        Host {
+            cpus: info.as_ref().map_or(1, |i| i.cpus),
+            memory_mib: info.as_ref().map_or(1024, |i| i.memory / 1024),
+        }
+    }
+
+    pub fn machines(&self) -> Result<Vec<MachineInfo>> {
+        let domains = self.conn.list_all_domains(0).map_err(message)?;
+        Ok(domains.iter().filter_map(|d| self.info(d).ok()).collect())
+    }
+
+    fn info(&self, dom: &Domain) -> Result<MachineInfo> {
+        let (state, _) = dom.get_state().map_err(message)?;
+        let state = MachineState::from_raw(state);
+        let persistent = dom.is_persistent().map_err(message)?;
+        let flags = if persistent {
+            sys::VIR_DOMAIN_XML_INACTIVE
+        } else {
+            0
+        };
+        let config = dom
+            .get_xml_desc(flags)
+            .ok()
+            .and_then(|xml| MachineConfig::parse(&xml).ok());
+        let live_graphics = if state.is_active() {
+            dom.get_xml_desc(0)
+                .ok()
+                .and_then(|xml| MachineConfig::parse(&xml).ok())
+                .map(|c| c.graphics)
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        Ok(MachineInfo {
+            uuid: dom.get_uuid_string().map_err(message)?,
+            name: dom.get_name().map_err(message)?,
+            state,
+            persistent,
+            autostart: persistent && dom.get_autostart().unwrap_or(false),
+            config,
+            live_graphics,
+        })
+    }
+
+    fn domain(&self, uuid: &str) -> Result<Domain> {
+        Domain::lookup_by_uuid_string(&self.conn, uuid).map_err(message)
+    }
+
+    pub fn start(&self, uuid: &str) -> Result<()> {
+        let dom = self.domain(uuid)?;
+        match MachineState::from_raw(dom.get_state().map_err(message)?.0) {
+            MachineState::Paused => dom.resume().map(drop),
+            MachineState::Suspended => dom.pm_wakeup(0).map(drop),
+            _ => dom.create().map(drop),
+        }
+        .map_err(message)
+    }
+
+    pub fn shut_down(&self, uuid: &str) -> Result<()> {
+        self.domain(uuid)?.shutdown().map(drop).map_err(message)
+    }
+
+    pub fn reboot(&self, uuid: &str) -> Result<()> {
+        self.domain(uuid)?
+            .reboot(sys::VIR_DOMAIN_REBOOT_DEFAULT)
+            .map_err(message)
+    }
+
+    pub fn reset(&self, uuid: &str) -> Result<()> {
+        self.domain(uuid)?.reset().map(drop).map_err(message)
+    }
+
+    pub fn force_off(&self, uuid: &str) -> Result<()> {
+        self.domain(uuid)?.destroy().map_err(message)
+    }
+
+    pub fn pause(&self, uuid: &str) -> Result<()> {
+        self.domain(uuid)?.suspend().map(drop).map_err(message)
+    }
+
+    pub fn set_autostart(&self, uuid: &str, autostart: bool) -> Result<()> {
+        self.domain(uuid)?
+            .set_autostart(autostart)
+            .map(drop)
+            .map_err(message)
+    }
+
+    /// Takes effect at the next start. The maximum moves with the count, and moves first
+    /// when the count goes past it.
+    pub fn set_vcpus(&self, uuid: &str, vcpus: u32) -> Result<()> {
+        let dom = self.domain(uuid)?;
+        let config = sys::VIR_DOMAIN_AFFECT_CONFIG;
+        let maximum = config | sys::VIR_DOMAIN_VCPU_MAXIMUM;
+        let current_max = dom.get_vcpus_flags(maximum).map_err(message)?;
+        let order = if vcpus > current_max {
+            [maximum, config]
+        } else {
+            [config, maximum]
+        };
+        for flags in order {
+            dom.set_vcpus_flags(vcpus, flags).map_err(message)?;
+        }
+        Ok(())
+    }
+
+    /// Takes effect at the next start, like [`Self::set_vcpus`].
+    pub fn set_memory(&self, uuid: &str, mib: u64) -> Result<()> {
+        let dom = self.domain(uuid)?;
+        let xml = dom
+            .get_xml_desc(sys::VIR_DOMAIN_XML_INACTIVE)
+            .map_err(message)?;
+        let current = MachineConfig::parse(&xml)?.memory_mib;
+        let config = sys::VIR_DOMAIN_AFFECT_CONFIG;
+        let maximum = config | sys::VIR_DOMAIN_MEM_MAXIMUM;
+        let order = if mib > current {
+            [maximum, config]
+        } else {
+            [config, maximum]
+        };
+        for flags in order {
+            dom.set_memory_flags(mib * 1024, flags).map_err(message)?;
+        }
+        Ok(())
+    }
+
+    /// Put `source` in the CD-ROM drive `disk`, or empty it, now and for later starts.
+    pub fn change_media(&self, uuid: &str, disk: &Disk, source: Option<&str>) -> Result<()> {
+        let dom = self.domain(uuid)?;
+        let mut flags = sys::VIR_DOMAIN_DEVICE_MODIFY_CONFIG;
+        if dom.is_active().map_err(message)? {
+            flags |= sys::VIR_DOMAIN_DEVICE_MODIFY_LIVE;
+        }
+        dom.update_device_flags(&domain_xml::cdrom_xml(disk, source), flags)
+            .map(drop)
+            .map_err(message)
+    }
+
+    /// Replace the SPICE display with VNC in the definition; see [`domain_xml::spice_to_vnc`].
+    pub fn use_vnc(&self, uuid: &str) -> Result<()> {
+        let dom = self.domain(uuid)?;
+        let xml = dom
+            .get_xml_desc(sys::VIR_DOMAIN_XML_INACTIVE | sys::VIR_DOMAIN_XML_SECURE)
+            .map_err(message)?;
+        Domain::define_xml(&self.conn, &domain_xml::spice_to_vnc(&xml)?)
+            .map(drop)
+            .map_err(message)
+    }
+
+    /// A socket to the machine's first display, already past its authentication.
+    pub fn open_display(&self, uuid: &str) -> Result<i32> {
+        let fd = self
+            .domain(uuid)?
+            .open_graphics_fd(0, sys::VIR_DOMAIN_OPEN_GRAPHICS_SKIPAUTH)
+            .map_err(message)?;
+        i32::try_from(fd).map_err(|e| e.to_string())
+    }
+
+    /// Press and release `keys`, Linux input codes, together.
+    pub fn send_keys(&self, uuid: &str, keys: &[u32]) -> Result<()> {
+        let mut keys = keys.to_vec();
+        let n = i32::try_from(keys.len()).map_err(|e| e.to_string())?;
+        self.domain(uuid)?
+            .send_key(sys::VIR_KEYCODE_SET_LINUX, 0, keys.as_mut_ptr(), n, 0)
+            .map_err(message)
+    }
+
+    /// Addresses from the DHCP leases of libvirt's own networks, or else from the guest
+    /// agent. Empty when neither knows any.
+    pub fn addresses(&self, uuid: &str) -> Vec<InterfaceAddresses> {
+        let Ok(dom) = self.domain(uuid) else {
+            return Vec::new();
+        };
+        for source in [
+            sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE,
+            sys::VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT,
+        ] {
+            let found: Vec<InterfaceAddresses> = dom
+                .interface_addresses(source, 0)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|i| i.name != "lo" && !i.addrs.is_empty())
+                .map(|i| InterfaceAddresses {
+                    mac: i.hwaddr,
+                    addresses: i.addrs.into_iter().map(|a| a.addr).collect(),
+                })
+                .collect();
+            if !found.is_empty() {
+                return found;
+            }
+        }
+        Vec::new()
+    }
+
+    /// Remove the machine, with its firmware variables, saved state and snapshot records.
+    /// With `delete_disks`, its disk images go too; the ones that could not be deleted are
+    /// returned.
+    pub fn delete(&self, uuid: &str, delete_disks: bool) -> Result<Vec<String>> {
+        let dom = self.domain(uuid)?;
+        if dom.is_active().map_err(message)? {
+            dom.destroy().map_err(message)?;
+        }
+        let files = if delete_disks {
+            let xml = dom
+                .get_xml_desc(sys::VIR_DOMAIN_XML_INACTIVE)
+                .map_err(message)?;
+            MachineConfig::parse(&xml)?.disk_files()
+        } else {
+            Vec::new()
+        };
+        if dom.is_persistent().map_err(message)? {
+            dom.undefine_flags(
+                sys::VIR_DOMAIN_UNDEFINE_NVRAM
+                    | sys::VIR_DOMAIN_UNDEFINE_TPM
+                    | sys::VIR_DOMAIN_UNDEFINE_MANAGED_SAVE
+                    | sys::VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA
+                    | sys::VIR_DOMAIN_UNDEFINE_CHECKPOINTS_METADATA,
+            )
+            .map_err(message)?;
+        }
+        Ok(files
+            .into_iter()
+            .filter(|f| self.delete_image(f).is_err())
+            .collect())
+    }
+
+    fn delete_image(&self, path: &str) -> Result<()> {
+        match StorageVol::lookup_by_path(&self.conn, path) {
+            Ok(vol) => vol.delete(0).map_err(message),
+            // Not in any pool: only a session's images are ours to remove directly.
+            Err(e) if e.code() == ErrorNumber::NoStorageVolume && self.is_session() => {
+                std::fs::remove_file(path).map_err(|e| e.to_string())
+            }
+            Err(e) => Err(message(e)),
+        }
+    }
+
+    /// Define the machine and start it. Its UUID comes back even if only the start failed,
+    /// since the machine is there to select.
+    pub fn create(
+        &self,
+        req: &CreateRequest,
+    ) -> std::result::Result<String, (Option<String>, String)> {
+        let fail = |e: String| (None, e);
+        let caps = |virt_type| {
+            self.conn
+                .get_domain_capabilities(None, Some("x86_64"), Some("q35"), Some(virt_type), 0)
+                .map(|caps| (virt_type, caps))
+        };
+        let (virt_type, caps) = caps("kvm")
+            .or_else(|_| caps("qemu"))
+            .map_err(message)
+            .map_err(fail)?;
+        let (disk, cdrom, new_vol) = match &req.source {
+            InstallSource::Media { iso, disk_gib } => {
+                let vol = self.new_disk(&req.name, *disk_gib).map_err(fail)?;
+                let path = vol.get_path().map_err(message).map_err(fail)?;
+                (
+                    Some((path, "qcow2".to_owned())),
+                    Some(iso.clone()),
+                    Some(vol),
+                )
+            }
+            InstallSource::Import { image } => (
+                Some((image.clone(), image_format(Path::new(image)))),
+                None,
+                None,
+            ),
+        };
+        let machine = NewMachine {
+            name: req.name.clone(),
+            virt_type: virt_type.to_owned(),
+            os: req.os,
+            uefi: req.uefi,
+            tpm: req.os == GuestOs::Windows && on_path("swtpm"),
+            memory_mib: req.memory_mib,
+            vcpus: req.vcpus,
+            disk,
+            cdrom,
+            network: self.network(),
+            video: domain_xml::video_model(&caps, req.os),
+        };
+        let dom = match Domain::define_xml(&self.conn, &domain_xml::new_machine_xml(&machine)) {
+            Ok(dom) => dom,
+            Err(e) => {
+                if let Some(vol) = new_vol {
+                    let _ = vol.delete(0);
+                }
+                return Err((None, message(e)));
+            }
+        };
+        let uuid = dom.get_uuid_string().map_err(message).map_err(fail)?;
+        match dom.create() {
+            Ok(_) => Ok(uuid),
+            Err(e) => Err((Some(uuid), message(e))),
+        }
+    }
+
+    /// libvirt's `default` network where there is one, started if it is not; QEMU's user
+    /// networking otherwise, and always in a session, which cannot use the system's
+    /// networks.
+    fn network(&self) -> NetworkSource {
+        if self.is_session() {
+            return NetworkSource::User;
+        }
+        match Network::lookup_by_name(&self.conn, "default") {
+            Ok(net) => {
+                if !net.is_active().unwrap_or(true) {
+                    let _ = net.create();
+                }
+                NetworkSource::Network("default".to_owned())
+            }
+            Err(_) => NetworkSource::User,
+        }
+    }
+
+    /// A new qcow2 volume in the `default` pool, named after the machine.
+    fn new_disk(&self, machine: &str, gib: u64) -> Result<StorageVol> {
+        let pool = self.default_pool()?;
+        let _ = pool.refresh(0);
+        let stem: String = machine
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || "._-".contains(c) {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect();
+        let name = (0..)
+            .map(|i| match i {
+                0 => format!("{stem}.qcow2"),
+                i => format!("{stem}-{i}.qcow2"),
+            })
+            .find(|n| StorageVol::lookup_by_name(&pool, n).is_err())
+            .expect("an unused name");
+        let xml = format!(
+            "<volume><name>{}</name><capacity unit='GiB'>{gib}</capacity>\
+             <target><format type='qcow2'/></target></volume>",
+            domain_xml::escape(&name)
+        );
+        StorageVol::create_xml(&pool, &xml, 0).map_err(message)
+    }
+
+    /// The `default` storage pool, set up where virt-manager would put it if it is missing.
+    fn default_pool(&self) -> Result<StoragePool> {
+        let pool = match StoragePool::lookup_by_name(&self.conn, "default") {
+            Ok(pool) => pool,
+            Err(_) => {
+                let dir = if self.is_session() {
+                    glib::user_data_dir().join("libvirt/images")
+                } else {
+                    PathBuf::from("/var/lib/libvirt/images")
+                };
+                let xml = format!(
+                    "<pool type='dir'><name>default</name><target><path>{}</path></target></pool>",
+                    domain_xml::escape(&dir.to_string_lossy())
+                );
+                let pool = StoragePool::define_xml(&self.conn, &xml, 0).map_err(message)?;
+                pool.build(0).map_err(message)?;
+                let _ = pool.set_autostart(true);
+                pool
+            }
+        };
+        if !pool.is_active().map_err(message)? {
+            pool.create(0).map_err(message)?;
+        }
+        Ok(pool)
+    }
+}
+
+/// qcow2 by its magic number, where the file can be read; otherwise by extension, with raw
+/// for anything unknown.
+fn image_format(path: &Path) -> String {
+    use std::io::Read;
+    let mut magic = [0u8; 4];
+    let read = std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic));
+    if read.is_ok() && magic == *b"QFI\xfb" {
+        return "qcow2".to_owned();
+    }
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext @ ("qcow2" | "vmdk" | "vdi" | "vhdx")) => ext.to_owned(),
+        Some("vhd") => "vpc".to_owned(),
+        _ => "raw".to_owned(),
+    }
+}
+
+fn on_path(program: &str) -> bool {
+    glib::find_program_in_path(program).is_some()
+}

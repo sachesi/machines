@@ -1,0 +1,204 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $MachinesWindow: Adw.ApplicationWindow {
+  title: "Machines";
+  width-request: 360;
+  height-request: 294;
+
+  Adw.Breakpoint {
+    condition ("max-width: 640sp")
+
+    setters {
+      split_view.collapsed: true;
+    }
+  }
+
+  content: Adw.ToastOverlay toasts {
+    child: Adw.NavigationSplitView split_view {
+      min-sidebar-width: 220;
+      max-sidebar-width: 300;
+
+      sidebar: Adw.NavigationPage {
+        title: _("Virtual Machines");
+        tag: "sidebar";
+
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {
+            title-widget: Adw.WindowTitle connection_title {
+              title: _("Virtual Machines");
+            };
+
+            [start]
+            Button new_button {
+              icon-name: "list-add-symbolic";
+              tooltip-text: _("New Virtual Machine");
+              action-name: "win.new-machine";
+            }
+
+            [end]
+            MenuButton {
+              icon-name: "open-menu-symbolic";
+              menu-model: primary_menu;
+              primary: true;
+              tooltip-text: _("Main Menu");
+            }
+          }
+
+          content: Stack sidebar_stack {
+            transition-type: crossfade;
+
+            StackPage {
+              name: "loading";
+
+              child: Adw.Spinner {
+                halign: center;
+                valign: center;
+                width-request: 32;
+                height-request: 32;
+              };
+            }
+
+            StackPage {
+              name: "list";
+
+              child: ScrolledWindow {
+                hscrollbar-policy: never;
+
+                child: ListView machine_list {
+                  single-click-activate: true;
+
+                  styles [
+                    "navigation-sidebar",
+                  ]
+                };
+              };
+            }
+
+            StackPage {
+              name: "empty";
+
+              child: Adw.StatusPage {
+                icon-name: "computer-symbolic";
+                title: _("No Virtual Machines");
+
+                child: Button {
+                  label: _("_New Virtual Machine");
+                  use-underline: true;
+                  action-name: "win.new-machine";
+                  halign: center;
+
+                  styles [
+                    "pill",
+                    "suggested-action",
+                  ]
+                };
+
+                styles [
+                  "compact",
+                ]
+              };
+            }
+
+            StackPage {
+              name: "error";
+
+              child: Adw.StatusPage error_page {
+                icon-name: "dialog-warning-symbolic";
+                title: _("Cannot Connect");
+
+                child: Box {
+                  orientation: vertical;
+                  spacing: 12;
+                  halign: center;
+
+                  Button {
+                    label: _("_Try Again");
+                    use-underline: true;
+                    action-name: "win.reconnect";
+
+                    styles [
+                      "pill",
+                    ]
+                  }
+
+                  Button session_button {
+                    label: _("Use _User Session");
+                    use-underline: true;
+                    action-name: "app.connection-uri";
+                    action-target: "'qemu:///session'";
+
+                    styles [
+                      "pill",
+                    ]
+                  }
+                };
+
+                styles [
+                  "compact",
+                ]
+              };
+            }
+          };
+        };
+      };
+
+      content: Adw.NavigationPage content_page {
+        title: _("Virtual Machine");
+        tag: "content";
+
+        child: Stack content_stack {
+          StackPage {
+            name: "none";
+
+            child: Adw.ToolbarView {
+              [top]
+              Adw.HeaderBar {
+                show-title: false;
+              }
+
+              content: Adw.StatusPage {
+                icon-name: "io.github.sachesi.machines-symbolic";
+                title: _("No Virtual Machine Selected");
+              };
+            };
+          }
+
+          StackPage {
+            name: "machine";
+
+            child: $MachinesMachineView machine_view {};
+          }
+        };
+      };
+    };
+  };
+}
+
+menu primary_menu {
+  section {
+    submenu {
+      label: _("_Connection");
+
+      item {
+        label: _("_System");
+        action: "app.connection-uri";
+        target: "qemu:///system";
+      }
+
+      item {
+        label: _("_User Session");
+        action: "app.connection-uri";
+        target: "qemu:///session";
+      }
+    }
+  }
+
+  section {
+    item {
+      label: _("_About Machines");
+      action: "app.about";
+    }
+  }
+}

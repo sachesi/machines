@@ -1,0 +1,4 @@
+/* The console letterboxes the guest's desktop on black, whatever the theme. */
+machines-console {
+  background-color: black;
+}

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Machines
+GenericName=Virtual Machine Manager
+Comment=Create and run libvirt virtual machines
+Exec=machines
+Icon=io.github.sachesi.machines
+Terminal=false
+Type=Application
+Categories=GTK;System;Emulator;
+StartupNotify=true
+Keywords=virtual machine;vm;qemu;kvm;libvirt;virtualization;

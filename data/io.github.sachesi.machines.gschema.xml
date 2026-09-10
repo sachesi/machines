@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="machines">
+  <schema id="io.github.sachesi.machines" path="/io/github/sachesi/machines/">
+    <key name="connection-uri" type="s">
+      <default>'qemu:///system'</default>
+      <summary>Hypervisor connection</summary>
+      <description>The libvirt URI the window lists virtual machines from.</description>
+    </key>
+    <key name="window-size" type="(ii)">
+      <default>(1100, 720)</default>
+      <summary>Window size</summary>
+    </key>
+    <key name="window-maximized" type="b">
+      <default>false</default>
+      <summary>Window maximized</summary>
+    </key>
+  </schema>
+</schemalist>
