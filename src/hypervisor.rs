@@ -1,6 +1,14 @@
 //! The libvirt connection. Every call here blocks, some for as long as a polkit prompt is
 //! up, so the window makes them from `gio::spawn_blocking`.
 
+mod devices;
+mod networks;
+mod storage;
+
+pub use devices::{Change, NewStorage};
+pub use networks::VirtualNetwork;
+pub use storage::{Pool, Volume};
+
 use std::path::{Path, PathBuf};
 
 use gettextrs::gettext;
@@ -13,7 +21,7 @@ use virt::storage_vol::StorageVol;
 use virt::sys;
 
 use crate::domain_xml::{self, Disk, GuestOs, MachineConfig, NetworkSource, NewMachine};
-use crate::glib;
+use crate::{glib, host_xml};
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -391,7 +399,8 @@ impl Hypervisor {
             .map_err(fail)?;
         let (disk, cdrom, new_vol) = match &req.source {
             InstallSource::Media { iso, disk_gib } => {
-                let vol = self.new_disk(&req.name, *disk_gib).map_err(fail)?;
+                let pool = self.default_pool().map_err(fail)?;
+                let vol = self.new_disk(&pool, &req.name, *disk_gib).map_err(fail)?;
                 let path = vol.get_path().map_err(message).map_err(fail)?;
                 (
                     Some((path, "qcow2".to_owned())),
@@ -452,9 +461,8 @@ impl Hypervisor {
         }
     }
 
-    /// A new qcow2 volume in the `default` pool, named after the machine.
-    fn new_disk(&self, machine: &str, gib: u64) -> Result<StorageVol> {
-        let pool = self.default_pool()?;
+    /// A new qcow2 volume in `pool`, named after the machine.
+    fn new_disk(&self, pool: &StoragePool, machine: &str, gib: u64) -> Result<StorageVol> {
         let _ = pool.refresh(0);
         let stem: String = machine
             .chars()
@@ -471,14 +479,9 @@ impl Hypervisor {
                 0 => format!("{stem}.qcow2"),
                 i => format!("{stem}-{i}.qcow2"),
             })
-            .find(|n| StorageVol::lookup_by_name(&pool, n).is_err())
+            .find(|n| StorageVol::lookup_by_name(pool, n).is_err())
             .expect("an unused name");
-        let xml = format!(
-            "<volume><name>{}</name><capacity unit='GiB'>{gib}</capacity>\
-             <target><format type='qcow2'/></target></volume>",
-            domain_xml::escape(&name)
-        );
-        StorageVol::create_xml(&pool, &xml, 0).map_err(message)
+        StorageVol::create_xml(pool, &host_xml::volume_xml(&name, gib, "qcow2"), 0).map_err(message)
     }
 
     /// The `default` storage pool, set up where virt-manager would put it if it is missing.
@@ -491,10 +494,7 @@ impl Hypervisor {
                 } else {
                     PathBuf::from("/var/lib/libvirt/images")
                 };
-                let xml = format!(
-                    "<pool type='dir'><name>default</name><target><path>{}</path></target></pool>",
-                    domain_xml::escape(&dir.to_string_lossy())
-                );
+                let xml = host_xml::dir_pool_xml("default", &dir.to_string_lossy());
                 let pool = StoragePool::define_xml(&self.conn, &xml, 0).map_err(message)?;
                 pool.build(0).map_err(message)?;
                 let _ = pool.set_autostart(true);

@@ -3,13 +3,14 @@
 
 use std::cell::{Cell, RefCell};
 use std::os::fd::{FromRawFd, OwnedFd};
+use std::rc::Rc;
 
 use gettextrs::gettext;
 
 use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
 use crate::console::Console;
-use crate::hypervisor::{MachineInfo, MachineState};
+use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result};
 use crate::machine::Machine;
 use crate::window::MachinesWindow;
 use crate::{adw, details, dialogs, glib, gtk, keymap};
@@ -192,6 +193,18 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     klass.install_action("machine.delete", None, |view, _, _| view.delete());
 }
 
+/// The scrolled window a preferences page keeps its groups in.
+fn scroller(page: &gtk::Widget) -> Option<gtk::ScrolledWindow> {
+    let mut child = page.first_child();
+    while let Some(widget) = child {
+        if let Ok(scroller) = widget.clone().downcast::<gtk::ScrolledWindow>() {
+            return Some(scroller);
+        }
+        child = widget.first_child();
+    }
+    None
+}
+
 impl MachineView {
     fn window(&self) -> Option<MachinesWindow> {
         self.root().and_downcast()
@@ -208,14 +221,34 @@ impl MachineView {
     /// Run `f` on the selected machine's UUID, off the main loop.
     pub fn run<F>(&self, f: F)
     where
-        F: FnOnce(&crate::hypervisor::Hypervisor, &str) -> crate::hypervisor::Result<()>
-            + Send
-            + 'static,
+        F: FnOnce(&Hypervisor, &str) -> Result<()> + Send + 'static,
     {
         if let (Some(win), Some(machine)) = (self.window(), self.machine()) {
             let uuid = machine.uuid();
             win.run(move |hv| f(hv, &uuid));
         }
+    }
+
+    /// Like [`Self::run`], for a change of hardware, which the running machine may only
+    /// get at its next start.
+    pub fn change<F>(&self, f: F)
+    where
+        F: FnOnce(&Hypervisor, &str) -> Result<Change> + Send + 'static,
+    {
+        let (Some(win), Some(machine)) = (self.window(), self.machine()) else {
+            return;
+        };
+        let uuid = machine.uuid();
+        glib::spawn_future_local(async move {
+            match win.call(move |hv| f(hv, &uuid)).await {
+                Some(Ok(Change::AtNextStart)) => win.toast(&gettext(
+                    "The change takes effect the next time the virtual machine starts",
+                )),
+                Some(Err(e)) => win.toast(&e),
+                _ => {}
+            }
+            win.refresh();
+        });
     }
 
     pub fn set_machine(&self, machine: Option<&Machine>) {
@@ -287,8 +320,32 @@ impl MachineView {
         self.update_actions();
         self.update_console(&info);
         if imp.shown.borrow().as_ref() != Some(&info) {
+            let scrolled = imp
+                .details_bin
+                .child()
+                .and_then(|page| scroller(&page))
+                .map(|s| s.vadjustment().value());
             let page = details::page(self, &info);
             imp.details_bin.set_child(Some(&page));
+            // The same machine's page, rebuilt after a change, stays where it was
+            // scrolled to. Its size is only known once it is laid out.
+            if let (Some(value), Some(scroller)) = (scrolled, scroller(page.upcast_ref())) {
+                let adjustment = scroller.vadjustment();
+                let handler: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
+                let id = adjustment.connect_changed(glib::clone!(
+                    #[strong]
+                    handler,
+                    move |adjustment| {
+                        if adjustment.upper() > 0.0 {
+                            adjustment.set_value(value);
+                            if let Some(id) = handler.take() {
+                                adjustment.disconnect(id);
+                            }
+                        }
+                    }
+                ));
+                handler.replace(Some(id));
+            }
             imp.shown.replace(Some(info));
         }
     }

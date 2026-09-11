@@ -8,7 +8,9 @@ use std::time::Duration;
 use gettextrs::gettext;
 
 use crate::adw::prelude::*;
-use crate::domain_xml::{Disk, DiskDevice, Firmware, MachineConfig, Nic};
+use crate::dialogs::{add_button, hardware, remove_button};
+use crate::domain_xml::{Disk, DiskDevice, Firmware, HostDev, MachineConfig, Nic};
+use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
@@ -32,6 +34,7 @@ pub fn page(view: &MachineView, info: &MachineInfo) -> adw::PreferencesPage {
     page.add(&resources(view, info, config));
     page.add(&storage(view, config));
     page.add(&network(view, info, config));
+    page.add(&host_devices(view, config));
     page.add(&display(config));
     page
 }
@@ -40,7 +43,7 @@ fn window(view: &MachineView) -> Option<MachinesWindow> {
     view.root().and_downcast()
 }
 
-fn info_row(title: &str, subtitle: &str) -> adw::ActionRow {
+pub fn info_row(title: &str, subtitle: &str) -> adw::ActionRow {
     adw::ActionRow::builder()
         .title(title)
         .subtitle(subtitle)
@@ -198,6 +201,13 @@ fn storage(view: &MachineView, config: &MachineConfig) -> adw::PreferencesGroup 
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Storage"))
         .build();
+    let add = add_button(&gettext("Add Storage"));
+    add.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        move |_| hardware::add_storage(&view)
+    ));
+    group.set_header_suffix(Some(&add));
     for disk in &config.disks {
         group.add(&disk_row(view, disk));
     }
@@ -233,7 +243,29 @@ fn disk_row(view: &MachineView, disk: &Disk) -> adw::ActionRow {
         .subtitle_selectable(true)
         .css_classes(["property"])
         .build();
+    let remove = remove_button(&gettext("Remove"));
+    remove.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        disk,
+        move |_| {
+            let disk = disk.clone();
+            glib::spawn_future_local(glib::clone!(
+                #[weak]
+                view,
+                async move {
+                    if disk.device == DiskDevice::Cdrom
+                        || hardware::confirm_remove_disk(&view).await
+                    {
+                        view.change(move |hv, uuid| hv.detach(uuid, &disk.xml));
+                    }
+                }
+            ));
+        }
+    ));
     if disk.device != DiskDevice::Cdrom {
+        row.add_suffix(&remove);
         return row;
     }
     let choose = gtk::Button::builder()
@@ -280,6 +312,7 @@ fn disk_row(view: &MachineView, disk: &Disk) -> adw::ActionRow {
         ));
         row.add_suffix(&eject);
     }
+    row.add_suffix(&remove);
     row
 }
 
@@ -307,9 +340,18 @@ fn network(
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Network"))
         .build();
+    let add = add_button(&gettext("Add Network Interface"));
+    add.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        config,
+        move |_| hardware::add_interface(&view, &config)
+    ));
+    group.set_header_suffix(Some(&add));
     let mut rows = Vec::new();
     for nic in &config.nics {
-        let row = nic_row(nic);
+        let row = nic_row(view, nic);
         group.add(&row);
         rows.push((nic.mac.clone(), row));
     }
@@ -346,7 +388,7 @@ fn network(
     group
 }
 
-fn nic_row(nic: &Nic) -> adw::ActionRow {
+fn nic_row(view: &MachineView, nic: &Nic) -> adw::ActionRow {
     let source = nic.source.clone().unwrap_or_default();
     let title = match nic.kind.as_str() {
         "network" => gettext("Virtual Network “{name}”").replace("{name}", &source),
@@ -360,12 +402,83 @@ fn nic_row(nic: &Nic) -> adw::ActionRow {
         .flatten()
         .collect::<Vec<_>>()
         .join(" · ");
-    adw::ActionRow::builder()
+    let row = adw::ActionRow::builder()
         .title(title)
         .subtitle(subtitle)
         .subtitle_selectable(true)
         .css_classes(["property"])
-        .build()
+        .build();
+    row.add_suffix(&detach_button(view, &nic.xml));
+    row
+}
+
+/// A button that takes the device `xml` from the machine.
+fn detach_button(view: &MachineView, xml: &str) -> gtk::Button {
+    let button = remove_button(&gettext("Remove"));
+    let xml = xml.to_owned();
+    button.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        move |_| {
+            let xml = xml.clone();
+            view.change(move |hv, uuid| hv.detach(uuid, &xml));
+        }
+    ));
+    button
+}
+
+fn host_devices(view: &MachineView, config: &MachineConfig) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Host Devices"))
+        .build();
+    let add = add_button(&gettext("Add Host Device"));
+    add.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        config,
+        move |_| hardware::add_host_device(&view, &config)
+    ));
+    group.set_header_suffix(Some(&add));
+    if config.host_devices.is_empty() {
+        group.set_description(Some(&gettext(
+            "USB and PCI devices of the host passed through to the virtual machine",
+        )));
+        return group;
+    }
+    let rows: Vec<(HostDev, adw::ActionRow)> = config
+        .host_devices
+        .iter()
+        .map(|dev| {
+            let title = match dev.id {
+                HostDeviceId::Usb { .. } => gettext("USB Device"),
+                HostDeviceId::Pci(_) => gettext("PCI Device"),
+            };
+            let row = adw::ActionRow::builder()
+                .title(title)
+                .subtitle(dev.id.to_string())
+                .subtitle_selectable(true)
+                .build();
+            row.add_suffix(&detach_button(view, &dev.xml));
+            group.add(&row);
+            (dev.clone(), row)
+        })
+        .collect();
+    // Names come from the host's own list, where it still has the device.
+    if let Some(win) = window(view) {
+        glib::spawn_future_local(async move {
+            let Some(Ok(host)) = win.call(|hv| hv.host_devices()).await else {
+                return;
+            };
+            for (dev, row) in rows {
+                if let Some(found) = host.iter().find(|h| dev.id.matches(&h.id)) {
+                    row.set_title(&hardware::device_title(found));
+                    row.set_subtitle(&hardware::device_subtitle(found));
+                }
+            }
+        });
+    }
+    group
 }
 
 fn display(config: &MachineConfig) -> adw::PreferencesGroup {

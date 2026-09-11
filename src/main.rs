@@ -4,6 +4,7 @@ mod console;
 mod details;
 mod dialogs;
 mod domain_xml;
+mod host_xml;
 mod hypervisor;
 mod keymap;
 mod machine;

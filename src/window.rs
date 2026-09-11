@@ -106,6 +106,12 @@ mod imp {
             klass.bind_template();
             klass.install_action("win.new-machine", None, |win, _, _| win.new_machine());
             klass.install_action("win.reconnect", None, |win, _, _| win.connect());
+            klass.install_action("win.storage", None, |win, _, _| {
+                dialogs::storage::present(win);
+            });
+            klass.install_action("win.networks", None, |win, _, _| {
+                dialogs::networks::present(win);
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -275,6 +281,22 @@ impl MachinesWindow {
             .collect()
     }
 
+    pub fn machine_infos(&self) -> Vec<MachineInfo> {
+        self.imp()
+            .store
+            .iter::<Machine>()
+            .flatten()
+            .filter_map(|m| m.info())
+            .collect()
+    }
+
+    /// The actions that need a connection to act on.
+    fn set_connected(&self, connected: bool) {
+        for action in ["win.new-machine", "win.storage", "win.networks"] {
+            self.action_set_enabled(action, connected);
+        }
+    }
+
     /// Run `f` against the connection off the main loop. `None` when there is no
     /// connection, or it changed while `f` ran.
     pub async fn call<T, F>(&self, f: F) -> Option<Result<T>>
@@ -317,7 +339,7 @@ impl MachinesWindow {
         imp.store.remove_all();
         imp.connection_title.set_subtitle(&connection_label(&uri));
         imp.sidebar_stack.set_visible_child_name("loading");
-        self.action_set_enabled("win.new-machine", false);
+        self.set_connected(false);
         glib::spawn_future_local(glib::clone!(
             #[weak(rename_to = win)]
             self,
@@ -337,7 +359,7 @@ impl MachinesWindow {
                     Ok(Ok((hv, host))) => {
                         imp.hypervisor.replace(Some(Arc::new(hv)));
                         imp.host.set(host);
-                        win.action_set_enabled("win.new-machine", true);
+                        win.set_connected(true);
                         win.refresh();
                     }
                     Ok(Err(e)) => win.show_error(&e),

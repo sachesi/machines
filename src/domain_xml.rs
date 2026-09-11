@@ -3,6 +3,8 @@
 
 use std::fmt::Write;
 
+use crate::host_xml::HostDeviceId;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Firmware {
     Bios,
@@ -26,6 +28,8 @@ pub struct Disk {
     pub target: String,
     pub bus: String,
     pub format: Option<String>,
+    /// The `<disk>` element as the definition has it, which names it to libvirt.
+    pub xml: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +39,16 @@ pub struct Nic {
     pub source: Option<String>,
     pub model: Option<String>,
     pub mac: Option<String>,
+    /// The `<interface>` element as the definition has it.
+    pub xml: String,
+}
+
+/// A USB or PCI device of the host passed through to the machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostDev {
+    pub id: HostDeviceId,
+    /// The `<hostdev>` element as the definition has it.
+    pub xml: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +64,7 @@ pub struct MachineConfig {
     pub os_id: Option<String>,
     pub disks: Vec<Disk>,
     pub nics: Vec<Nic>,
+    pub host_devices: Vec<HostDev>,
     /// The `type` of each graphics device, in order: `vnc`, `spice`, `dbus`…
     pub graphics: Vec<String>,
     pub video: Option<String>,
@@ -96,9 +111,11 @@ impl MachineConfig {
             .filter(|n| n.is_element());
         let mut disks = Vec::new();
         let mut nics = Vec::new();
+        let mut host_devices = Vec::new();
         let mut graphics = Vec::new();
         let mut video = None;
         for dev in devices {
+            let xml = xml[dev.range()].to_owned();
             let sub = |name: &str| dev.children().find(|n| n.has_tag_name(name));
             match dev.tag_name().name() {
                 "disk" => {
@@ -131,6 +148,7 @@ impl MachineConfig {
                         format: sub("driver")
                             .and_then(|d| d.attribute("type"))
                             .map(str::to_owned),
+                        xml,
                     });
                 }
                 "interface" => nics.push(Nic {
@@ -147,7 +165,13 @@ impl MachineConfig {
                     mac: sub("mac")
                         .and_then(|m| m.attribute("address"))
                         .map(str::to_owned),
+                    xml,
                 }),
+                "hostdev" if dev.attribute("mode") == Some("subsystem") => {
+                    if let Some(id) = HostDeviceId::from_hostdev(dev) {
+                        host_devices.push(HostDev { id, xml });
+                    }
+                }
                 "graphics" => {
                     graphics.push(dev.attribute("type").unwrap_or_default().to_owned());
                 }
@@ -176,6 +200,7 @@ impl MachineConfig {
             os_id,
             disks,
             nics,
+            host_devices,
             graphics,
             video,
         })
@@ -235,8 +260,83 @@ pub enum GuestOs {
 pub enum NetworkSource {
     /// A libvirt virtual network, by name.
     Network(String),
+    /// A bridge the host has set up, by name.
+    Bridge(String),
     /// QEMU's own user-mode networking, for sessions without a virtual network.
     User,
+}
+
+/// An `<interface>` on `source` with a network card of `model`, e.g. `virtio`.
+pub fn interface_xml(source: &NetworkSource, model: &str) -> String {
+    let (kind, source) = match source {
+        NetworkSource::Network(name) => {
+            ("network", format!("<source network='{}'/>", escape(name)))
+        }
+        NetworkSource::Bridge(name) => ("bridge", format!("<source bridge='{}'/>", escape(name))),
+        NetworkSource::User => ("user", String::new()),
+    };
+    format!(
+        "<interface type='{kind}'>{source}<model type='{}'/></interface>",
+        escape(model)
+    )
+}
+
+/// A `<disk>` reading the image `file`, or an empty CD-ROM drive.
+pub fn disk_xml(
+    device: DiskDevice,
+    file: Option<&str>,
+    format: &str,
+    target: &str,
+    bus: &str,
+) -> String {
+    let device = match device {
+        DiskDevice::Cdrom => "cdrom",
+        DiskDevice::Floppy => "floppy",
+        DiskDevice::Lun => "lun",
+        DiskDevice::Disk => "disk",
+    };
+    let source = file
+        .map(|f| format!("<source file='{}'/>", escape(f)))
+        .unwrap_or_default();
+    let (discard, readonly) = if device == "cdrom" {
+        ("", "<readonly/>")
+    } else {
+        (" discard='unmap'", "")
+    };
+    format!(
+        "<disk type='file' device='{device}'><driver name='qemu' type='{}'{discard}/>{source}\
+         <target dev='{}' bus='{}'/>{readonly}</disk>",
+        escape(format),
+        escape(target),
+        escape(bus)
+    )
+}
+
+/// The first device name for `bus` that none of `taken` has: `vda`, `vdb`… on virtio,
+/// `sda`… on SATA and SCSI, `hda`… on IDE, and past `z`, `aa`.
+pub fn next_target(bus: &str, taken: &[&str]) -> String {
+    let prefix = match bus {
+        "virtio" => "vd",
+        "ide" => "hd",
+        "xen" => "xvd",
+        "fdc" => "fd",
+        _ => "sd",
+    };
+    (0..)
+        .map(|mut i: u32| {
+            let mut letters = Vec::new();
+            loop {
+                letters.push(char::from(b'a' + (i % 26) as u8));
+                if i < 26 {
+                    break;
+                }
+                i = i / 26 - 1;
+            }
+            letters.reverse();
+            format!("{prefix}{}", letters.into_iter().collect::<String>())
+        })
+        .find(|name| !taken.contains(&name.as_str()))
+        .expect("an unused name")
 }
 
 #[derive(Debug, Clone)]
@@ -343,22 +443,7 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
         );
     }
     let nic_model = if windows { "e1000e" } else { "virtio" };
-    match &m.network {
-        NetworkSource::Network(name) => {
-            let _ = write!(
-                x,
-                "    <interface type='network'>\n      <source network='{}'/>\n      \
-                 <model type='{nic_model}'/>\n    </interface>\n",
-                escape(name)
-            );
-        }
-        NetworkSource::User => {
-            let _ = write!(
-                x,
-                "    <interface type='user'>\n      <model type='{nic_model}'/>\n    </interface>\n"
-            );
-        }
-    }
+    let _ = writeln!(x, "    {}", interface_xml(&m.network, nic_model));
     x.push_str(
         "    <controller type='usb' model='qemu-xhci' ports='15'/>\n    \
          <input type='tablet' bus='usb'/>\n    \
@@ -652,6 +737,47 @@ mod tests {
             ),
             "ramfb"
         );
+    }
+
+    #[test]
+    fn targets_take_the_next_free_letter() {
+        assert_eq!(next_target("virtio", &["vda", "sda"]), "vdb");
+        assert_eq!(next_target("sata", &["vda", "sda"]), "sdb");
+        assert_eq!(next_target("ide", &[]), "hda");
+        let full: Vec<String> = (b'a'..=b'z').map(|c| format!("vd{}", c as char)).collect();
+        let full: Vec<&str> = full.iter().map(String::as_str).collect();
+        assert_eq!(next_target("virtio", &full), "vdaa");
+    }
+
+    #[test]
+    fn added_devices_read_back() {
+        let disk = disk_xml(
+            DiskDevice::Disk,
+            Some("/i/b.qcow2"),
+            "qcow2",
+            "vdb",
+            "virtio",
+        );
+        let cdrom = disk_xml(DiskDevice::Cdrom, None, "raw", "sdc", "sata");
+        let nic = interface_xml(&NetworkSource::Bridge("br0".into()), "e1000e");
+        let usb = crate::host_xml::HostDeviceId::Usb {
+            vendor: 0x046d,
+            product: 0xc52b,
+            address: None,
+        };
+        let xml = format!(
+            "<domain><devices>{disk}{cdrom}{nic}{}</devices></domain>",
+            usb.hostdev_xml()
+        );
+        let c = MachineConfig::parse(&xml).unwrap();
+        assert_eq!(c.disks[0].source.as_deref(), Some("/i/b.qcow2"));
+        assert_eq!(c.disks[0].xml, disk);
+        assert_eq!(c.disks[1].device, DiskDevice::Cdrom);
+        assert_eq!(c.disks[1].source, None);
+        assert_eq!(c.nics[0].kind, "bridge");
+        assert_eq!(c.nics[0].source.as_deref(), Some("br0"));
+        assert_eq!(c.nics[0].xml, nic);
+        assert_eq!(c.host_devices[0].id, usb);
     }
 
     #[test]

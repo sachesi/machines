@@ -331,7 +331,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
     dialog.present(Some(win));
 }
 
-async fn choose_file(parent: &adw::Dialog, image: bool) -> Option<PathBuf> {
+pub(super) async fn choose_file(parent: &adw::Dialog, image: bool) -> Option<PathBuf> {
     let filter = gtk::FileFilter::new();
     if image {
         filter.set_name(Some(&gettext("Disk Images")));
