@@ -1,8 +1,8 @@
 # Machines build and install tasks.
 #
-# `build` needs cargo, blueprint-compiler and the libvirt and gvnc headers; `install`
-# only copies what is already in target/release, so the two can run on different machines
-# sharing this directory.
+# `build` needs cargo, blueprint-compiler and the libvirt, gvnc, spice-glib and libusb
+# headers; `install` only copies what is already in target/release, so the two can run on
+# different machines sharing this directory.
 #
 #   just build
 #   sudo just install              (prefix /usr/local)

@@ -540,6 +540,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
+name = "libusb1-sys"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da050ade7ac4ff1ba5379af847a10a10a8e284181e060105bf8d86960ce9ce0f"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "locale_config"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -562,6 +574,7 @@ dependencies = [
  "gvnc",
  "libadwaita",
  "roxmltree",
+ "spice-client-glib",
  "virt",
 ]
 
@@ -725,6 +738,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusb"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab9f9ff05b63a786553a4c02943b74b34a988448671001e9a27e2f0565cc05a4"
+dependencies = [
+ "libc",
+ "libusb1-sys",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -791,6 +814,32 @@ name = "smallvec"
 version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
+
+[[package]]
+name = "spice-client-glib"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce4e634298837f9c259a52dc1d27d3bbda6fcf02de60963e05e7cb2dc4222eca"
+dependencies = [
+ "gio",
+ "glib",
+ "libc",
+ "rusb",
+ "spice-client-glib-sys",
+]
+
+[[package]]
+name = "spice-client-glib-sys"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0afb601c470e3c23b161ee763cbd855e062719ef53bf4a65d4abbc76888be28"
+dependencies = [
+ "gio-sys",
+ "glib-sys",
+ "gobject-sys",
+ "libc",
+ "system-deps 7.0.8",
+]
 
 [[package]]
 name = "syn"
@@ -907,6 +956,12 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version-compare"

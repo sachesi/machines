@@ -68,6 +68,8 @@ pub struct MachineConfig {
     /// The `type` of each graphics device, in order: `vnc`, `spice`, `dbus`…
     pub graphics: Vec<String>,
     pub video: Option<String>,
+    /// Whether the video card renders 3D on the host's GPU.
+    pub accel3d: bool,
 }
 
 const LIBOSINFO_NS: &str = "http://libosinfo.org/xmlns/libvirt/domain/1.0";
@@ -114,6 +116,7 @@ impl MachineConfig {
         let mut host_devices = Vec::new();
         let mut graphics = Vec::new();
         let mut video = None;
+        let mut accel3d = false;
         for dev in devices {
             let xml = xml[dev.range()].to_owned();
             let sub = |name: &str| dev.children().find(|n| n.has_tag_name(name));
@@ -176,9 +179,11 @@ impl MachineConfig {
                     graphics.push(dev.attribute("type").unwrap_or_default().to_owned());
                 }
                 "video" if video.is_none() => {
-                    video = sub("model")
-                        .and_then(|m| m.attribute("type"))
-                        .map(str::to_owned);
+                    let model = sub("model");
+                    video = model.and_then(|m| m.attribute("type")).map(str::to_owned);
+                    accel3d = model
+                        .and_then(|m| m.children().find(|n| n.has_tag_name("acceleration")))
+                        .is_some_and(|a| a.attribute("accel3d") == Some("yes"));
                 }
                 _ => {}
             }
@@ -203,6 +208,7 @@ impl MachineConfig {
             host_devices,
             graphics,
             video,
+            accel3d,
         })
     }
 
@@ -368,12 +374,14 @@ pub struct NewMachine {
     pub network: NetworkSource,
     /// A model from [`video_model`].
     pub video: String,
+    /// SPICE rather than VNC, with sound and the agent channel that goes with it.
+    pub spice: bool,
 }
 
 /// The XML of a machine that installs from `cdrom` onto `disk`, or boots `disk` as it is.
 ///
-/// The display is VNC with no listening socket: the console reaches it through libvirt,
-/// and nothing else on the network can.
+/// The display listens on no socket: the console reaches it through libvirt, and nothing
+/// else on the network can.
 pub fn new_machine_xml(m: &NewMachine) -> String {
     let windows = m.os == GuestOs::Windows;
     let kvm = m.virt_type == "kvm";
@@ -459,9 +467,16 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
     let _ = writeln!(x, "    {}", interface_xml(&m.network, nic_model));
     x.push_str(
         "    <controller type='usb' model='qemu-xhci' ports='15'/>\n    \
-         <input type='tablet' bus='usb'/>\n    \
-         <graphics type='vnc'>\n      <listen type='none'/>\n    </graphics>\n",
+         <input type='tablet' bus='usb'/>\n",
     );
+    x.push_str(if m.spice {
+        "    <graphics type='spice'>\n      <listen type='none'/>\n    </graphics>\n    \
+         <channel type='spicevmc'>\n      <target type='virtio' name='com.redhat.spice.0'/>\n    </channel>\n    \
+         <sound model='ich9'>\n      <audio id='1'/>\n    </sound>\n    \
+         <audio id='1' type='spice'/>\n"
+    } else {
+        "    <graphics type='vnc'>\n      <listen type='none'/>\n    </graphics>\n"
+    });
     let _ = writeln!(
         x,
         "    <video>\n      <model type='{}'/>\n    </video>",
@@ -485,21 +500,7 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
 /// `caps` list: virtio where the guest will have a driver for it, else plain VGA, else
 /// whatever QEMU has.
 pub fn video_model(caps: &str, os: GuestOs) -> String {
-    let models: Vec<String> = roxmltree::Document::parse(caps)
-        .ok()
-        .and_then(|doc| {
-            let video = doc.descendants().find(|n| n.has_tag_name("video"))?;
-            let list = video
-                .descendants()
-                .find(|n| n.has_tag_name("enum") && n.attribute("name") == Some("modelType"))?;
-            Some(
-                list.children()
-                    .filter(|n| n.has_tag_name("value"))
-                    .filter_map(|n| n.text().map(str::to_owned))
-                    .collect(),
-            )
-        })
-        .unwrap_or_default();
+    let models = DisplayOptions::parse(caps).video;
     let preferred: &[&str] = match os {
         GuestOs::Windows => &["vga", "bochs"],
         _ => &["virtio", "vga", "bochs"],
@@ -525,52 +526,151 @@ pub fn cdrom_xml(disk: &Disk, source: Option<&str>) -> String {
     )
 }
 
-/// `xml` with its SPICE display replaced by one the built-in console can show: VNC with no
-/// listening socket. What only works with SPICE goes too: its agent channel, USB
-/// redirection and smartcard, and its audio backend, which becomes none.
-pub fn spice_to_vnc(xml: &str) -> Result<String, String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Protocol {
+    Vnc,
+    Spice,
+}
+
+/// How a machine shows its screen: the remote display protocol, the video card, and
+/// whether the card renders 3D on the host's GPU.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Display {
+    pub protocol: Protocol,
+    pub video: String,
+    /// Only a virtio card has it.
+    pub accel3d: bool,
+}
+
+impl MachineConfig {
+    pub fn display(&self) -> Display {
+        Display {
+            protocol: if self.graphics.iter().any(|g| g == "spice") {
+                Protocol::Spice
+            } else {
+                Protocol::Vnc
+            },
+            video: self.video.clone().unwrap_or_else(|| "vga".to_owned()),
+            accel3d: self.accel3d,
+        }
+    }
+}
+
+/// What QEMU can give a machine, from its domain capabilities.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DisplayOptions {
+    /// Graphics types: `vnc`, `spice`, `egl-headless`…
+    pub graphics: Vec<String>,
+    /// Video card models: `virtio`, `qxl`, `vga`…
+    pub video: Vec<String>,
+}
+
+impl DisplayOptions {
+    pub fn parse(caps: &str) -> Self {
+        let Ok(doc) = roxmltree::Document::parse(caps) else {
+            return Self::default();
+        };
+        let values = |device: &str, name: &str| -> Vec<String> {
+            doc.descendants()
+                .filter(|n| n.has_tag_name(device))
+                .flat_map(|d| d.children())
+                .find(|n| n.has_tag_name("enum") && n.attribute("name") == Some(name))
+                .map(|list| {
+                    list.children()
+                        .filter(|n| n.has_tag_name("value"))
+                        .filter_map(|n| n.text().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        Self {
+            graphics: values("graphics", "type"),
+            video: values("video", "modelType"),
+        }
+    }
+
+    /// Whether 3D acceleration can go with `protocol`: SPICE takes it in its own stream,
+    /// VNC needs QEMU to read the frames back from the GPU.
+    pub fn has_accel3d(&self, protocol: Protocol) -> bool {
+        self.video.iter().any(|v| v == "virtio")
+            && match protocol {
+                Protocol::Spice => self.graphics.iter().any(|g| g == "spice"),
+                Protocol::Vnc => self.graphics.iter().any(|g| g == "egl-headless"),
+            }
+    }
+}
+
+/// `xml` with its displays and first video card replaced by what `display` says.
+///
+/// Both protocols listen on no socket: the console reaches them through libvirt. What only
+/// works with SPICE goes with it when it goes: its agent channel, USB redirection,
+/// smartcard, and audio, which becomes none; SPICE brings its agent channel and audio back.
+pub fn set_display(xml: &str, display: &Display) -> Result<String, String> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
     let devices = doc
         .root_element()
         .children()
         .find(|n| n.has_tag_name("devices"))
         .ok_or("the domain has no devices")?;
-    let has_vnc = devices
-        .children()
-        .any(|n| n.has_tag_name("graphics") && n.attribute("type") == Some("vnc"));
+    let spice = display.protocol == Protocol::Spice;
+    let accel3d = display.accel3d && display.video == "virtio";
+    let gl = if accel3d { "<gl enable='yes'/>" } else { "" };
+    let mut graphics = if spice {
+        format!("<graphics type='spice'><listen type='none'/>{gl}</graphics>")
+    } else {
+        "<graphics type='vnc'><listen type='none'/></graphics>".to_owned()
+    };
+    if accel3d && !spice {
+        graphics.push_str("<graphics type='egl-headless'/>");
+    }
+    let video = format!(
+        "<video><model type='{}'{}</model></video>",
+        escape(&display.video),
+        if accel3d {
+            "><acceleration accel3d='yes'/>"
+        } else {
+            ">"
+        }
+    );
+
     let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
-    let mut replaced = has_vnc;
+    let mut graphics = Some(graphics);
+    let mut video = Some(video);
+    let mut has_agent = false;
     for dev in devices.children().filter(|n| n.is_element()) {
         let kind = dev.attribute("type");
-        let spicevmc = || {
-            kind == Some("spicevmc")
-                || dev
-                    .children()
-                    .any(|c| c.is_element() && c.attribute("type") == Some("spicevmc"))
-        };
+        let spicevmc = kind == Some("spicevmc")
+            || dev
+                .children()
+                .any(|c| c.is_element() && c.attribute("type") == Some("spicevmc"));
         match dev.tag_name().name() {
-            "graphics" if kind == Some("spice") => {
-                let replacement = if replaced {
-                    String::new()
-                } else {
-                    replaced = true;
-                    "<graphics type='vnc'>\n      <listen type='none'/>\n    </graphics>".to_owned()
-                };
-                edits.push((dev.range(), replacement));
+            "graphics" => edits.push((dev.range(), graphics.take().unwrap_or_default())),
+            "video" if video.is_some() => {
+                edits.push((dev.range(), video.take().unwrap_or_default()))
             }
-            "channel" | "redirdev" | "smartcard" if spicevmc() => {
+            "channel" if spicevmc && spice => has_agent = true,
+            "channel" | "redirdev" | "smartcard" if spicevmc => {
                 edits.push((dev.range(), String::new()));
             }
-            "audio" if kind == Some("spice") => {
+            "audio" if !spice && kind == Some("spice") || spice && kind == Some("none") => {
                 let id = dev.attribute("id").unwrap_or("1");
+                let backend = if spice { "spice" } else { "none" };
                 edits.push((
                     dev.range(),
-                    format!("<audio id='{}' type='none'/>", escape(id)),
+                    format!("<audio id='{}' type='{backend}'/>", escape(id)),
                 ));
             }
             _ => {}
         }
     }
+    let mut added: String = [graphics, video].into_iter().flatten().collect();
+    if spice && !has_agent {
+        added.push_str(
+            "<channel type='spicevmc'><target type='virtio' name='com.redhat.spice.0'/></channel>",
+        );
+    }
+    let end = devices.range().end - "</devices>".len();
+    edits.push((end..end, added));
     let mut out = xml.to_owned();
     // Back to front, so the earlier ranges still point at the same text.
     edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
@@ -669,25 +769,73 @@ mod tests {
         assert_eq!(c.memory_mib, 2048);
     }
 
+    fn vnc(video: &str, accel3d: bool) -> Display {
+        Display {
+            protocol: Protocol::Vnc,
+            video: video.into(),
+            accel3d,
+        }
+    }
+
     #[test]
     fn spice_becomes_vnc_and_its_devices_go() {
-        let xml = spice_to_vnc(VIRT_MANAGER).unwrap();
-        let c = MachineConfig::parse(&xml).unwrap();
-        assert_eq!(c.graphics, ["vnc"]);
+        let c = MachineConfig::parse(VIRT_MANAGER).unwrap();
+        let xml = set_display(VIRT_MANAGER, &vnc("virtio", false)).unwrap();
+        let back = MachineConfig::parse(&xml).unwrap();
+        assert_eq!(back.graphics, ["vnc"]);
         assert!(!xml.contains("spicevmc"), "{xml}");
         assert!(xml.contains("<audio id='1' type='none'/>"), "{xml}");
         // The sound card still points at an audio backend that exists.
         assert!(xml.contains("<audio id='1'/>"), "{xml}");
+        assert_eq!(back.disks, c.disks);
+
+        let spice = Display {
+            protocol: Protocol::Spice,
+            ..back.display()
+        };
+        let again = set_display(&xml, &spice).unwrap();
+        let back = MachineConfig::parse(&again).unwrap();
+        assert_eq!(back.display(), spice);
+        assert!(again.contains("<audio id='1' type='spice'/>"), "{again}");
+        assert_eq!(again.matches("com.redhat.spice.0").count(), 1, "{again}");
     }
 
     #[test]
-    fn a_machine_with_vnc_already_only_loses_spice() {
+    fn accel3d_takes_a_virtio_card() {
         let xml = VIRT_MANAGER.replace(
             "<video>",
             "<graphics type='vnc'><listen type='none'/></graphics>\n    <video>",
         );
-        let c = MachineConfig::parse(&spice_to_vnc(&xml).unwrap()).unwrap();
-        assert_eq!(c.graphics, ["vnc"]);
+        let accel = set_display(&xml, &vnc("virtio", true)).unwrap();
+        let c = MachineConfig::parse(&accel).unwrap();
+        assert_eq!(c.graphics, ["vnc", "egl-headless"]);
+        assert_eq!(c.display(), vnc("virtio", true));
+
+        let spice = Display {
+            protocol: Protocol::Spice,
+            ..c.display()
+        };
+        let c = MachineConfig::parse(&set_display(&accel, &spice).unwrap()).unwrap();
+        assert_eq!(c.graphics, ["spice"]);
+        assert!(c.accel3d);
+
+        let qxl = MachineConfig::parse(&set_display(&accel, &vnc("qxl", true)).unwrap()).unwrap();
+        assert_eq!(qxl.display(), vnc("qxl", false));
+        assert_eq!(qxl.graphics, ["vnc"]);
+    }
+
+    #[test]
+    fn display_options_come_from_the_capabilities() {
+        let caps = "<domainCapabilities><devices>\
+            <graphics supported='yes'><enum name='type'><value>vnc</value>\
+            <value>egl-headless</value></enum></graphics>\
+            <video supported='yes'><enum name='modelType'><value>vga</value>\
+            <value>virtio</value></enum></video></devices></domainCapabilities>";
+        let options = DisplayOptions::parse(caps);
+        assert_eq!(options.graphics, ["vnc", "egl-headless"]);
+        assert_eq!(options.video, ["vga", "virtio"]);
+        assert!(options.has_accel3d(Protocol::Vnc));
+        assert!(!options.has_accel3d(Protocol::Spice));
     }
 
     fn new_machine(os: GuestOs) -> NewMachine {
@@ -703,6 +851,7 @@ mod tests {
             cdrom: Some("/isos/install.iso".into()),
             network: NetworkSource::Network("default".into()),
             video: video_model("", os),
+            spice: false,
         }
     }
 
@@ -721,6 +870,22 @@ mod tests {
         assert_eq!(c.disks[1].source.as_deref(), Some("/isos/install.iso"));
         assert_eq!(c.graphics, ["vnc"]);
         assert_eq!(c.nics[0].model.as_deref(), Some("virtio"));
+
+        let spice = NewMachine {
+            spice: true,
+            ..new_machine(GuestOs::Linux)
+        };
+        let xml = new_machine_xml(&spice);
+        let c = MachineConfig::parse(&xml).unwrap();
+        assert_eq!(c.display().protocol, Protocol::Spice);
+        // What switching to SPICE would add, it has already.
+        assert_eq!(
+            set_display(&xml, &c.display())
+                .unwrap()
+                .matches("spicevmc")
+                .count(),
+            1
+        );
     }
 
     #[test]

@@ -9,7 +9,9 @@ use gettextrs::gettext;
 
 use crate::adw::prelude::*;
 use crate::dialogs::{add_button, hardware, remove_button};
-use crate::domain_xml::{Disk, DiskDevice, Firmware, HostDev, MachineConfig, Nic};
+use crate::domain_xml::{
+    Disk, DiskDevice, Display, Firmware, HostDev, MachineConfig, Nic, Protocol,
+};
 use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
 use crate::machine_view::MachineView;
@@ -35,7 +37,7 @@ pub fn page(view: &MachineView, info: &MachineInfo) -> adw::PreferencesPage {
     page.add(&storage(view, config));
     page.add(&network(view, info, config));
     page.add(&host_devices(view, config));
-    page.add(&display(config));
+    page.add(&display(view, info, config));
     page
 }
 
@@ -482,38 +484,148 @@ fn host_devices(view: &MachineView, config: &MachineConfig) -> adw::PreferencesG
     group
 }
 
-fn display(config: &MachineConfig) -> adw::PreferencesGroup {
+fn display(
+    view: &MachineView,
+    info: &MachineInfo,
+    config: &MachineConfig,
+) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Display"))
         .build();
-    let graphics = if config.graphics.is_empty() {
-        gettext("None")
-    } else {
-        config
-            .graphics
-            .iter()
-            .map(|g| g.to_uppercase())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let subtitle = match &config.video {
-        Some(video) => format!("{graphics} · {video}"),
-        None => graphics,
-    };
-    let row = info_row(&gettext("Graphics"), &subtitle);
-    if config.graphics.iter().any(|g| g == "spice") {
-        let switch = gtk::Button::builder()
-            .label(gettext("Switch to VNC"))
-            .tooltip_text(gettext(
-                "The console shows VNC displays; the change applies from the next start",
-            ))
-            .action_name("machine.use-vnc")
-            .valign(gtk::Align::Center)
-            .build();
-        row.add_suffix(&switch);
+    if info.state.is_active() {
+        group.set_description(Some(&gettext(
+            "Changes take effect the next time the virtual machine starts.",
+        )));
     }
-    group.add(&row);
+    let current = config.display();
+    let options = &info.display_options;
+    let set = move |view: &MachineView, display: Display| {
+        view.run(move |hv, uuid| hv.set_display(uuid, &display));
+    };
+
+    let mut protocols: Vec<(Protocol, &str)> = Vec::new();
+    for (protocol, kind, label) in [
+        (Protocol::Spice, "spice", "SPICE"),
+        (Protocol::Vnc, "vnc", "VNC"),
+    ] {
+        if options.graphics.iter().any(|g| g == kind) || current.protocol == protocol {
+            protocols.push((protocol, label));
+        }
+    }
+    let labels: Vec<&str> = protocols.iter().map(|(_, l)| *l).collect();
+    let protocol = adw::ComboRow::builder()
+        .title(gettext("Protocol"))
+        .model(&gtk::StringList::new(&labels))
+        .selected(
+            protocols
+                .iter()
+                .position(|(p, _)| *p == current.protocol)
+                .unwrap_or(0) as u32,
+        )
+        .build();
+    protocol.set_subtitle(&match current.protocol {
+        Protocol::Spice => {
+            gettext("With sound, and the screen sized to the window where the guest runs its agent")
+        }
+        Protocol::Vnc => gettext("The screen alone, without sound"),
+    });
+    protocol.connect_selected_notify(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        current,
+        move |row| {
+            if let Some((protocol, _)) = protocols.get(row.selected() as usize) {
+                set(
+                    &view,
+                    Display {
+                        protocol: *protocol,
+                        ..current.clone()
+                    },
+                );
+            }
+        }
+    ));
+    group.add(&protocol);
+
+    let mut models = options.video.clone();
+    models.retain(|m| m != "none");
+    // The ones worth choosing first; the rest as QEMU lists them.
+    let rank = |m: &String| {
+        ["virtio", "qxl", "vga", "bochs"]
+            .iter()
+            .position(|p| p == m)
+            .unwrap_or(usize::MAX)
+    };
+    models.sort_by_key(rank);
+    if !models.contains(&current.video) {
+        models.push(current.video.clone());
+    }
+    let model_labels: Vec<String> = models.iter().map(|m| video_label(m)).collect();
+    let model_labels: Vec<&str> = model_labels.iter().map(String::as_str).collect();
+    let video = adw::ComboRow::builder()
+        .title(gettext("Video Card"))
+        .model(&gtk::StringList::new(&model_labels))
+        .selected(models.iter().position(|m| *m == current.video).unwrap_or(0) as u32)
+        .build();
+    video.connect_selected_notify(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        current,
+        move |row| {
+            if let Some(model) = models.get(row.selected() as usize) {
+                set(
+                    &view,
+                    Display {
+                        video: model.clone(),
+                        ..current.clone()
+                    },
+                );
+            }
+        }
+    ));
+    group.add(&video);
+
+    let accel = adw::SwitchRow::builder()
+        .title(gettext("3D Acceleration"))
+        .subtitle(gettext(
+            "Renders on the host’s graphics card; needs a virtio video card",
+        ))
+        .active(current.accel3d)
+        .sensitive(
+            current.accel3d || current.video == "virtio" && options.has_accel3d(current.protocol),
+        )
+        .build();
+    accel.connect_active_notify(glib::clone!(
+        #[weak]
+        view,
+        move |row| {
+            set(
+                &view,
+                Display {
+                    accel3d: row.is_active(),
+                    ..current.clone()
+                },
+            );
+        }
+    ));
+    group.add(&accel);
     group
+}
+
+/// "qxl" as "QXL", with the ones worth a word said what they are for.
+fn video_label(model: &str) -> String {
+    match model {
+        "virtio" => gettext("Virtio (Linux guests)"),
+        "qxl" => gettext("QXL (older SPICE guests)"),
+        "vga" => gettext("VGA (any guest)"),
+        "bochs" => "Bochs".to_owned(),
+        "ramfb" => "Ramfb".to_owned(),
+        "cirrus" => "Cirrus".to_owned(),
+        "vmvga" => "VMware SVGA".to_owned(),
+        other => other.to_owned(),
+    }
 }
 
 #[cfg(test)]

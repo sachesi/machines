@@ -1,9 +1,13 @@
-//! `MachinesConsole`: a machine's VNC display, scaled to fit, taking the keyboard and
-//! pointer while it has the focus.
+//! `MachinesConsole`: a machine's VNC or SPICE display, scaled to fit, taking the keyboard
+//! and pointer while it has the focus.
 //!
 //! The socket comes from libvirt already authenticated, so gvnc only has to speak RFB over
 //! it. gvnc decodes into a buffer this widget owns; each redraw after an update copies that
-//! buffer into a texture.
+//! buffer into a texture. SPICE is in [`spice`].
+
+mod spice;
+
+pub use spice::FdSource;
 
 use std::cell::{Cell, RefCell};
 use std::sync::OnceLock;
@@ -51,6 +55,9 @@ mod imp {
         /// Application shortcuts put aside while the console has the keyboard.
         pub(super) accels: RefCell<Vec<(String, Vec<glib::GString>)>>,
         pub(super) error: RefCell<Option<String>>,
+        pub(super) spice: RefCell<spice::Spice>,
+        /// Whether the texture has its first row at the bottom, as GL frames can.
+        pub(super) flipped: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -96,7 +103,13 @@ mod imp {
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let obj = self.obj();
             if self.dirty.replace(false) {
-                self.texture.replace(obj.copy_framebuffer());
+                let texture = if obj.spice_is_open() {
+                    obj.copy_spice_surface()
+                } else {
+                    obj.copy_framebuffer()
+                };
+                self.texture.replace(texture);
+                self.flipped.set(false);
             }
             let Some(texture) = self.texture.borrow().clone() else {
                 return;
@@ -113,7 +126,23 @@ mod imp {
             } else {
                 gtk::gsk::ScalingFilter::Linear
             };
-            snapshot.append_scaled_texture(&texture, filter, &rect);
+            if self.flipped.get() {
+                snapshot.save();
+                snapshot.translate(&graphene::Point::new(0.0, rect.y() * 2.0 + rect.height()));
+                snapshot.scale(1.0, -1.0);
+                snapshot.append_scaled_texture(&texture, filter, &rect);
+                snapshot.restore();
+            } else {
+                snapshot.append_scaled_texture(&texture, filter, &rect);
+            }
+            obj.after_spice_frame();
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            self.parent_size_allocate(width, height, baseline);
+            if self.obj().spice_is_open() {
+                self.obj().resize_guest();
+            }
         }
 
         fn measure(&self, _orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
@@ -209,6 +238,7 @@ impl Console {
         if let Some(conn) = imp.connection.take() {
             conn.shutdown();
         }
+        self.close_spice();
         imp.framebuffer.take();
         imp.texture.take();
         imp.pressed.borrow_mut().clear();
@@ -218,7 +248,7 @@ impl Console {
     }
 
     pub fn is_open(&self) -> bool {
-        self.imp().connection.borrow().is_some()
+        self.imp().connection.borrow().is_some() || self.spice_is_open()
     }
 
     pub fn connect_connected<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
@@ -358,11 +388,8 @@ impl Console {
 
     /// The desktop pixel under the widget point (`x`, `y`), clamped to the desktop.
     fn to_desktop(&self, x: f64, y: f64) -> Option<(u16, u16)> {
-        let fb = self.imp().framebuffer.borrow().clone()?;
-        let (width, height) = (
-            i32::from(FramebufferExt::width(&fb)),
-            i32::from(FramebufferExt::height(&fb)),
-        );
+        let texture = self.imp().texture.borrow().clone()?;
+        let (width, height) = (texture.width(), texture.height());
         let (ox, oy, scale) = self.placement(width, height);
         let clamp = |v: f64, max: i32| (v.max(0.0) as i32).min(max - 1).max(0) as u16;
         Some((
@@ -408,8 +435,13 @@ impl Console {
 
     fn send_pointer(&self, x: f64, y: f64) {
         self.imp().pointer.set((x, y));
-        if let (Some(conn), Some((x, y))) = (self.connection(), self.to_desktop(x, y)) {
+        let Some((x, y)) = self.to_desktop(x, y) else {
+            return;
+        };
+        if let Some(conn) = self.connection() {
             let _ = conn.pointer_event(self.imp().buttons.get(), x, y);
+        } else {
+            self.spice_pointer(x, y);
         }
     }
 
@@ -432,6 +464,7 @@ impl Console {
                 imp.buttons
                     .set(imp.buttons.get() | button_bit(gesture.current_button()));
                 console.send_pointer(x, y);
+                console.spice_button(gesture.current_button(), true);
             }
         ));
         click.connect_released(glib::clone!(
@@ -442,6 +475,7 @@ impl Console {
                 imp.buttons
                     .set(imp.buttons.get() & !button_bit(gesture.current_button()));
                 console.send_pointer(x, y);
+                console.spice_button(gesture.current_button(), false);
             }
         ));
         self.add_controller(click);
@@ -455,6 +489,12 @@ impl Console {
             #[upgrade_or]
             glib::Propagation::Proceed,
             move |_, dx, dy| {
+                if console.spice_is_open() {
+                    if dy != 0.0 {
+                        console.spice_scroll(dy);
+                    }
+                    return glib::Propagation::Stop;
+                }
                 let Some(conn) = console.connection() else {
                     return glib::Propagation::Proceed;
                 };
@@ -514,26 +554,31 @@ impl Console {
     }
 
     fn send_key(&self, down: bool, keysym: u32, hardware_code: u32) {
-        let Some(conn) = self.connection() else {
-            return;
-        };
         // X11 and Wayland both number keys as evdev + 8.
         let scancode = keymap::qnum(hardware_code.saturating_sub(8));
-        let mut pressed = self.imp().pressed.borrow_mut();
-        if down {
-            pressed.push((keysym, scancode));
-        } else {
-            pressed.retain(|&(_, s)| s != scancode);
+        {
+            let mut pressed = self.imp().pressed.borrow_mut();
+            if down {
+                pressed.push((keysym, scancode));
+            } else {
+                pressed.retain(|&(_, s)| s != scancode);
+            }
         }
-        let _ = conn.key_event(down, keysym, scancode);
+        self.key_event(down, keysym, scancode);
+    }
+
+    fn key_event(&self, down: bool, keysym: u32, scancode: u16) {
+        if let Some(conn) = self.connection() {
+            let _ = conn.key_event(down, keysym, scancode);
+        } else if scancode != 0 {
+            self.spice_key(down, scancode);
+        }
     }
 
     fn release_keys(&self) {
         let pressed = self.imp().pressed.take();
-        if let Some(conn) = self.connection() {
-            for (keysym, scancode) in pressed.into_iter().rev() {
-                let _ = conn.key_event(false, keysym, scancode);
-            }
+        for (keysym, scancode) in pressed.into_iter().rev() {
+            self.key_event(false, keysym, scancode);
         }
     }
 

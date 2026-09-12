@@ -9,7 +9,7 @@ use gettextrs::gettext;
 
 use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
-use crate::console::Console;
+use crate::console::{Console, FdSource};
 use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result};
 use crate::machine::Machine;
 use crate::window::MachinesWindow;
@@ -161,9 +161,6 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     });
     klass.install_action("machine.force-off", None, |view, _, _| {
         view.run(|hv, uuid| hv.force_off(uuid));
-    });
-    klass.install_action("machine.use-vnc", None, |view, _, _| {
-        view.run(|hv, uuid| hv.use_vnc(uuid));
     });
     klass.install_action("machine.reconnect", None, |view, _, _| {
         view.imp().console_error.take();
@@ -355,10 +352,6 @@ impl MachineView {
         let state = info.as_ref().map(|i| i.state);
         let running = state == Some(MachineState::Running);
         let active = state.is_some_and(MachineState::is_active);
-        let spice = info
-            .as_ref()
-            .and_then(|i| i.config.as_ref())
-            .is_some_and(|c| c.graphics.iter().any(|g| g == "spice"));
         self.action_set_enabled(
             "machine.start",
             state.is_some() && !running && state != Some(MachineState::ShuttingDown),
@@ -370,7 +363,6 @@ impl MachineView {
         self.action_set_enabled("machine.force-off", active);
         self.action_set_enabled("machine.send-keys", running);
         self.action_set_enabled("machine.delete", state.is_some());
-        self.action_set_enabled("machine.use-vnc", spice);
         self.action_set_enabled(
             "machine.fullscreen",
             self.imp().console.is_open() || self.imp().fullscreen.get(),
@@ -400,17 +392,10 @@ impl MachineView {
         let imp = self.imp();
         if !info.state.is_active() {
             imp.console.close();
-            let spice = info
-                .config
-                .as_ref()
-                .is_some_and(|c| c.graphics.first().is_some_and(|g| g == "spice"));
-            let text = spice.then(|| {
-                gettext("Its display uses SPICE, which the console cannot show. Switch it to VNC in Details.")
-            });
             self.console_message(
                 "system-shutdown-symbolic",
                 &info.state.label(),
-                text.as_deref(),
+                None,
                 Some((&gettext("_Start"), "machine.start")),
             );
             return;
@@ -419,7 +404,7 @@ impl MachineView {
             return;
         }
         match info.live_graphics.first().map(String::as_str) {
-            Some("vnc") => {
+            Some(protocol @ ("vnc" | "spice")) => {
                 if let Some(error) = imp.console_error.borrow().as_deref() {
                     self.console_message(
                         "video-display-symbolic",
@@ -428,32 +413,7 @@ impl MachineView {
                         Some((&gettext("_Reconnect"), "machine.reconnect")),
                     );
                 } else {
-                    self.open_console();
-                }
-            }
-            Some("spice") => {
-                let switched = info
-                    .config
-                    .as_ref()
-                    .is_some_and(|c| !c.graphics.iter().any(|g| g == "spice"));
-                if switched {
-                    self.console_message(
-                        "video-display-symbolic",
-                        &gettext("SPICE Display"),
-                        Some(&gettext(
-                            "The switch to VNC takes effect the next time the virtual machine starts.",
-                        )),
-                        None,
-                    );
-                } else {
-                    self.console_message(
-                        "video-display-symbolic",
-                        &gettext("SPICE Display"),
-                        Some(&gettext(
-                            "The console shows VNC displays. Switched to VNC, the virtual machine uses it from its next start.",
-                        )),
-                        Some((&gettext("_Switch to VNC"), "machine.use-vnc")),
-                    );
+                    self.open_console(protocol == "spice");
                 }
             }
             Some(other) => self.console_message(
@@ -474,7 +434,7 @@ impl MachineView {
         }
     }
 
-    fn open_console(&self) {
+    fn open_console(&self, spice: bool) {
         let imp = self.imp();
         let (Some(win), Some(machine)) = (self.window(), self.machine()) else {
             return;
@@ -498,6 +458,7 @@ impl MachineView {
                 }
                 imp.connecting.set(false);
                 match opened {
+                    Some(Ok(fd)) if spice => imp.console.open_spice(fd, view.fd_source()),
                     Some(Ok(fd)) => imp.console.open(fd),
                     Some(Err(e)) => {
                         imp.console_error.replace(Some(e));
@@ -507,6 +468,28 @@ impl MachineView {
                 }
             }
         ));
+    }
+
+    /// Sockets to the display for the channels of a SPICE session past its first.
+    fn fd_source(&self) -> FdSource {
+        let view = self.downgrade();
+        Rc::new(move |done| {
+            let (Some(win), Some(machine)) = (
+                view.upgrade().and_then(|v| v.window()),
+                view.upgrade().and_then(|v| v.machine()),
+            ) else {
+                done(None);
+                return;
+            };
+            let uuid = machine.uuid();
+            glib::spawn_future_local(async move {
+                done(
+                    win.call(move |hv| hv.open_display(&uuid))
+                        .await
+                        .and_then(Result::ok),
+                );
+            });
+        })
     }
 
     fn delete(&self) {

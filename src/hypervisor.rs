@@ -9,7 +9,9 @@ pub use devices::{Change, NewStorage};
 pub use networks::VirtualNetwork;
 pub use storage::{HostUse, Pool, Volume};
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use gettextrs::gettext;
 use virt::connect::Connect;
@@ -21,7 +23,9 @@ use virt::storage_pool::StoragePool;
 use virt::storage_vol::StorageVol;
 use virt::sys;
 
-use crate::domain_xml::{self, Disk, GuestOs, MachineConfig, NetworkSource, NewMachine};
+use crate::domain_xml::{
+    self, Disk, Display, DisplayOptions, GuestOs, MachineConfig, NetworkSource, NewMachine,
+};
 use crate::{glib, host_xml};
 
 pub type Result<T> = std::result::Result<T, String>;
@@ -84,6 +88,8 @@ pub struct MachineInfo {
     /// The graphics devices QEMU is running with, which differ from `config` after an edit
     /// until the next start.
     pub live_graphics: Vec<String>,
+    /// What QEMU can give this kind of machine for its display.
+    pub display_options: DisplayOptions,
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +135,9 @@ impl Default for Host {
 pub struct Hypervisor {
     conn: Connect,
     uri: String,
+    /// Domain capabilities by virtualization type, architecture and machine type, which
+    /// only change with QEMU.
+    display_options: Mutex<HashMap<(String, String, String), DisplayOptions>>,
 }
 
 impl Hypervisor {
@@ -137,6 +146,7 @@ impl Hypervisor {
         Ok(Self {
             conn,
             uri: uri.to_owned(),
+            display_options: Mutex::default(),
         })
     }
 
@@ -186,6 +196,10 @@ impl Hypervisor {
         } else {
             Vec::new()
         };
+        let display_options = config
+            .as_ref()
+            .map(|c| self.display_options(c))
+            .unwrap_or_default();
         Ok(MachineInfo {
             uuid: dom.get_uuid_string().map_err(message)?,
             name: dom.get_name().map_err(message)?,
@@ -194,7 +208,40 @@ impl Hypervisor {
             autostart: persistent && dom.get_autostart().unwrap_or(false),
             config,
             live_graphics,
+            display_options,
         })
+    }
+
+    fn display_options(&self, config: &MachineConfig) -> DisplayOptions {
+        let key = (
+            config.virt_type.clone(),
+            config.arch.clone(),
+            config.machine.clone(),
+        );
+        let mut cache = self
+            .display_options
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        cache
+            .entry(key)
+            .or_insert_with(|| {
+                let caps = self.conn.get_domain_capabilities(
+                    None,
+                    Some(&config.arch)
+                        .filter(|a| !a.is_empty())
+                        .map(String::as_str),
+                    Some(&config.machine)
+                        .filter(|m| !m.is_empty())
+                        .map(String::as_str),
+                    Some(&config.virt_type)
+                        .filter(|v| !v.is_empty())
+                        .map(String::as_str),
+                    0,
+                );
+                caps.map(|caps| DisplayOptions::parse(&caps))
+                    .unwrap_or_default()
+            })
+            .clone()
     }
 
     /// The host's devices with the capabilities `flags` name.
@@ -308,13 +355,13 @@ impl Hypervisor {
             .map_err(message)
     }
 
-    /// Replace the SPICE display with VNC in the definition; see [`domain_xml::spice_to_vnc`].
-    pub fn use_vnc(&self, uuid: &str) -> Result<()> {
+    /// Give the machine `display` from its next start; see [`domain_xml::set_display`].
+    pub fn set_display(&self, uuid: &str, display: &Display) -> Result<()> {
         let dom = self.domain(uuid)?;
         let xml = dom
             .get_xml_desc(sys::VIR_DOMAIN_XML_INACTIVE | sys::VIR_DOMAIN_XML_SECURE)
             .map_err(message)?;
-        Domain::define_xml(&self.conn, &domain_xml::spice_to_vnc(&xml)?)
+        Domain::define_xml(&self.conn, &domain_xml::set_display(&xml, display)?)
             .map(drop)
             .map_err(message)
     }
@@ -452,6 +499,10 @@ impl Hypervisor {
             cdrom,
             network: self.network(),
             video: domain_xml::video_model(&caps, req.os),
+            spice: DisplayOptions::parse(&caps)
+                .graphics
+                .iter()
+                .any(|g| g == "spice"),
         };
         let dom = match Domain::define_xml(&self.conn, &domain_xml::new_machine_xml(&machine)) {
             Ok(dom) => dom,
