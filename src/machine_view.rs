@@ -403,7 +403,8 @@ impl MachineView {
         if imp.console.is_open() || imp.connecting.get() {
             return;
         }
-        match info.live_graphics.first().map(String::as_str) {
+        let live_graphics = info.live.as_ref().and_then(|l| l.graphics.first());
+        match live_graphics.map(String::as_str) {
             Some(protocol @ ("vnc" | "spice")) => {
                 if let Some(error) = imp.console_error.borrow().as_deref() {
                     self.console_message(

@@ -34,11 +34,65 @@ pub fn page(view: &MachineView, info: &MachineInfo) -> adw::PreferencesPage {
     };
     page.add(&overview(view, info, config));
     page.add(&resources(view, info, config));
-    page.add(&storage(view, config));
-    page.add(&network(view, info, config));
-    page.add(&host_devices(view, config));
+    let live = info.live.as_ref();
+    page.add(&storage(view, config, live));
+    page.add(&network(view, info, config, live));
+    page.add(&host_devices(view, config, live));
     page.add(&display(view, info, config));
     page
+}
+
+/// Where a device stands between the running machine and the definition it starts from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pending {
+    No,
+    /// In the definition only: the machine gets it at its next start.
+    Added,
+    /// Taken out of the definition, but the running machine still has it, until the guest
+    /// lets go of it or the machine stops.
+    Removed,
+}
+
+impl Pending {
+    fn note(self) -> Option<String> {
+        match self {
+            Self::No => None,
+            Self::Added => Some(gettext("Comes with the next start")),
+            Self::Removed => Some(gettext("Being removed; the running machine still has it")),
+        }
+    }
+}
+
+/// The devices of the definition, `next`, marked where the running machine lacks them,
+/// then those only the running machine still has.
+fn with_pending<'a, T>(
+    next: &'a [T],
+    live: Option<&'a [T]>,
+    same: impl Fn(&T, &T) -> bool,
+) -> Vec<(&'a T, Pending)> {
+    let mut out: Vec<(&T, Pending)> = next
+        .iter()
+        .map(|d| match live {
+            Some(live) if !live.iter().any(|l| same(l, d)) => (d, Pending::Added),
+            _ => (d, Pending::No),
+        })
+        .collect();
+    if let Some(live) = live {
+        out.extend(
+            live.iter()
+                .filter(|l| !next.iter().any(|d| same(l, d)))
+                .map(|l| (l, Pending::Removed)),
+        );
+    }
+    out
+}
+
+/// `subtitle`, with what `pending` says under it.
+fn noted(subtitle: String, pending: Pending) -> String {
+    match pending.note() {
+        Some(note) => format!("{subtitle}\n{note}"),
+        None => subtitle,
+    }
 }
 
 fn window(view: &MachineView) -> Option<MachinesWindow> {
@@ -199,7 +253,11 @@ fn on_settled(row: &adw::SpinRow, f: impl Fn(&adw::SpinRow) + 'static) {
     });
 }
 
-fn storage(view: &MachineView, config: &MachineConfig) -> adw::PreferencesGroup {
+fn storage(
+    view: &MachineView,
+    config: &MachineConfig,
+    live: Option<&MachineConfig>,
+) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Storage"))
         .build();
@@ -210,8 +268,9 @@ fn storage(view: &MachineView, config: &MachineConfig) -> adw::PreferencesGroup 
         move |_| hardware::add_storage(&view)
     ));
     group.set_header_suffix(Some(&add));
-    for disk in &config.disks {
-        group.add(&disk_row(view, disk));
+    let live = live.map(|l| l.disks.as_slice());
+    for (disk, pending) in with_pending(&config.disks, live, |a, b| a.target == b.target) {
+        group.add(&disk_row(view, disk, pending));
     }
     if config.disks.is_empty() {
         group.set_description(Some(&gettext("No disks")));
@@ -219,7 +278,7 @@ fn storage(view: &MachineView, config: &MachineConfig) -> adw::PreferencesGroup 
     group
 }
 
-fn disk_row(view: &MachineView, disk: &Disk) -> adw::ActionRow {
+fn disk_row(view: &MachineView, disk: &Disk, pending: Pending) -> adw::ActionRow {
     let title = match disk.device {
         DiskDevice::Cdrom => gettext("CD/DVD Drive"),
         DiskDevice::Floppy => gettext("Floppy Drive"),
@@ -242,7 +301,7 @@ fn disk_row(view: &MachineView, disk: &Disk) -> adw::ActionRow {
     }
     let row = adw::ActionRow::builder()
         .title(title)
-        .subtitle(subtitle)
+        .subtitle(noted(subtitle, pending))
         .subtitle_selectable(true)
         .css_classes(["property"])
         .build();
@@ -267,7 +326,10 @@ fn disk_row(view: &MachineView, disk: &Disk) -> adw::ActionRow {
             ));
         }
     ));
-    if disk.device != DiskDevice::Cdrom {
+    if pending == Pending::Removed {
+        return row;
+    }
+    if disk.device != DiskDevice::Cdrom || pending == Pending::Added {
         row.add_suffix(&remove);
         return row;
     }
@@ -339,6 +401,7 @@ fn network(
     view: &MachineView,
     info: &MachineInfo,
     config: &MachineConfig,
+    live: Option<&MachineConfig>,
 ) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Network"))
@@ -353,8 +416,9 @@ fn network(
     ));
     group.set_header_suffix(Some(&add));
     let mut rows = Vec::new();
-    for nic in &config.nics {
-        let row = nic_row(view, nic);
+    let live = live.map(|l| l.nics.as_slice());
+    for (nic, pending) in with_pending(&config.nics, live, |a, b| a.mac == b.mac) {
+        let row = nic_row(view, nic, pending);
         group.add(&row);
         rows.push((nic.mac.clone(), row));
     }
@@ -391,7 +455,7 @@ fn network(
     group
 }
 
-fn nic_row(view: &MachineView, nic: &Nic) -> adw::ActionRow {
+fn nic_row(view: &MachineView, nic: &Nic, pending: Pending) -> adw::ActionRow {
     let source = nic.source.clone().unwrap_or_default();
     let title = match nic.kind.as_str() {
         "network" => gettext("Virtual Network “{name}”").replace("{name}", &source),
@@ -407,11 +471,13 @@ fn nic_row(view: &MachineView, nic: &Nic) -> adw::ActionRow {
         .join(" · ");
     let row = adw::ActionRow::builder()
         .title(title)
-        .subtitle(subtitle)
+        .subtitle(noted(subtitle, pending))
         .subtitle_selectable(true)
         .css_classes(["property"])
         .build();
-    row.add_suffix(&detach_button(view, &nic.xml));
+    if pending != Pending::Removed {
+        row.add_suffix(&detach_button(view, &nic.xml));
+    }
     row
 }
 
@@ -430,7 +496,11 @@ fn detach_button(view: &MachineView, xml: &str) -> gtk::Button {
     button
 }
 
-fn host_devices(view: &MachineView, config: &MachineConfig) -> adw::PreferencesGroup {
+fn host_devices(
+    view: &MachineView,
+    config: &MachineConfig,
+    live: Option<&MachineConfig>,
+) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Host Devices"))
         .build();
@@ -443,28 +513,31 @@ fn host_devices(view: &MachineView, config: &MachineConfig) -> adw::PreferencesG
         move |_| hardware::add_host_device(&view, &config)
     ));
     group.set_header_suffix(Some(&add));
-    if config.host_devices.is_empty() {
+    let live = live.map(|l| l.host_devices.as_slice());
+    let devices = with_pending(&config.host_devices, live, |a, b| a.id.matches(&b.id));
+    if devices.is_empty() {
         group.set_description(Some(&gettext(
             "USB and PCI devices of the host passed through to the virtual machine",
         )));
         return group;
     }
-    let rows: Vec<(HostDev, adw::ActionRow)> = config
-        .host_devices
-        .iter()
-        .map(|dev| {
+    let rows: Vec<(HostDev, Pending, adw::ActionRow)> = devices
+        .into_iter()
+        .map(|(dev, pending)| {
             let title = match dev.id {
                 HostDeviceId::Usb { .. } => gettext("USB Device"),
                 HostDeviceId::Pci(_) => gettext("PCI Device"),
             };
             let row = adw::ActionRow::builder()
                 .title(title)
-                .subtitle(dev.id.to_string())
+                .subtitle(noted(dev.id.to_string(), pending))
                 .subtitle_selectable(true)
                 .build();
-            row.add_suffix(&detach_button(view, &dev.xml));
+            if pending != Pending::Removed {
+                row.add_suffix(&detach_button(view, &dev.xml));
+            }
             group.add(&row);
-            (dev.clone(), row)
+            (dev.clone(), pending, row)
         })
         .collect();
     // Names come from the host's own list, where it still has the device.
@@ -473,10 +546,10 @@ fn host_devices(view: &MachineView, config: &MachineConfig) -> adw::PreferencesG
             let Some(Ok(host)) = win.call(|hv| hv.host_devices()).await else {
                 return;
             };
-            for (dev, row) in rows {
+            for (dev, pending, row) in rows {
                 if let Some(found) = host.iter().find(|h| dev.id.matches(&h.id)) {
                     row.set_title(&hardware::device_title(found));
-                    row.set_subtitle(&hardware::device_subtitle(found));
+                    row.set_subtitle(&noted(hardware::device_subtitle(found), pending));
                 }
             }
         });
@@ -631,6 +704,28 @@ fn video_label(model: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn devices_between_the_run_and_the_next_start() {
+        let next = [1, 2, 3];
+        let live = [2, 3, 4];
+        let marked = with_pending(&next, Some(&live), |a, b| a == b);
+        let marked: Vec<(i32, Pending)> = marked.into_iter().map(|(d, p)| (*d, p)).collect();
+        assert_eq!(
+            marked,
+            [
+                (1, Pending::Added),
+                (2, Pending::No),
+                (3, Pending::No),
+                (4, Pending::Removed)
+            ]
+        );
+        assert!(
+            with_pending(&next, None, |a, b| a == b)
+                .iter()
+                .all(|(_, p)| *p == Pending::No)
+        );
+    }
 
     #[test]
     fn os_names_come_from_the_id_path() {

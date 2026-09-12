@@ -85,9 +85,9 @@ pub struct MachineInfo {
     pub autostart: bool,
     /// What the machine boots with next: the inactive definition where there is one.
     pub config: Option<MachineConfig>,
-    /// The graphics devices QEMU is running with, which differ from `config` after an edit
+    /// What QEMU is running with, while it runs, which differs from `config` after an edit
     /// until the next start.
-    pub live_graphics: Vec<String>,
+    pub live: Option<MachineConfig>,
     /// What QEMU can give this kind of machine for its display.
     pub display_options: DisplayOptions,
 }
@@ -187,14 +187,12 @@ impl Hypervisor {
             .get_xml_desc(flags)
             .ok()
             .and_then(|xml| MachineConfig::parse(&xml).ok());
-        let live_graphics = if state.is_active() {
+        let live = if state.is_active() {
             dom.get_xml_desc(0)
                 .ok()
                 .and_then(|xml| MachineConfig::parse(&xml).ok())
-                .map(|c| c.graphics)
-                .unwrap_or_default()
         } else {
-            Vec::new()
+            None
         };
         let display_options = config
             .as_ref()
@@ -207,7 +205,7 @@ impl Hypervisor {
             persistent,
             autostart: persistent && dom.get_autostart().unwrap_or(false),
             config,
-            live_graphics,
+            live,
             display_options,
         })
     }
