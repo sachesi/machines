@@ -7,8 +7,9 @@ use gettextrs::gettext;
 
 use crate::adw::prelude::*;
 use crate::details::info_row;
-use crate::dialogs::{self, add_button};
-use crate::hypervisor::{Hypervisor, Pool, Result, Volume};
+use crate::dialogs::{self, add_button, hardware, size};
+use crate::host_xml::HostDisk;
+use crate::hypervisor::{HostUse, Hypervisor, Pool, Result, Volume};
 use crate::window::MachinesWindow;
 use crate::{adw, glib, gtk};
 
@@ -21,6 +22,7 @@ struct Storage {
     dialog: glib::WeakRef<adw::PreferencesDialog>,
     page: glib::WeakRef<adw::PreferencesPage>,
     list: glib::WeakRef<adw::PreferencesGroup>,
+    disks: glib::WeakRef<adw::PreferencesGroup>,
     /// The pool whose page is open, by UUID.
     open: RefCell<Option<(String, glib::WeakRef<adw::NavigationPage>)>>,
     names: RefCell<Vec<String>>,
@@ -38,16 +40,12 @@ pub fn present(win: &MachinesWindow) {
         dialog: dialog.downgrade(),
         page: page.downgrade(),
         list: glib::WeakRef::new(),
+        disks: glib::WeakRef::new(),
         open: RefCell::default(),
         names: RefCell::default(),
     });
     storage.reload();
     dialog.present(Some(win));
-}
-
-/// In GiB and the like, the units sizes are asked for in.
-fn size(bytes: u64) -> String {
-    glib::format_size_full(bytes, glib::FormatSizeFlags::IEC_UNITS).to_string()
 }
 
 fn kind(pool: &Pool) -> String {
@@ -67,8 +65,11 @@ impl Storage {
     fn reload(self: &Rc<Self>) {
         let this = self.clone();
         glib::spawn_future_local(async move {
-            if let Some(pools) = this.win.call(|hv| hv.pools()).await {
+            if let Some(Ok((pools, disks))) =
+                this.win.call(|hv| Ok((hv.pools(), hv.host_disks()))).await
+            {
                 this.show(pools);
+                this.show_disks(disks);
             }
         });
     }
@@ -113,7 +114,7 @@ impl Storage {
                 Vec::new()
             }
         };
-        if pools.is_empty() && group.description().is_none() {
+        if pools.is_empty() && group.description().is_none_or(|d| d.is_empty()) {
             group.set_description(Some(&gettext("No storage pools")));
         }
         for pool in &pools {
@@ -155,6 +156,52 @@ impl Storage {
                 }
             }
         }
+    }
+
+    /// The host's own disks, which a machine can have whole.
+    fn show_disks(&self, disks: Result<Vec<(HostDisk, HostUse)>>) {
+        let Some(page) = self.page.upgrade() else {
+            return;
+        };
+        if let Some(old) = self.disks.upgrade() {
+            page.remove(&old);
+        }
+        let group = adw::PreferencesGroup::builder()
+            .title(gettext("Host Disks"))
+            .build();
+        match disks {
+            Ok(disks) if disks.is_empty() => {
+                group.set_description(Some(&gettext("No disks found")));
+            }
+            Ok(disks) => {
+                group.set_description(Some(&gettext(
+                    "Add one to a virtual machine as storage to give it the whole disk.",
+                )));
+                let machines = self.win.machine_infos();
+                for (disk, host_use) in disks {
+                    let mut subtitle = format!("{} · {}", size(disk.size), disk.path);
+                    let users = hardware::disk_users(&disk, &machines);
+                    if host_use == HostUse::InUse {
+                        subtitle = format!("{subtitle}\n{}", gettext("The host uses it"));
+                    }
+                    if !users.is_empty() {
+                        subtitle = format!(
+                            "{subtitle}\n{}",
+                            gettext("Used by {machines}").replace("{machines}", &users.join(", "))
+                        );
+                    }
+                    let row = adw::ActionRow::builder()
+                        .title(disk.name())
+                        .subtitle(subtitle)
+                        .subtitle_selectable(true)
+                        .build();
+                    group.add(&row);
+                }
+            }
+            Err(e) => group.set_description(Some(&e)),
+        }
+        page.add(&group);
+        self.disks.set(Some(&group));
     }
 
     fn open_pool(self: &Rc<Self>, pool: &Pool) {

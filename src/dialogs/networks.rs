@@ -106,7 +106,7 @@ impl Networks {
                 Vec::new()
             }
         };
-        if networks.is_empty() && group.description().is_none() {
+        if networks.is_empty() && group.description().is_none_or(|d| d.is_empty()) {
             group.set_description(Some(&gettext("No virtual networks")));
         }
         for net in &networks {

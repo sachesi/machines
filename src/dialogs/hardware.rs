@@ -8,9 +8,9 @@ use gettextrs::gettext;
 
 use crate::adw::prelude::*;
 use crate::dialogs::{self, new_machine};
-use crate::domain_xml::{self, MachineConfig, NetworkSource};
-use crate::host_xml::{HostDevice, HostDeviceId};
-use crate::hypervisor::{NewStorage, Pool};
+use crate::domain_xml::{self, Disk, MachineConfig, NetworkSource};
+use crate::host_xml::{HostDevice, HostDeviceId, HostDisk};
+use crate::hypervisor::{HostUse, MachineInfo, NewStorage, Pool};
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
 use crate::{adw, glib, gtk};
@@ -22,21 +22,46 @@ fn window(view: &MachineView) -> Option<MachinesWindow> {
     view.root().and_downcast()
 }
 
-pub async fn confirm_remove_disk(view: &MachineView) -> bool {
-    dialogs::confirm(
-        view,
-        &gettext("Remove Disk?"),
-        &gettext("A running guest loses the disk at once. Its image file is kept."),
-        &gettext("_Remove"),
-    )
-    .await
+pub async fn confirm_remove_disk(view: &MachineView, disk: &Disk) -> bool {
+    let body = if disk.kind == "block" {
+        gettext("A running guest loses the disk at once. What is on it is kept.")
+    } else {
+        gettext("A running guest loses the disk at once. Its image file is kept.")
+    };
+    dialogs::confirm(view, &gettext("Remove Disk?"), &body, &gettext("_Remove")).await
+}
+
+/// The machines, `machines`, whose disks include the host's `disk`.
+pub fn disk_users(disk: &HostDisk, machines: &[MachineInfo]) -> Vec<String> {
+    machines
+        .iter()
+        .filter(|m| {
+            m.config.as_ref().is_some_and(|c| {
+                c.disks.iter().any(|d| {
+                    d.kind == "block"
+                        && d.source
+                            .as_deref()
+                            .is_some_and(|s| s == disk.path || s == disk.block)
+                })
+            })
+        })
+        .map(|m| m.name.clone())
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StorageKind {
     NewDisk,
     Image,
+    HostDisk,
     Cdrom,
+}
+
+/// A disk of the host as the form offers it: why it cannot be taken, if it cannot.
+struct HostDiskChoice {
+    disk: HostDisk,
+    unavailable: Option<String>,
+    warning: Option<String>,
 }
 
 struct StorageForm {
@@ -45,6 +70,8 @@ struct StorageForm {
     pools: Vec<String>,
     pool: adw::ComboRow,
     size: adw::SpinRow,
+    host_disks: Vec<HostDiskChoice>,
+    host_disk: adw::ComboRow,
     file_row: adw::ActionRow,
     file: RefCell<Option<String>>,
     add: gtk::Button,
@@ -59,7 +86,24 @@ impl StorageForm {
         let kind = self.kind();
         self.pool.set_visible(kind == StorageKind::NewDisk);
         self.size.set_visible(kind == StorageKind::NewDisk);
-        self.file_row.set_visible(kind != StorageKind::NewDisk);
+        self.host_disk.set_visible(kind == StorageKind::HostDisk);
+        self.file_row
+            .set_visible(matches!(kind, StorageKind::Image | StorageKind::Cdrom));
+        if kind == StorageKind::HostDisk {
+            let choice = self.host_disks.get(self.host_disk.selected() as usize);
+            self.host_disk
+                .set_subtitle(&choice.map_or_else(String::new, |c| {
+                    let place = format!("{} · {}", dialogs::size(c.disk.size), c.disk.path);
+                    let note = c.unavailable.as_ref().or(c.warning.as_ref());
+                    match note {
+                        Some(note) => format!("{place}\n{note}"),
+                        None => place,
+                    }
+                }));
+            self.add
+                .set_sensitive(choice.is_some_and(|c| c.unavailable.is_none()));
+            return;
+        }
         self.file_row.set_title(&if kind == StorageKind::Image {
             gettext("Disk Image")
         } else {
@@ -82,13 +126,20 @@ impl StorageForm {
                 gib: self.size.value() as u64,
             },
             StorageKind::Image => NewStorage::Image(self.file.borrow().clone()?),
+            StorageKind::HostDisk => {
+                let choice = self.host_disks.get(self.host_disk.selected() as usize)?;
+                if choice.unavailable.is_some() {
+                    return None;
+                }
+                NewStorage::HostDisk(choice.disk.path.clone())
+            }
             StorageKind::Cdrom => NewStorage::Cdrom(self.file.borrow().clone()),
         })
     }
 }
 
-/// "Add Storage": a new disk in one of the pools, a disk image that is already there, or
-/// a CD/DVD drive.
+/// "Add Storage": a new disk in one of the pools, a disk image that is already there, a
+/// disk of the host, or a CD/DVD drive.
 pub fn add_storage(view: &MachineView) {
     let Some(win) = window(view) else {
         return;
@@ -97,25 +148,50 @@ pub fn add_storage(view: &MachineView) {
         #[weak]
         view,
         async move {
-            let pools = match win.call(|hv| hv.pools()).await {
-                Some(Ok(pools)) => pools,
-                Some(Err(e)) => {
+            let Some(Ok((pools, disks))) = win.call(|hv| Ok((hv.pools(), hv.host_disks()))).await
+            else {
+                return;
+            };
+            let pools = match pools {
+                Ok(pools) => pools,
+                Err(e) => {
                     win.toast(&e);
                     Vec::new()
                 }
-                None => return,
             };
             let pools = pools
                 .into_iter()
                 .filter(Pool::holds_images)
                 .map(|p| p.name)
                 .collect();
-            present_storage(&view, pools);
+            let machines = win.machine_infos();
+            let disks = disks
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(disk, host_use)| {
+                    let users = disk_users(&disk, &machines);
+                    let unavailable = if host_use == HostUse::InUse {
+                        Some(gettext("The host uses it"))
+                    } else if !users.is_empty() {
+                        Some(gettext("Used by {machines}").replace("{machines}", &users.join(", ")))
+                    } else {
+                        None
+                    };
+                    let warning = (host_use == HostUse::Unknown)
+                        .then(|| gettext("Whether the host uses it cannot be checked from here"));
+                    HostDiskChoice {
+                        disk,
+                        unavailable,
+                        warning,
+                    }
+                })
+                .collect();
+            present_storage(&view, pools, disks);
         }
     ));
 }
 
-fn present_storage(view: &MachineView, pools: Vec<String>) {
+fn present_storage(view: &MachineView, pools: Vec<String>, host_disks: Vec<HostDiskChoice>) {
     let mut kinds = Vec::new();
     let mut labels = Vec::new();
     if !pools.is_empty() {
@@ -124,6 +200,10 @@ fn present_storage(view: &MachineView, pools: Vec<String>) {
     }
     kinds.push(StorageKind::Image);
     labels.push(gettext("Existing Disk Image"));
+    if !host_disks.is_empty() {
+        kinds.push(StorageKind::HostDisk);
+        labels.push(gettext("Host Disk"));
+    }
     kinds.push(StorageKind::Cdrom);
     labels.push(gettext("CD/DVD Drive"));
     let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
@@ -154,6 +234,13 @@ fn present_storage(view: &MachineView, pools: Vec<String>) {
             0.0,
         ))
         .build();
+    let disk_labels: Vec<String> = host_disks.iter().map(|c| c.disk.name()).collect();
+    let disk_labels: Vec<&str> = disk_labels.iter().map(String::as_str).collect();
+    let host_disk = adw::ComboRow::builder()
+        .title(gettext("_Disk"))
+        .use_underline(true)
+        .model(&gtk::StringList::new(&disk_labels))
+        .build();
     let choose = gtk::Button::builder()
         .label(gettext("_Choose…"))
         .use_underline(true)
@@ -169,6 +256,7 @@ fn present_storage(view: &MachineView, pools: Vec<String>) {
     group.add(&kind);
     group.add(&pool);
     group.add(&size);
+    group.add(&host_disk);
     group.add(&file_row);
     let page = adw::PreferencesPage::new();
     page.add(&group);
@@ -180,6 +268,8 @@ fn present_storage(view: &MachineView, pools: Vec<String>) {
         pools,
         pool,
         size,
+        host_disks,
+        host_disk,
         file_row,
         file: RefCell::default(),
         add: add.clone(),
@@ -191,6 +281,11 @@ fn present_storage(view: &MachineView, pools: Vec<String>) {
             form.file.take();
             form.sync();
         }
+    ));
+    form.host_disk.connect_selected_notify(glib::clone!(
+        #[strong]
+        form,
+        move |_| form.sync()
     ));
     choose.connect_clicked(glib::clone!(
         #[strong]

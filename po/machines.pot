@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 00:14+0300\n"
+"POT-Creation-Date: 2026-09-24 00:29+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -129,7 +129,7 @@ msgstr ""
 msgid "Machine"
 msgstr ""
 
-#: src/details.rs:80 src/dialogs/networks.rs:223 src/dialogs/storage.rs:211
+#: src/details.rs:80 src/dialogs/networks.rs:223 src/dialogs/storage.rs:258
 #, no-c-format
 msgid "Start With the Host"
 msgstr ""
@@ -159,17 +159,17 @@ msgstr ""
 msgid "Memory"
 msgstr ""
 
-#: src/details.rs:146 src/dialogs/new_machine.rs:139 src/dialogs/storage.rs:480
+#: src/details.rs:146 src/dialogs/new_machine.rs:139 src/dialogs/storage.rs:527
 #, no-c-format
 msgid "GiB"
 msgstr ""
 
-#: src/details.rs:202 src/dialogs/storage.rs:31
+#: src/details.rs:202 src/dialogs/storage.rs:33
 #, no-c-format
 msgid "Storage"
 msgstr ""
 
-#: src/details.rs:204 src/dialogs/hardware.rs:175
+#: src/details.rs:204 src/dialogs/hardware.rs:263
 #, no-c-format
 msgid "Add Storage"
 msgstr ""
@@ -179,7 +179,7 @@ msgstr ""
 msgid "No disks"
 msgstr ""
 
-#: src/details.rs:222 src/dialogs/hardware.rs:128
+#: src/details.rs:222 src/dialogs/hardware.rs:208
 #, no-c-format
 msgid "CD/DVD Drive"
 msgstr ""
@@ -189,123 +189,128 @@ msgstr ""
 msgid "Floppy Drive"
 msgstr ""
 
-#: src/details.rs:224 src/dialogs/storage.rs:59
+#: src/details.rs:224 src/dialogs/hardware.rs:205
+#, no-c-format
+msgid "Host Disk"
+msgstr ""
+
+#: src/details.rs:225 src/dialogs/storage.rs:57
 #, no-c-format
 msgid "Disk"
 msgstr ""
 
-#: src/details.rs:226
+#: src/details.rs:227
 #, no-c-format
 msgid "Empty"
 msgstr ""
 
-#: src/details.rs:246 src/details.rs:417
+#: src/details.rs:247 src/details.rs:418
 #, no-c-format
 msgid "Remove"
 msgstr ""
 
-#: src/details.rs:273 src/details.rs:327
+#: src/details.rs:274 src/details.rs:328
 #, no-c-format
 msgid "Insert Disc Image"
 msgstr ""
 
-#: src/details.rs:299
+#: src/details.rs:300
 #, no-c-format
 msgid "Eject"
 msgstr ""
 
-#: src/details.rs:321 src/dialogs/new_machine.rs:342
+#: src/details.rs:322 src/dialogs/new_machine.rs:342
 #, no-c-format
 msgid "Disc Images"
 msgstr ""
 
-#: src/details.rs:341
+#: src/details.rs:342
 #, no-c-format
 msgid "Network"
 msgstr ""
 
-#: src/details.rs:343 src/dialogs/hardware.rs:311
+#: src/details.rs:344 src/dialogs/hardware.rs:406
 #, no-c-format
 msgid "Add Network Interface"
 msgstr ""
 
-#: src/details.rs:359
+#: src/details.rs:360
 #, no-c-format
 msgid "No network interfaces"
 msgstr ""
 
-#: src/details.rs:394 src/dialogs/hardware.rs:270
+#: src/details.rs:395 src/dialogs/hardware.rs:365
 #, no-c-format
 msgid "Virtual Network “{name}”"
 msgstr ""
 
-#: src/details.rs:395
+#: src/details.rs:396
 #, no-c-format
 msgid "Bridge {name}"
 msgstr ""
 
-#: src/details.rs:396
+#: src/details.rs:397
 #, no-c-format
 msgid "Host Device {name}"
 msgstr ""
 
-#: src/details.rs:397 src/dialogs/hardware.rs:273
+#: src/details.rs:398 src/dialogs/hardware.rs:368
 #, no-c-format
 msgid "User Networking"
 msgstr ""
 
-#: src/details.rs:432
+#: src/details.rs:433
 #, no-c-format
 msgid "Host Devices"
 msgstr ""
 
-#: src/details.rs:434 src/dialogs/hardware.rs:429
+#: src/details.rs:435 src/dialogs/hardware.rs:524
 #, no-c-format
 msgid "Add Host Device"
 msgstr ""
 
-#: src/details.rs:445
+#: src/details.rs:446
 #, no-c-format
 msgid "USB and PCI devices of the host passed through to the virtual machine"
 msgstr ""
 
-#: src/details.rs:454 src/dialogs/hardware.rs:379
+#: src/details.rs:455 src/dialogs/hardware.rs:474
 #, no-c-format
 msgid "USB Device"
 msgstr ""
 
-#: src/details.rs:455 src/dialogs/hardware.rs:380
+#: src/details.rs:456 src/dialogs/hardware.rs:475
 #, no-c-format
 msgid "PCI Device"
 msgstr ""
 
-#: src/details.rs:486
+#: src/details.rs:487
 #, no-c-format
 msgid "Display"
 msgstr ""
 
-#: src/details.rs:489
+#: src/details.rs:490
 #, no-c-format
 msgid "None"
 msgstr ""
 
-#: src/details.rs:502
+#: src/details.rs:503
 #, no-c-format
 msgid "Graphics"
 msgstr ""
 
-#: src/details.rs:505
+#: src/details.rs:506
 #, no-c-format
 msgid "Switch to VNC"
 msgstr ""
 
-#: src/details.rs:507
+#: src/details.rs:508
 #, no-c-format
 msgid "The console shows VNC displays; the change applies from the next start"
 msgstr ""
 
 #: src/dialogs/delete.rs:11 src/dialogs/networks.rs:255
-#: src/dialogs/storage.rs:336
+#: src/dialogs/storage.rs:383
 #, no-c-format
 msgid "Delete “{name}”?"
 msgstr ""
@@ -316,14 +321,14 @@ msgid ""
 "The virtual machine is removed, with its firmware variables and snapshots."
 msgstr ""
 
-#: src/dialogs/delete.rs:19 src/dialogs/mod.rs:22 src/dialogs/mod.rs:63
+#: src/dialogs/delete.rs:19 src/dialogs/mod.rs:27 src/dialogs/mod.rs:68
 #: src/dialogs/new_machine.rs:184
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
 
 #: src/dialogs/delete.rs:20 src/dialogs/networks.rs:265
-#: src/dialogs/storage.rs:346
+#: src/dialogs/storage.rs:393
 #, no-c-format
 msgid "_Delete"
 msgstr ""
@@ -333,9 +338,9 @@ msgstr ""
 msgid "Also delete its disk images"
 msgstr ""
 
-#: src/dialogs/hardware.rs:28
+#: src/dialogs/hardware.rs:27
 #, no-c-format
-msgid "Remove Disk?"
+msgid "A running guest loses the disk at once. What is on it is kept."
 msgstr ""
 
 #: src/dialogs/hardware.rs:29
@@ -343,104 +348,130 @@ msgstr ""
 msgid "A running guest loses the disk at once. Its image file is kept."
 msgstr ""
 
-#: src/dialogs/hardware.rs:30 src/dialogs/storage.rs:248
+#: src/dialogs/hardware.rs:31
+#, no-c-format
+msgid "Remove Disk?"
+msgstr ""
+
+#: src/dialogs/hardware.rs:31 src/dialogs/storage.rs:295
 #, no-c-format
 msgid "_Remove"
 msgstr ""
 
-#: src/dialogs/hardware.rs:64 src/dialogs/new_machine.rs:58
+#: src/dialogs/hardware.rs:108 src/dialogs/new_machine.rs:58
 #, no-c-format
 msgid "Disk Image"
 msgstr ""
 
-#: src/dialogs/hardware.rs:66
+#: src/dialogs/hardware.rs:110
 #, no-c-format
 msgid "Disc Image"
 msgstr ""
 
-#: src/dialogs/hardware.rs:71
+#: src/dialogs/hardware.rs:115
 #, no-c-format
 msgid "None, the drive starts empty"
 msgstr ""
 
-#: src/dialogs/hardware.rs:72 src/dialogs/new_machine.rs:65
-#: src/dialogs/storage.rs:371
+#: src/dialogs/hardware.rs:116 src/dialogs/new_machine.rs:65
+#: src/dialogs/storage.rs:418
 #, no-c-format
 msgid "None chosen"
 msgstr ""
 
-#: src/dialogs/hardware.rs:123
+#: src/dialogs/hardware.rs:174 src/dialogs/storage.rs:185
+#, no-c-format
+msgid "The host uses it"
+msgstr ""
+
+#: src/dialogs/hardware.rs:176 src/dialogs/storage.rs:190
+#: src/dialogs/storage.rs:359
+#, no-c-format
+msgid "Used by {machines}"
+msgstr ""
+
+#: src/dialogs/hardware.rs:181
+#, no-c-format
+msgid "Whether the host uses it cannot be checked from here"
+msgstr ""
+
+#: src/dialogs/hardware.rs:199
 #, no-c-format
 msgid "New Disk"
 msgstr ""
 
-#: src/dialogs/hardware.rs:126 src/dialogs/new_machine.rs:102
+#: src/dialogs/hardware.rs:202 src/dialogs/new_machine.rs:102
 #, no-c-format
 msgid "Existing Disk Image"
 msgstr ""
 
-#: src/dialogs/hardware.rs:131
+#: src/dialogs/hardware.rs:211
 #, no-c-format
 msgid "_Type"
 msgstr ""
 
-#: src/dialogs/hardware.rs:137
+#: src/dialogs/hardware.rs:217
 #, no-c-format
 msgid "_Pool"
 msgstr ""
 
-#: src/dialogs/hardware.rs:145 src/dialogs/storage.rs:479
+#: src/dialogs/hardware.rs:225 src/dialogs/storage.rs:526
 #, no-c-format
 msgid "_Size"
 msgstr ""
 
-#: src/dialogs/hardware.rs:146 src/dialogs/new_machine.rs:165
+#: src/dialogs/hardware.rs:226 src/dialogs/new_machine.rs:165
 #, no-c-format
 msgid "GiB, allocated as the guest writes"
 msgstr ""
 
-#: src/dialogs/hardware.rs:158 src/dialogs/new_machine.rs:106
-#: src/dialogs/storage.rs:365
+#: src/dialogs/hardware.rs:240
+#, no-c-format
+msgid "_Disk"
+msgstr ""
+
+#: src/dialogs/hardware.rs:245 src/dialogs/new_machine.rs:106
+#: src/dialogs/storage.rs:412
 #, no-c-format
 msgid "_Choose…"
 msgstr ""
 
-#: src/dialogs/hardware.rs:175 src/dialogs/hardware.rs:311
+#: src/dialogs/hardware.rs:263 src/dialogs/hardware.rs:406
 #, no-c-format
 msgid "_Add"
 msgstr ""
 
-#: src/dialogs/hardware.rs:272 src/dialogs/networks.rs:54
+#: src/dialogs/hardware.rs:367 src/dialogs/networks.rs:54
 #, no-c-format
 msgid "Host Bridge"
 msgstr ""
 
-#: src/dialogs/hardware.rs:278 ui/window.ui:209
+#: src/dialogs/hardware.rs:373 ui/window.ui:209
 #, no-c-format
 msgid "_Connection"
 msgstr ""
 
-#: src/dialogs/hardware.rs:292
+#: src/dialogs/hardware.rs:387
 #, no-c-format
 msgid "_Bridge Name"
 msgstr ""
 
-#: src/dialogs/hardware.rs:300
+#: src/dialogs/hardware.rs:395
 #, no-c-format
 msgid "_Model"
 msgstr ""
 
-#: src/dialogs/hardware.rs:413
+#: src/dialogs/hardware.rs:508
 #, no-c-format
 msgid "USB Devices"
 msgstr ""
 
-#: src/dialogs/hardware.rs:416
+#: src/dialogs/hardware.rs:511
 #, no-c-format
 msgid "PCI Devices"
 msgstr ""
 
-#: src/dialogs/hardware.rs:418
+#: src/dialogs/hardware.rs:513
 #, no-c-format
 msgid ""
 "The host cannot use a PCI device while the virtual machine has it. Passing "
@@ -448,7 +479,7 @@ msgid ""
 "kernel."
 msgstr ""
 
-#: src/dialogs/hardware.rs:473
+#: src/dialogs/hardware.rs:568
 #, no-c-format
 msgid "None to pass through"
 msgstr ""
@@ -523,7 +554,7 @@ msgstr ""
 msgid "Used By"
 msgstr ""
 
-#: src/dialogs/networks.rs:208 src/dialogs/storage.rs:196
+#: src/dialogs/networks.rs:208 src/dialogs/storage.rs:243
 #, no-c-format
 msgid "Active"
 msgstr ""
@@ -547,7 +578,7 @@ msgid ""
 msgstr ""
 
 #: src/dialogs/networks.rs:293 src/dialogs/new_machine.rs:117
-#: src/dialogs/storage.rs:361 src/dialogs/storage.rs:469
+#: src/dialogs/storage.rs:408 src/dialogs/storage.rs:516
 #, no-c-format
 msgid "_Name"
 msgstr ""
@@ -583,7 +614,7 @@ msgid "Give guests their addresses"
 msgstr ""
 
 #: src/dialogs/networks.rs:332 src/dialogs/new_machine.rs:178
-#: src/dialogs/storage.rs:385 src/dialogs/storage.rs:490
+#: src/dialogs/storage.rs:432 src/dialogs/storage.rs:537
 #, no-c-format
 msgid "C_reate"
 msgstr ""
@@ -668,181 +699,199 @@ msgstr ""
 msgid "Choose Installation Media"
 msgstr ""
 
-#: src/dialogs/storage.rs:55 src/dialogs/storage.rs:370
+#: src/dialogs/storage.rs:53 src/dialogs/storage.rs:417
 #, no-c-format
 msgid "Directory"
 msgstr ""
 
-#: src/dialogs/storage.rs:56
+#: src/dialogs/storage.rs:54
 #, no-c-format
 msgid "File System"
 msgstr ""
 
-#: src/dialogs/storage.rs:57
+#: src/dialogs/storage.rs:55
 #, no-c-format
 msgid "Network File System"
 msgstr ""
 
-#: src/dialogs/storage.rs:58
+#: src/dialogs/storage.rs:56
 #, no-c-format
 msgid "LVM Volume Group"
 msgstr ""
 
-#: src/dialogs/storage.rs:100
+#: src/dialogs/storage.rs:101
 #, no-c-format
 msgid "Storage Pools"
 msgstr ""
 
-#: src/dialogs/storage.rs:102 src/dialogs/storage.rs:385
+#: src/dialogs/storage.rs:103 src/dialogs/storage.rs:432
 #, no-c-format
 msgid "New Storage Pool"
 msgstr ""
 
-#: src/dialogs/storage.rs:117
+#: src/dialogs/storage.rs:118
 #, no-c-format
 msgid "No storage pools"
 msgstr ""
 
-#: src/dialogs/storage.rs:121
+#: src/dialogs/storage.rs:122
 #, no-c-format
 msgid "{path} · {free} free"
 msgstr ""
 
-#: src/dialogs/storage.rs:124
+#: src/dialogs/storage.rs:125
 #, no-c-format
 msgid "{path} · Inactive"
 msgstr ""
 
-#: src/dialogs/storage.rs:184
+#: src/dialogs/storage.rs:170
+#, no-c-format
+msgid "Host Disks"
+msgstr ""
+
+#: src/dialogs/storage.rs:174
+#, no-c-format
+msgid "No disks found"
+msgstr ""
+
+#: src/dialogs/storage.rs:178
+#, no-c-format
+msgid "Add one to a virtual machine as storage to give it the whole disk."
+msgstr ""
+
+#: src/dialogs/storage.rs:231
 #, no-c-format
 msgid "Location"
 msgstr ""
 
-#: src/dialogs/storage.rs:186
+#: src/dialogs/storage.rs:233
 #, no-c-format
 msgid "Type"
 msgstr ""
 
-#: src/dialogs/storage.rs:189
+#: src/dialogs/storage.rs:236
 #, no-c-format
 msgid "Free Space"
 msgstr ""
 
-#: src/dialogs/storage.rs:190
+#: src/dialogs/storage.rs:237
 #, no-c-format
 msgid "{free} of {capacity}"
 msgstr ""
 
-#: src/dialogs/storage.rs:229
+#: src/dialogs/storage.rs:276
 #, no-c-format
 msgid "_Remove Pool"
 msgstr ""
 
-#: src/dialogs/storage.rs:243
+#: src/dialogs/storage.rs:290
 #, no-c-format
 msgid "Remove “{name}”?"
 msgstr ""
 
-#: src/dialogs/storage.rs:245
+#: src/dialogs/storage.rs:292
 #, no-c-format
 msgid ""
 "Its virtual machines keep their disks, and the pools "
 "directory                          and the files in it stay where they are."
 msgstr ""
 
-#: src/dialogs/storage.rs:266
+#: src/dialogs/storage.rs:313
 #, no-c-format
 msgid "Volumes"
 msgstr ""
 
-#: src/dialogs/storage.rs:269
+#: src/dialogs/storage.rs:316
 #, no-c-format
 msgid "Start the pool to see its volumes."
 msgstr ""
 
-#: src/dialogs/storage.rs:272 src/dialogs/storage.rs:490
+#: src/dialogs/storage.rs:319 src/dialogs/storage.rs:537
 #, no-c-format
 msgid "New Volume"
 msgstr ""
 
-#: src/dialogs/storage.rs:282
+#: src/dialogs/storage.rs:329
 #, no-c-format
 msgid "No volumes"
 msgstr ""
 
-#: src/dialogs/storage.rs:303
+#: src/dialogs/storage.rs:350
 #, no-c-format
 msgid "{capacity}, {used} used"
 msgstr ""
 
-#: src/dialogs/storage.rs:312
-#, no-c-format
-msgid "Used by {machines}"
-msgstr ""
-
-#: src/dialogs/storage.rs:321
+#: src/dialogs/storage.rs:368
 #, no-c-format
 msgid "Delete"
 msgstr ""
 
-#: src/dialogs/storage.rs:337
+#: src/dialogs/storage.rs:384
 #, no-c-format
 msgid "The file is deleted for good: {path}"
 msgstr ""
 
-#: src/dialogs/storage.rs:342
+#: src/dialogs/storage.rs:389
 #, no-c-format
 msgid "It is a disk of {machines}, which will not start without it."
 msgstr ""
 
-#: src/dialogs/storage.rs:377
+#: src/dialogs/storage.rs:424
 #, no-c-format
 msgid "A pool of the disk images in a directory, made if it is not there."
 msgstr ""
 
-#: src/dialogs/storage.rs:432
+#: src/dialogs/storage.rs:479
 #, no-c-format
 msgid "Choose a Directory"
 msgstr ""
 
-#: src/dialogs/storage.rs:473
+#: src/dialogs/storage.rs:520
 #, no-c-format
 msgid "_Format"
 msgstr ""
 
-#: src/dialogs/storage.rs:474
+#: src/dialogs/storage.rs:521
 #, no-c-format
 msgid "A qcow2 image takes up only what the guest writes"
 msgstr ""
 
-#: src/hypervisor.rs:58
+#: src/hypervisor.rs:59
 #, no-c-format
 msgid "Shut Off"
 msgstr ""
 
-#: src/hypervisor.rs:59
+#: src/hypervisor.rs:60
 #, no-c-format
 msgid "Running"
 msgstr ""
 
-#: src/hypervisor.rs:60
+#: src/hypervisor.rs:61
 #, no-c-format
 msgid "Paused"
 msgstr ""
 
-#: src/hypervisor.rs:61
+#: src/hypervisor.rs:62
 #, no-c-format
 msgid "Shutting Down"
 msgstr ""
 
-#: src/hypervisor.rs:62
+#: src/hypervisor.rs:63
 #, no-c-format
 msgid "Crashed"
 msgstr ""
 
-#: src/hypervisor.rs:63
+#: src/hypervisor.rs:64
 #, no-c-format
 msgid "Suspended"
+msgstr ""
+
+#: src/hypervisor.rs:209
+#, no-c-format
+msgid ""
+"The host’s devices cannot be listed, as libvirt’s node device service "
+"is                      not running. It starts with “systemctl enable --now "
+"virtnodedevd.socket”."
 msgstr ""
 
 #: src/machine_view.rs:98

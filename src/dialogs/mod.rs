@@ -9,6 +9,11 @@ use gettextrs::gettext;
 use crate::adw::prelude::*;
 use crate::{adw, glib, gtk};
 
+/// A size in bytes, in GiB and the like, the units sizes are asked for in.
+pub fn size(bytes: u64) -> String {
+    glib::format_size_full(bytes, glib::FormatSizeFlags::IEC_UNITS).to_string()
+}
+
 /// A dialog of `page` with Cancel and a suggested `confirm` button in its header bar; the
 /// button starts insensitive.
 pub fn form(title: &str, confirm: &str, page: &adw::PreferencesPage) -> (adw::Dialog, gtk::Button) {

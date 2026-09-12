@@ -312,6 +312,19 @@ pub fn disk_xml(
     )
 }
 
+/// A `<disk>` on the host's block device `dev`, which the guest reads and writes directly,
+/// with no cache of the host's in between.
+pub fn block_disk_xml(dev: &str, target: &str, bus: &str) -> String {
+    format!(
+        "<disk type='block' device='disk'>\
+         <driver name='qemu' type='raw' cache='none' io='native' discard='unmap'/>\
+         <source dev='{}'/><target dev='{}' bus='{}'/></disk>",
+        escape(dev),
+        escape(target),
+        escape(bus)
+    )
+}
+
 /// The first device name for `bus` that none of `taken` has: `vda`, `vdb`… on virtio,
 /// `sda`… on SATA and SCSI, `hda`… on IDE, and past `z`, `aa`.
 pub fn next_target(bus: &str, taken: &[&str]) -> String {
@@ -759,6 +772,7 @@ mod tests {
             "virtio",
         );
         let cdrom = disk_xml(DiskDevice::Cdrom, None, "raw", "sdc", "sata");
+        let block = block_disk_xml("/dev/disk/by-id/ata-X", "vdc", "virtio");
         let nic = interface_xml(&NetworkSource::Bridge("br0".into()), "e1000e");
         let usb = crate::host_xml::HostDeviceId::Usb {
             vendor: 0x046d,
@@ -766,7 +780,7 @@ mod tests {
             address: None,
         };
         let xml = format!(
-            "<domain><devices>{disk}{cdrom}{nic}{}</devices></domain>",
+            "<domain><devices>{disk}{cdrom}{block}{nic}{}</devices></domain>",
             usb.hostdev_xml()
         );
         let c = MachineConfig::parse(&xml).unwrap();
@@ -774,6 +788,9 @@ mod tests {
         assert_eq!(c.disks[0].xml, disk);
         assert_eq!(c.disks[1].device, DiskDevice::Cdrom);
         assert_eq!(c.disks[1].source, None);
+        assert_eq!(c.disks[2].kind, "block");
+        assert_eq!(c.disks[2].source.as_deref(), Some("/dev/disk/by-id/ata-X"));
+        assert_eq!(c.disks[2].format.as_deref(), Some("raw"));
         assert_eq!(c.nics[0].kind, "bridge");
         assert_eq!(c.nics[0].source.as_deref(), Some("br0"));
         assert_eq!(c.nics[0].xml, nic);

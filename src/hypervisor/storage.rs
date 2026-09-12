@@ -1,10 +1,14 @@
 //! Storage pools and the volumes in them.
 
+use std::fs;
+use std::path::Path;
+
 use virt::storage_pool::StoragePool;
 use virt::storage_vol::StorageVol;
+use virt::sys;
 
 use super::{Hypervisor, Result, message};
-use crate::host_xml::{self, PoolConfig};
+use crate::host_xml::{self, HostDisk, PoolConfig};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pool {
@@ -26,6 +30,16 @@ impl Pool {
     pub fn holds_images(&self) -> bool {
         self.active && matches!(self.config.kind.as_str(), "dir" | "fs" | "netfs")
     }
+}
+
+/// Whether the host has a disk in use itself, and a machine must keep off it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostUse {
+    Free,
+    /// Mounted, swapped to, or under a device mapper, RAID or bcache device.
+    InUse,
+    /// The connection is to another host, whose mounts cannot be seen from here.
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,6 +121,68 @@ impl Hypervisor {
             .and_then(|vol| vol.delete(0))
             .map_err(message)
     }
+
+    /// The host's disks, by device node.
+    pub fn host_disks(&self) -> Result<Vec<(HostDisk, HostUse)>> {
+        let devices = self.node_devices(sys::VIR_CONNECT_LIST_NODE_DEVICES_CAP_STORAGE)?;
+        let mut disks: Vec<(HostDisk, HostUse)> = devices
+            .iter()
+            .filter_map(|d| d.get_xml_desc(0).ok())
+            .filter_map(|xml| HostDisk::parse(&xml))
+            .map(|disk| {
+                let used = if !self.is_local() {
+                    HostUse::Unknown
+                } else if host_uses(&disk.block) {
+                    HostUse::InUse
+                } else {
+                    HostUse::Free
+                };
+                (disk, used)
+            })
+            .collect();
+        disks.sort_by(|a, b| a.0.block.cmp(&b.0.block));
+        Ok(disks)
+    }
+}
+
+/// Whether the disk `block`, or one of its partitions, is mounted, swapped to, or held by
+/// another block device such as a LUKS mapping or an LVM volume.
+fn host_uses(block: &str) -> bool {
+    let Some(name) = Path::new(block).file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let sys = Path::new("/sys/class/block");
+    let mut names = vec![name.to_owned()];
+    if let Ok(entries) = fs::read_dir(sys.join(name)) {
+        names.extend(
+            entries
+                .flatten()
+                .filter(|e| e.path().join("partition").exists())
+                .map(|e| e.file_name().to_string_lossy().into_owned()),
+        );
+    }
+    let held = names.iter().any(|n| {
+        fs::read_dir(sys.join(n).join("holders")).is_ok_and(|mut holders| holders.next().is_some())
+    });
+    if held {
+        return true;
+    }
+    let mountinfo = fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
+    let mounted = mountinfo
+        .lines()
+        .filter_map(|line| line.split_once(" - ")?.1.split(' ').nth(1));
+    let swaps = fs::read_to_string("/proc/swaps").unwrap_or_default();
+    let swapped = swaps
+        .lines()
+        .skip(1)
+        .filter_map(|l| l.split_whitespace().next());
+    mounted.chain(swapped).any(|source| {
+        fs::canonicalize(source.replace("\\040", " ")).is_ok_and(|path| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| names.iter().any(|m| m == n))
+        })
+    })
 }
 
 fn pool_info(pool: &StoragePool) -> Result<Pool> {

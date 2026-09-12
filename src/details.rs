@@ -221,6 +221,7 @@ fn disk_row(view: &MachineView, disk: &Disk) -> adw::ActionRow {
     let title = match disk.device {
         DiskDevice::Cdrom => gettext("CD/DVD Drive"),
         DiskDevice::Floppy => gettext("Floppy Drive"),
+        DiskDevice::Disk | DiskDevice::Lun if disk.kind == "block" => gettext("Host Disk"),
         DiskDevice::Disk | DiskDevice::Lun => gettext("Disk"),
     };
     let mut subtitle = disk.source.clone().unwrap_or_else(|| gettext("Empty"));
@@ -256,7 +257,7 @@ fn disk_row(view: &MachineView, disk: &Disk) -> adw::ActionRow {
                 view,
                 async move {
                     if disk.device == DiskDevice::Cdrom
-                        || hardware::confirm_remove_disk(&view).await
+                        || hardware::confirm_remove_disk(&view, &disk).await
                     {
                         view.change(move |hv, uuid| hv.detach(uuid, &disk.xml));
                     }

@@ -21,6 +21,8 @@ pub enum NewStorage {
     Volume { pool: String, gib: u64 },
     /// An image file that is already there.
     Image(String),
+    /// A disk of the host, by the path of its device node.
+    HostDisk(String),
     /// A CD/DVD drive, empty or with this disc image in it.
     Cdrom(Option<String>),
 }
@@ -117,6 +119,11 @@ impl Hypervisor {
                 );
                 self.attach(uuid, &disk)
             }
+            NewStorage::HostDisk(dev) => {
+                let bus = bus_of(DiskDevice::Disk).unwrap_or_else(|| "virtio".to_owned());
+                let target = domain_xml::next_target(&bus, &taken);
+                self.attach(uuid, &domain_xml::block_disk_xml(dev, &target, &bus))
+            }
             NewStorage::Cdrom(iso) => {
                 let bus = bus_of(DiskDevice::Cdrom).unwrap_or_else(|| {
                     if config.machine.contains("q35") {
@@ -141,13 +148,10 @@ impl Hypervisor {
 
     /// The host's USB and PCI devices, USB first.
     pub fn host_devices(&self) -> Result<Vec<HostDevice>> {
-        let devices = self
-            .conn
-            .list_all_node_devices(
-                sys::VIR_CONNECT_LIST_NODE_DEVICES_CAP_USB_DEV
-                    | sys::VIR_CONNECT_LIST_NODE_DEVICES_CAP_PCI_DEV,
-            )
-            .map_err(message)?;
+        let devices = self.node_devices(
+            sys::VIR_CONNECT_LIST_NODE_DEVICES_CAP_USB_DEV
+                | sys::VIR_CONNECT_LIST_NODE_DEVICES_CAP_PCI_DEV,
+        )?;
         let mut found: Vec<HostDevice> = devices
             .iter()
             .filter_map(|d| d.get_xml_desc(0).ok())

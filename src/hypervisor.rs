@@ -7,15 +7,16 @@ mod storage;
 
 pub use devices::{Change, NewStorage};
 pub use networks::VirtualNetwork;
-pub use storage::{Pool, Volume};
+pub use storage::{HostUse, Pool, Volume};
 
 use std::path::{Path, PathBuf};
 
 use gettextrs::gettext;
 use virt::connect::Connect;
 use virt::domain::Domain;
-use virt::error::ErrorNumber;
+use virt::error::{ErrorDomain, ErrorNumber};
 use virt::network::Network;
+use virt::nodedev::NodeDevice;
 use virt::storage_pool::StoragePool;
 use virt::storage_vol::StorageVol;
 use virt::sys;
@@ -143,6 +144,13 @@ impl Hypervisor {
         self.uri.contains("/session")
     }
 
+    /// Whether libvirt runs on this host, and what the app sees of the host is its.
+    fn is_local(&self) -> bool {
+        self.uri
+            .split_once("://")
+            .is_none_or(|(_, rest)| rest.starts_with('/'))
+    }
+
     pub fn host(&self) -> Host {
         let info = self.conn.get_node_info().ok();
         Host {
@@ -186,6 +194,24 @@ impl Hypervisor {
             autostart: persistent && dom.get_autostart().unwrap_or(false),
             config,
             live_graphics,
+        })
+    }
+
+    /// The host's devices with the capabilities `flags` name.
+    fn node_devices(
+        &self,
+        flags: sys::virConnectListAllNodeDeviceFlags,
+    ) -> Result<Vec<NodeDevice>> {
+        self.conn.list_all_node_devices(flags).map_err(|e| {
+            // The daemon that lists them is a separate one, which some hosts leave off.
+            if e.code() == ErrorNumber::SystemError && e.domain() == ErrorDomain::Rpc {
+                gettext(
+                    "The host’s devices cannot be listed, as libvirt’s node device service is \
+                     not running. It starts with “systemctl enable --now virtnodedevd.socket”.",
+                )
+            } else {
+                message(e)
+            }
         })
     }
 

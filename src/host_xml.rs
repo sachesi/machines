@@ -221,6 +221,72 @@ impl HostDevice {
     }
 }
 
+/// A whole disk of the host, from its node device XML.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostDisk {
+    /// The device node, e.g. `/dev/sda`.
+    pub block: String,
+    /// Where to reach it from a machine: its `/dev/disk/by-id` link where udev made one,
+    /// which stays the same when the kernel names the disks in another order.
+    pub path: String,
+    pub model: Option<String>,
+    pub vendor: Option<String>,
+    /// Bytes.
+    pub size: u64,
+}
+
+impl HostDisk {
+    /// A disk of the host; CD drives, card readers and other removable media are not.
+    pub fn parse(xml: &str) -> Option<Self> {
+        let doc = roxmltree::Document::parse(xml).ok()?;
+        let cap = doc
+            .descendants()
+            .find(|n| n.has_tag_name("capability") && n.attribute("type") == Some("storage"))?;
+        let text = |name: &str| {
+            cap.children()
+                .find(|n| n.has_tag_name(name))
+                .and_then(|n| n.text())
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .map(str::to_owned)
+        };
+        if text("drive_type").is_some_and(|t| t != "disk")
+            || cap
+                .children()
+                .any(|n| n.has_tag_name("capability") && n.attribute("type") == Some("removable"))
+        {
+            return None;
+        }
+        let block = text("block")?;
+        let path = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("devnode") && n.attribute("type") == Some("link"))
+            .filter_map(|n| n.text())
+            .filter(|l| l.starts_with("/dev/disk/by-id/"))
+            // A wwn- link is a bare number; the model-and-serial one says what the disk is.
+            .min_by_key(|l| (l.starts_with("/dev/disk/by-id/wwn-"), l.len()))
+            .map_or_else(|| block.clone(), str::to_owned);
+        Some(Self {
+            block,
+            path,
+            model: text("model"),
+            vendor: text("vendor"),
+            size: text("size").and_then(|s| s.parse().ok()).unwrap_or(0),
+        })
+    }
+
+    pub fn name(&self) -> String {
+        match (&self.vendor, &self.model) {
+            (Some(vendor), Some(model)) if !model.starts_with(vendor.as_str()) => {
+                format!("{vendor} {model}")
+            }
+            (_, Some(model)) => model.clone(),
+            (Some(vendor), None) => vendor.clone(),
+            (None, None) => self.block.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoolConfig {
     /// `dir`, `fs`, `netfs`, `logical`, `disk`, `iscsi`…
@@ -509,6 +575,45 @@ mod tests {
             HostDeviceId::from_hostdev(doc.root_element()),
             Some(audio.id)
         );
+    }
+
+    #[test]
+    fn host_disks_go_by_id() {
+        let disk = HostDisk::parse(
+            "<device><name>block_sda</name>\
+             <devnode type='dev'>/dev/sda</devnode>\
+             <devnode type='link'>/dev/disk/by-id/wwn-0x5002538e40a1b2c3</devnode>\
+             <devnode type='link'>/dev/disk/by-id/ata-Samsung_SSD_860_EVO_S3Z9NB0K</devnode>\
+             <devnode type='link'>/dev/disk/by-path/pci-0000:00:17.0-ata-1</devnode>\
+             <capability type='storage'><block>/dev/sda</block><bus>ata</bus>\
+             <drive_type>disk</drive_type><model>Samsung SSD 860</model><vendor>ATA</vendor>\
+             <size>250059350016</size></capability></device>",
+        )
+        .unwrap();
+        assert_eq!(disk.block, "/dev/sda");
+        assert_eq!(
+            disk.path,
+            "/dev/disk/by-id/ata-Samsung_SSD_860_EVO_S3Z9NB0K"
+        );
+        assert_eq!(disk.size, 250_059_350_016);
+        assert_eq!(disk.name(), "ATA Samsung SSD 860");
+
+        let nvme = HostDisk::parse(
+            "<device><capability type='storage'><block>/dev/nvme0n1</block>\
+             <drive_type>disk</drive_type><model>Micron MTFDKCD256TFK</model>\
+             <size>256060514304</size></capability></device>",
+        )
+        .unwrap();
+        assert_eq!(nvme.path, "/dev/nvme0n1");
+        assert_eq!(nvme.name(), "Micron MTFDKCD256TFK");
+
+        let card_reader = "<device><capability type='storage'><block>/dev/sdd</block>\
+             <drive_type>disk</drive_type><capability type='removable'>\
+             <media_available>0</media_available></capability></capability></device>";
+        assert_eq!(HostDisk::parse(card_reader), None);
+        let dvd = "<device><capability type='storage'><block>/dev/sr0</block>\
+             <drive_type>cdrom</drive_type></capability></device>";
+        assert_eq!(HostDisk::parse(dvd), None);
     }
 
     #[test]
