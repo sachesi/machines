@@ -485,25 +485,62 @@ pub fn device_subtitle(dev: &HostDevice) -> String {
 }
 
 /// "Add Host Device": pick one of the host's USB or PCI devices to pass through.
+/// "Add Host Device": opens at once, and lists the devices once the host has, which the
+/// first time after the node device daemon starts can take a while.
 pub fn add_host_device(view: &MachineView, config: &MachineConfig) {
     let Some(win) = window(view) else {
         return;
     };
     let attached: Vec<HostDeviceId> = config.host_devices.iter().map(|d| d.id.clone()).collect();
+    let stack = gtk::Stack::new();
+    stack.add_named(
+        &adw::Spinner::builder()
+            .halign(gtk::Align::Center)
+            .valign(gtk::Align::Center)
+            .width_request(32)
+            .height_request(32)
+            .build(),
+        Some("loading"),
+    );
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&adw::HeaderBar::new());
+    toolbar.set_content(Some(&stack));
+    let dialog = adw::Dialog::builder()
+        .title(gettext("Add Host Device"))
+        .content_width(480)
+        .content_height(560)
+        .child(&toolbar)
+        .build();
+    dialog.present(Some(view));
     glib::spawn_future_local(glib::clone!(
         #[weak]
         view,
+        #[weak]
+        dialog,
         async move {
-            match win.call(|hv| hv.host_devices()).await {
-                Some(Ok(devices)) => present_host_devices(&view, devices, &attached),
-                Some(Err(e)) => win.toast(&e),
-                None => {}
-            }
+            let page = match win.call(|hv| hv.host_devices()).await {
+                Some(Ok(devices)) => host_devices_page(&view, &dialog, &devices, &attached),
+                Some(Err(e)) => adw::StatusPage::builder()
+                    .icon_name("dialog-warning-symbolic")
+                    .title(gettext("No Host Devices"))
+                    .description(e)
+                    .css_classes(["compact"])
+                    .build()
+                    .upcast(),
+                None => return,
+            };
+            stack.add_named(&page, Some("devices"));
+            stack.set_visible_child(&page);
         }
     ));
 }
 
-fn present_host_devices(view: &MachineView, devices: Vec<HostDevice>, attached: &[HostDeviceId]) {
+fn host_devices_page(
+    view: &MachineView,
+    dialog: &adw::Dialog,
+    devices: &[HostDevice],
+    attached: &[HostDeviceId],
+) -> gtk::Widget {
     let usb = adw::PreferencesGroup::builder()
         .title(gettext("USB Devices"))
         .build();
@@ -517,15 +554,6 @@ fn present_host_devices(view: &MachineView, devices: Vec<HostDevice>, attached: 
     let page = adw::PreferencesPage::new();
     page.add(&usb);
     page.add(&pci);
-    let toolbar = adw::ToolbarView::new();
-    toolbar.add_top_bar(&adw::HeaderBar::new());
-    toolbar.set_content(Some(&page));
-    let dialog = adw::Dialog::builder()
-        .title(gettext("Add Host Device"))
-        .content_width(480)
-        .content_height(560)
-        .child(&toolbar)
-        .build();
 
     let mut found = (false, false);
     for dev in devices
@@ -538,7 +566,7 @@ fn present_host_devices(view: &MachineView, devices: Vec<HostDevice>, attached: 
             .activatable(true)
             .build();
         row.add_suffix(&gtk::Image::from_icon_name("list-add-symbolic"));
-        let xml = dev.passthrough_id(&devices).hostdev_xml();
+        let xml = dev.passthrough_id(devices).hostdev_xml();
         row.connect_activated(glib::clone!(
             #[weak]
             dialog,
@@ -571,5 +599,5 @@ fn present_host_devices(view: &MachineView, devices: Vec<HostDevice>, attached: 
             );
         }
     }
-    dialog.present(Some(view));
+    page.upcast()
 }

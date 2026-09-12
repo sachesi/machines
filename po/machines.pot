@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 00:43+0300\n"
+"POT-Creation-Date: 2026-09-24 00:45+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -273,7 +273,7 @@ msgstr ""
 msgid "Host Devices"
 msgstr ""
 
-#: src/details.rs:437 src/dialogs/hardware.rs:524
+#: src/details.rs:437 src/dialogs/hardware.rs:509
 #, no-c-format
 msgid "Add Host Device"
 msgstr ""
@@ -496,17 +496,22 @@ msgstr ""
 msgid "_Model"
 msgstr ""
 
-#: src/dialogs/hardware.rs:508
+#: src/dialogs/hardware.rs:525
+#, no-c-format
+msgid "No Host Devices"
+msgstr ""
+
+#: src/dialogs/hardware.rs:545
 #, no-c-format
 msgid "USB Devices"
 msgstr ""
 
-#: src/dialogs/hardware.rs:511
+#: src/dialogs/hardware.rs:548
 #, no-c-format
 msgid "PCI Devices"
 msgstr ""
 
-#: src/dialogs/hardware.rs:513
+#: src/dialogs/hardware.rs:550
 #, no-c-format
 msgid ""
 "The host cannot use a PCI device while the virtual machine has it. Passing "
@@ -514,7 +519,7 @@ msgid ""
 "kernel."
 msgstr ""
 
-#: src/dialogs/hardware.rs:568
+#: src/dialogs/hardware.rs:596
 #, no-c-format
 msgid "None to pass through"
 msgstr ""
