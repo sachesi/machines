@@ -554,15 +554,40 @@ impl NetworkConfig {
 #[derive(Debug, Clone)]
 pub struct NewNetwork {
     pub name: String,
-    /// Whether guests reach outside through the host's NAT, or only each other and the host.
-    pub nat: bool,
+    pub mode: NetworkMode,
+    /// Not used on a host bridge, whose network is the host's.
     pub subnet: Ipv4Subnet,
     pub dhcp: bool,
 }
 
+/// How a new network's guests reach the world.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NetworkMode {
+    /// Through the host's address.
+    Nat,
+    /// Through the host as a router, with their own addresses, which the rest of the
+    /// network needs a route to.
+    Routed,
+    /// Not at all: only each other and the host.
+    Isolated,
+    /// Straight onto the host's network, through a bridge of this name the host has.
+    Bridge(String),
+}
+
 /// A network on a bridge of libvirt's own, with the host at the subnet's first address.
 pub fn new_network_xml(n: &NewNetwork) -> String {
-    let forward = if n.nat { "<forward mode='nat'/>" } else { "" };
+    let forward = match &n.mode {
+        NetworkMode::Nat => "<forward mode='nat'/>",
+        NetworkMode::Routed => "<forward mode='route'/>",
+        NetworkMode::Isolated => "",
+        NetworkMode::Bridge(bridge) => {
+            return format!(
+                "<network><name>{}</name><forward mode='bridge'/><bridge name='{}'/></network>",
+                escape(&n.name),
+                escape(bridge)
+            );
+        }
+    };
     let dhcp = if n.dhcp {
         format!(
             "<dhcp><range start='{}' end='{}'/></dhcp>",
@@ -763,7 +788,7 @@ mod tests {
     fn new_networks_read_back() {
         let n = NewNetwork {
             name: "lab".into(),
-            nat: true,
+            mode: NetworkMode::Nat,
             subnet: Ipv4Subnet::parse_network("192.168.100.0/24").unwrap(),
             dhcp: true,
         };
@@ -775,13 +800,27 @@ mod tests {
             Some(("192.168.100.2".into(), "192.168.100.254".into()))
         );
         let isolated = NetworkConfig::parse(&new_network_xml(&NewNetwork {
-            nat: false,
+            mode: NetworkMode::Isolated,
             dhcp: false,
-            ..n
+            ..n.clone()
         }))
         .unwrap();
         assert_eq!(isolated.forward, None);
         assert_eq!(isolated.dhcp, None);
+        let routed = NetworkConfig::parse(&new_network_xml(&NewNetwork {
+            mode: NetworkMode::Routed,
+            ..n.clone()
+        }))
+        .unwrap();
+        assert_eq!(routed.forward.as_deref(), Some("route"));
+        let bridge = NetworkConfig::parse(&new_network_xml(&NewNetwork {
+            mode: NetworkMode::Bridge("br0".into()),
+            ..n
+        }))
+        .unwrap();
+        assert_eq!(bridge.forward.as_deref(), Some("bridge"));
+        assert_eq!(bridge.bridge.as_deref(), Some("br0"));
+        assert_eq!(bridge.ipv4, None);
     }
 
     #[test]

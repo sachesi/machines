@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 01:01+0300\n"
+"POT-Creation-Date: 2026-09-24 01:03+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -499,6 +499,7 @@ msgid "_Add"
 msgstr ""
 
 #: src/dialogs/hardware.rs:423 src/dialogs/networks.rs:54
+#: src/dialogs/networks.rs:307
 #, no-c-format
 msgid "Host Bridge"
 msgstr ""
@@ -551,17 +552,17 @@ msgstr ""
 msgid "Virtual Networks"
 msgstr ""
 
-#: src/dialogs/networks.rs:48 src/dialogs/networks.rs:301
+#: src/dialogs/networks.rs:48 src/dialogs/networks.rs:306
 #, no-c-format
 msgid "Isolated"
 msgstr ""
 
-#: src/dialogs/networks.rs:49 src/dialogs/networks.rs:300
+#: src/dialogs/networks.rs:49 src/dialogs/networks.rs:304
 #, no-c-format
 msgid "NAT"
 msgstr ""
 
-#: src/dialogs/networks.rs:50
+#: src/dialogs/networks.rs:50 src/dialogs/networks.rs:305
 #, no-c-format
 msgid "Routed"
 msgstr ""
@@ -576,7 +577,7 @@ msgstr ""
 msgid "Host Bridge {name}"
 msgstr ""
 
-#: src/dialogs/networks.rs:95 src/dialogs/networks.rs:332
+#: src/dialogs/networks.rs:95 src/dialogs/networks.rs:335
 #, no-c-format
 msgid "New Virtual Network"
 msgstr ""
@@ -645,40 +646,55 @@ msgstr ""
 msgid "_Name"
 msgstr ""
 
-#: src/dialogs/networks.rs:297
+#: src/dialogs/networks.rs:301
 #, no-c-format
 msgid "_Mode"
 msgstr ""
 
-#: src/dialogs/networks.rs:306
+#: src/dialogs/networks.rs:311
 #, no-c-format
-msgid "Guests reach outside through the host"
+msgid "_Bridge"
 msgstr ""
 
-#: src/dialogs/networks.rs:308
-#, no-c-format
-msgid "Guests reach only the host and each other"
-msgstr ""
-
-#: src/dialogs/networks.rs:314
+#: src/dialogs/networks.rs:316
 #, no-c-format
 msgid "IPv4 _Network"
 msgstr ""
 
-#: src/dialogs/networks.rs:319
+#: src/dialogs/networks.rs:321
 #, no-c-format
 msgid "_DHCP"
 msgstr ""
 
-#: src/dialogs/networks.rs:320
+#: src/dialogs/networks.rs:322
 #, no-c-format
 msgid "Give guests their addresses"
 msgstr ""
 
-#: src/dialogs/networks.rs:332 src/dialogs/new_machine.rs:178
+#: src/dialogs/networks.rs:335 src/dialogs/new_machine.rs:178
 #: src/dialogs/storage.rs:556 src/dialogs/storage.rs:741
 #, no-c-format
 msgid "C_reate"
+msgstr ""
+
+#: src/dialogs/networks.rs:400
+#, no-c-format
+msgid "Guests reach outside through the host’s address"
+msgstr ""
+
+#: src/dialogs/networks.rs:402
+#, no-c-format
+msgid "Guests reach outside with their own addresses, through the host"
+msgstr ""
+
+#: src/dialogs/networks.rs:404
+#, no-c-format
+msgid "Guests join the host’s network through its bridge"
+msgstr ""
+
+#: src/dialogs/networks.rs:405
+#, no-c-format
+msgid "Guests reach only the host and each other"
 msgstr ""
 
 #: src/dialogs/new_machine.rs:60

@@ -8,7 +8,7 @@ use gettextrs::gettext;
 use crate::adw::prelude::*;
 use crate::details::info_row;
 use crate::dialogs::{self, add_button};
-use crate::host_xml::{Ipv4Subnet, NetworkConfig, NewNetwork};
+use crate::host_xml::{Ipv4Subnet, NetworkConfig, NetworkMode, NewNetwork};
 use crate::hypervisor::{Hypervisor, Result, VirtualNetwork};
 use crate::window::MachinesWindow;
 use crate::{adw, glib, gtk};
@@ -293,23 +293,25 @@ impl Networks {
             .title(gettext("_Name"))
             .use_underline(true)
             .build();
-        let nat = adw::ComboRow::builder()
+        // In the order of the mode combo's items.
+        const NAT: u32 = 0;
+        const ROUTED: u32 = 1;
+        const BRIDGE: u32 = 3;
+        let mode = adw::ComboRow::builder()
             .title(gettext("_Mode"))
             .use_underline(true)
             .model(&gtk::StringList::new(&[
                 &gettext("NAT"),
+                &gettext("Routed"),
                 &gettext("Isolated"),
+                &gettext("Host Bridge"),
             ]))
             .build();
-        let explain = |nat: &adw::ComboRow| {
-            nat.set_subtitle(&if nat.selected() == 0 {
-                gettext("Guests reach outside through the host")
-            } else {
-                gettext("Guests reach only the host and each other")
-            });
-        };
-        explain(&nat);
-        nat.connect_selected_notify(explain);
+        let bridge = adw::EntryRow::builder()
+            .title(gettext("_Bridge"))
+            .use_underline(true)
+            .text("br0")
+            .build();
         let subnet = adw::EntryRow::builder()
             .title(gettext("IPv4 _Network"))
             .use_underline(true)
@@ -323,7 +325,8 @@ impl Networks {
             .build();
         let group = adw::PreferencesGroup::new();
         group.add(&name);
-        group.add(&nat);
+        group.add(&mode);
+        group.add(&bridge);
         group.add(&subnet);
         group.add(&dhcp);
         let page = adw::PreferencesPage::new();
@@ -335,7 +338,9 @@ impl Networks {
             #[weak]
             name,
             #[weak]
-            nat,
+            mode,
+            #[weak]
+            bridge,
             #[weak]
             subnet,
             #[weak]
@@ -355,15 +360,61 @@ impl Networks {
                         row.add_css_class("error");
                     }
                 }
+                let bridge_name = bridge.text().trim().to_owned();
+                let mode = match mode.selected() {
+                    NAT => NetworkMode::Nat,
+                    ROUTED => NetworkMode::Routed,
+                    BRIDGE if bridge_name.is_empty() => return None,
+                    BRIDGE => {
+                        return Some(NewNetwork {
+                            name: name_ok.then_some(text)?,
+                            mode: NetworkMode::Bridge(bridge_name),
+                            subnet: parsed.unwrap_or_else(|| Ipv4Subnet::unused(&[])),
+                            dhcp: false,
+                        });
+                    }
+                    _ => NetworkMode::Isolated,
+                };
                 Some(NewNetwork {
                     name: name_ok.then_some(text)?,
-                    nat: nat.selected() == 0,
+                    mode,
                     subnet: parsed?,
                     dhcp: dhcp.is_active(),
                 })
             }
         ));
-        for entry in [&name, &subnet] {
+        let sync = glib::clone!(
+            #[weak]
+            bridge,
+            #[weak]
+            subnet,
+            #[weak]
+            dhcp,
+            #[weak]
+            create,
+            #[strong]
+            request,
+            move |mode: &adw::ComboRow| {
+                let on_bridge = mode.selected() == BRIDGE;
+                mode.set_subtitle(&match mode.selected() {
+                    NAT => gettext("Guests reach outside through the host’s address"),
+                    ROUTED => {
+                        gettext("Guests reach outside with their own addresses, through the host")
+                    }
+                    BRIDGE => gettext("Guests join the host’s network through its bridge"),
+                    _ => gettext("Guests reach only the host and each other"),
+                });
+                // Rows shown later would scroll out of the dialog, which keeps its first
+                // height, so they stay and go insensitive instead.
+                bridge.set_sensitive(on_bridge);
+                subnet.set_sensitive(!on_bridge);
+                dhcp.set_sensitive(!on_bridge);
+                create.set_sensitive(request().is_some());
+            }
+        );
+        sync(&mode);
+        mode.connect_selected_notify(sync);
+        for entry in [&name, &subnet, &bridge] {
             entry.connect_changed(glib::clone!(
                 #[weak]
                 create,
