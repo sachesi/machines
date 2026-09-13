@@ -536,7 +536,8 @@ impl Hypervisor {
         }
     }
 
-    /// A new qcow2 volume in `pool`, named after the machine.
+    /// A new volume in `pool`, named after the machine: a qcow2 image, or in a volume
+    /// group, a logical volume.
     fn new_disk(&self, pool: &StoragePool, machine: &str, gib: u64) -> Result<StorageVol> {
         let _ = pool.refresh(0);
         let stem: String = machine
@@ -549,14 +550,33 @@ impl Hypervisor {
                 }
             })
             .collect();
+        let logical = pool
+            .get_xml_desc(0)
+            .ok()
+            .and_then(|xml| host_xml::PoolConfig::parse(&xml).ok())
+            .is_some_and(|c| c.kind == "logical");
+        let (extension, format) = if logical {
+            ("", None)
+        } else {
+            (".qcow2", Some("qcow2"))
+        };
         let name = (0..)
             .map(|i| match i {
-                0 => format!("{stem}.qcow2"),
-                i => format!("{stem}-{i}.qcow2"),
+                0 => format!("{stem}{extension}"),
+                i => format!("{stem}-{i}{extension}"),
             })
             .find(|n| StorageVol::lookup_by_name(pool, n).is_err())
             .expect("an unused name");
-        StorageVol::create_xml(pool, &host_xml::volume_xml(&name, gib, "qcow2"), 0).map_err(message)
+        StorageVol::create_xml(pool, &host_xml::volume_xml(&name, gib, format), 0).map_err(message)
+    }
+
+    /// Where virt-manager keeps disk images.
+    fn images_dir(&self) -> PathBuf {
+        if self.is_session() {
+            glib::user_data_dir().join("libvirt/images")
+        } else {
+            PathBuf::from("/var/lib/libvirt/images")
+        }
     }
 
     /// The `default` storage pool, set up where virt-manager would put it if it is missing.
@@ -564,12 +584,8 @@ impl Hypervisor {
         let pool = match StoragePool::lookup_by_name(&self.conn, "default") {
             Ok(pool) => pool,
             Err(_) => {
-                let dir = if self.is_session() {
-                    glib::user_data_dir().join("libvirt/images")
-                } else {
-                    PathBuf::from("/var/lib/libvirt/images")
-                };
-                let xml = host_xml::dir_pool_xml("default", &dir.to_string_lossy());
+                let dir = self.images_dir().to_string_lossy().into_owned();
+                let xml = host_xml::pool_xml("default", &host_xml::PoolSource::Dir(dir));
                 let pool = StoragePool::define_xml(&self.conn, &xml, 0).map_err(message)?;
                 pool.build(0).map_err(message)?;
                 let _ = pool.set_autostart(true);

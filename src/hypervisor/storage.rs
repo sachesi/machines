@@ -1,14 +1,24 @@
 //! Storage pools and the volumes in them.
 
 use std::fs;
+use std::io::Read;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use virt::storage_pool::StoragePool;
 use virt::storage_vol::StorageVol;
+use virt::stream::Stream;
 use virt::sys;
 
+use gettextrs::gettext;
+
 use super::{Hypervisor, Result, message};
-use crate::host_xml::{self, HostDisk, PoolConfig};
+use crate::domain_xml::MachineConfig;
+use crate::host_xml::{self, HostDisk, PoolConfig, PoolSource};
+
+/// How much of a file goes to libvirt at a time when uploading it.
+const UPLOAD_CHUNK: usize = 1 << 20;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pool {
@@ -29,6 +39,11 @@ impl Pool {
     /// Whether new qcow2 images can go in it: it is a directory of files, and running.
     pub fn holds_images(&self) -> bool {
         self.active && matches!(self.config.kind.as_str(), "dir" | "fs" | "netfs")
+    }
+
+    /// Whether new volumes can be made in it: image files, or logical volumes.
+    pub fn makes_volumes(&self) -> bool {
+        self.holds_images() || self.active && self.config.kind == "logical"
     }
 }
 
@@ -65,16 +80,26 @@ impl Hypervisor {
         StoragePool::lookup_by_uuid_string(&self.conn, uuid).map_err(message)
     }
 
-    /// A pool of the image files in the directory `path`, made if it is not there, that
-    /// starts with libvirt.
-    pub fn create_pool(&self, name: &str, path: &str) -> Result<()> {
-        let pool = StoragePool::define_xml(&self.conn, &host_xml::dir_pool_xml(name, path), 0)
+    /// A pool of `source`, started, that starts with libvirt. A directory, or an NFS
+    /// export's mount point, is made if it is not there.
+    pub fn create_pool(&self, name: &str, source: &PoolSource) -> Result<()> {
+        let pool = StoragePool::define_xml(&self.conn, &host_xml::pool_xml(name, source), 0)
             .map_err(message)?;
-        if let Err(e) = pool.build(0).and_then(|_| pool.create(0)) {
+        let started = if source.needs_build() {
+            pool.build(0).and_then(|_| pool.create(0))
+        } else {
+            pool.create(0)
+        };
+        if let Err(e) = started {
             let _ = pool.undefine();
             return Err(message(e));
         }
         pool.set_autostart(true).map(drop).map_err(message)
+    }
+
+    /// Where a new NFS pool of this name gets mounted.
+    pub fn nfs_mount_point(&self, name: &str) -> String {
+        format!("{}/{name}", self.images_dir().to_string_lossy())
     }
 
     pub fn set_pool_active(&self, uuid: &str, active: bool) -> Result<()> {
@@ -106,7 +131,13 @@ impl Hypervisor {
         Ok(())
     }
 
-    pub fn create_volume(&self, pool: &str, name: &str, gib: u64, format: &str) -> Result<()> {
+    pub fn create_volume(
+        &self,
+        pool: &str,
+        name: &str,
+        gib: u64,
+        format: Option<&str>,
+    ) -> Result<()> {
         StorageVol::create_xml(
             &self.pool(pool)?,
             &host_xml::volume_xml(name, gib, format),
@@ -120,6 +151,88 @@ impl Hypervisor {
         StorageVol::lookup_by_path(&self.conn, path)
             .and_then(|vol| vol.delete(0))
             .map_err(message)
+    }
+
+    /// Grow the volume at `path` to `bytes`. A running machine that has it as a disk
+    /// grows it itself, so that the guest sees the new size at once and QEMU's lock on
+    /// the image is no obstacle.
+    pub fn resize_volume(&self, path: &str, bytes: u64) -> Result<()> {
+        for dom in self
+            .conn
+            .list_all_domains(sys::VIR_CONNECT_LIST_DOMAINS_ACTIVE)
+            .map_err(message)?
+        {
+            let Some(config) = dom
+                .get_xml_desc(0)
+                .ok()
+                .and_then(|xml| MachineConfig::parse(&xml).ok())
+            else {
+                continue;
+            };
+            if let Some(disk) = config
+                .disks
+                .iter()
+                .find(|d| d.source.as_deref() == Some(path))
+            {
+                return dom
+                    .block_resize(&disk.target, bytes, sys::VIR_DOMAIN_BLOCK_RESIZE_BYTES)
+                    .map(drop)
+                    .map_err(message);
+            }
+        }
+        StorageVol::lookup_by_path(&self.conn, path)
+            .and_then(|vol| vol.resize(bytes, 0))
+            .map(drop)
+            .map_err(message)
+    }
+
+    /// Copy the local file `file` into the pool as a new volume of its name, counting the
+    /// bytes sent in `sent`. A volume left half written is deleted.
+    pub fn upload_volume(&self, pool: &str, file: &Path, sent: &Arc<AtomicU64>) -> Result<()> {
+        let name = file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .ok_or_else(|| file.display().to_string())?;
+        let mut local = fs::File::open(file).map_err(|e| format!("{}: {e}", file.display()))?;
+        let bytes = local.metadata().map_err(|e| e.to_string())?.len();
+        let vol = StorageVol::create_xml(
+            &self.pool(pool)?,
+            &host_xml::upload_volume_xml(&name, bytes),
+            0,
+        )
+        .map_err(message)?;
+        let mut upload = || -> Result<()> {
+            let stream = Stream::new(&self.conn, 0).map_err(message)?;
+            vol.upload(&stream, 0, bytes, 0).map_err(message)?;
+            let mut buffer = vec![0u8; UPLOAD_CHUNK];
+            loop {
+                let n = local.read(&mut buffer).map_err(|e| e.to_string())?;
+                if n == 0 {
+                    break;
+                }
+                let mut chunk = &buffer[..n];
+                while !chunk.is_empty() {
+                    match stream.send(chunk) {
+                        Err(e) => {
+                            let _ = stream.abort();
+                            return Err(message(e));
+                        }
+                        Ok(0) => {
+                            let _ = stream.abort();
+                            return Err(gettext("libvirt stopped taking the file"));
+                        }
+                        Ok(written) => {
+                            chunk = &chunk[written..];
+                            sent.fetch_add(written as u64, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }
+            stream.finish().map_err(message)
+        };
+        upload().inspect_err(|_| {
+            let _ = vol.delete(0);
+        })
     }
 
     /// The host's disks, by device node.

@@ -287,46 +287,132 @@ impl HostDisk {
     }
 }
 
+fn child<'a, 'i>(parent: roxmltree::Node<'a, 'i>, name: &str) -> Option<roxmltree::Node<'a, 'i>> {
+    parent.children().find(|n| n.has_tag_name(name))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoolConfig {
     /// `dir`, `fs`, `netfs`, `logical`, `disk`, `iscsi`…
     pub kind: String,
     pub path: Option<String>,
+    /// Where the pool's storage comes from, as people write it: `host:/export` for NFS,
+    /// the volume group for LVM, the target for iSCSI.
+    pub source: Option<String>,
 }
 
 impl PoolConfig {
     pub fn parse(xml: &str) -> Result<Self, String> {
         let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
         let root = doc.root_element();
-        let path = root
-            .children()
-            .find(|n| n.has_tag_name("target"))
-            .and_then(|t| t.children().find(|n| n.has_tag_name("path")))
+        let path = child(root, "target")
+            .and_then(|t| child(t, "path"))
             .and_then(|p| p.text())
             .map(|p| p.trim().to_owned());
+        let source = child(root, "source").and_then(|source| {
+            let host = child(source, "host").and_then(|h| h.attribute("name"));
+            let dir = child(source, "dir").and_then(|d| d.attribute("path"));
+            let device = child(source, "device").and_then(|d| d.attribute("path"));
+            let name = child(source, "name").and_then(|n| n.text());
+            match (host, dir.or(device), name) {
+                (Some(host), Some(path), _) => Some(format!("{host}:{path}")),
+                (None, Some(path), _) => Some(path.to_owned()),
+                (_, None, Some(name)) => Some(name.to_owned()),
+                (Some(host), None, None) => Some(host.to_owned()),
+                (None, None, None) => None,
+            }
+        });
         Ok(Self {
             kind: root.attribute("type").unwrap_or_default().to_owned(),
             path,
+            source,
         })
     }
 }
 
-/// A pool of the image files in the directory `path`.
-pub fn dir_pool_xml(name: &str, path: &str) -> String {
+/// What a new pool is made of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PoolSource {
+    /// The image files in a directory of the host.
+    Dir(String),
+    /// The image files in an NFS export, mounted on `mount`.
+    Nfs {
+        host: String,
+        export: String,
+        mount: String,
+    },
+    /// The logical volumes of an LVM volume group the host already has.
+    Lvm(String),
+    /// The LUNs of an iSCSI target.
+    Iscsi { host: String, target: String },
+}
+
+impl PoolSource {
+    /// Whether libvirt makes the pool's directory before it starts it; for the others,
+    /// building would format disks.
+    pub fn needs_build(&self) -> bool {
+        matches!(self, Self::Dir(_) | Self::Nfs { .. })
+    }
+}
+
+pub fn pool_xml(name: &str, source: &PoolSource) -> String {
+    let (kind, source, target) = match source {
+        PoolSource::Dir(path) => ("dir", String::new(), path.clone()),
+        PoolSource::Nfs {
+            host,
+            export,
+            mount,
+        } => (
+            "netfs",
+            format!(
+                "<host name='{}'/><dir path='{}'/><format type='auto'/>",
+                escape(host),
+                escape(export)
+            ),
+            mount.clone(),
+        ),
+        PoolSource::Lvm(group) => (
+            "logical",
+            format!("<name>{}</name><format type='lvm2'/>", escape(group)),
+            format!("/dev/{group}"),
+        ),
+        PoolSource::Iscsi { host, target } => (
+            "iscsi",
+            format!(
+                "<host name='{}'/><device path='{}'/>",
+                escape(host),
+                escape(target)
+            ),
+            "/dev/disk/by-path".to_owned(),
+        ),
+    };
     format!(
-        "<pool type='dir'><name>{}</name><target><path>{}</path></target></pool>",
+        "<pool type='{kind}'><name>{}</name><source>{source}</source>\
+         <target><path>{}</path></target></pool>",
         escape(name),
-        escape(path)
+        escape(&target)
     )
 }
 
-/// A volume of `gib` GiB; qcow2 ones only take up what is written to them.
-pub fn volume_xml(name: &str, gib: u64, format: &str) -> String {
+/// A volume of `gib` GiB; qcow2 ones only take up what is written to them. Logical
+/// volumes have no format.
+pub fn volume_xml(name: &str, gib: u64, format: Option<&str>) -> String {
+    let target = format
+        .map(|f| format!("<target><format type='{}'/></target>", escape(f)))
+        .unwrap_or_default();
     format!(
-        "<volume><name>{}</name><capacity unit='GiB'>{gib}</capacity>\
-         <target><format type='{}'/></target></volume>",
-        escape(name),
-        escape(format)
+        "<volume><name>{}</name><capacity unit='GiB'>{gib}</capacity>{target}</volume>",
+        escape(name)
+    )
+}
+
+/// A raw volume of exactly `bytes`, for a file to be uploaded into, which fills it with
+/// whatever format it is in.
+pub fn upload_volume_xml(name: &str, bytes: u64) -> String {
+    format!(
+        "<volume><name>{}</name><capacity unit='bytes'>{bytes}</capacity>\
+         <allocation>0</allocation><target><format type='raw'/></target></volume>",
+        escape(name)
     )
 }
 
@@ -618,12 +704,42 @@ mod tests {
 
     #[test]
     fn pools_and_volumes() {
-        let pool = PoolConfig::parse(&dir_pool_xml("isos", "/srv/i&so")).unwrap();
+        let pool =
+            PoolConfig::parse(&pool_xml("isos", &PoolSource::Dir("/srv/i&so".into()))).unwrap();
         assert_eq!(pool.kind, "dir");
         assert_eq!(pool.path.as_deref(), Some("/srv/i&so"));
+        assert_eq!(pool.source, None);
+        let nfs = PoolSource::Nfs {
+            host: "nas".into(),
+            export: "/vol/vms".into(),
+            mount: "/var/lib/libvirt/images/nas".into(),
+        };
+        let pool = PoolConfig::parse(&pool_xml("nas", &nfs)).unwrap();
+        assert_eq!(pool.kind, "netfs");
+        assert_eq!(pool.source.as_deref(), Some("nas:/vol/vms"));
+        let pool = PoolConfig::parse(&pool_xml("vg", &PoolSource::Lvm("vg0".into()))).unwrap();
+        assert_eq!(pool.kind, "logical");
+        assert_eq!(pool.path.as_deref(), Some("/dev/vg0"));
+        assert_eq!(pool.source.as_deref(), Some("vg0"));
+        let iscsi = PoolSource::Iscsi {
+            host: "san".into(),
+            target: "iqn.2004-04.com.example:disks".into(),
+        };
+        let pool = PoolConfig::parse(&pool_xml("san", &iscsi)).unwrap();
         assert_eq!(
-            volume_format(&volume_xml("a.qcow2", 8, "qcow2")).as_deref(),
+            pool.source.as_deref(),
+            Some("san:iqn.2004-04.com.example:disks")
+        );
+        assert!(!iscsi.needs_build());
+
+        assert_eq!(
+            volume_format(&volume_xml("a.qcow2", 8, Some("qcow2"))).as_deref(),
             Some("qcow2")
+        );
+        assert_eq!(volume_format(&volume_xml("lv", 8, None)), None);
+        assert_eq!(
+            volume_format(&upload_volume_xml("a.iso", 1024)).as_deref(),
+            Some("raw")
         );
     }
 

@@ -1,11 +1,13 @@
 //! Devices given to a machine, or taken from it, after it was made.
 
+use gettextrs::gettext;
 use virt::storage_pool::StoragePool;
+use virt::storage_vol::StorageVol;
 use virt::sys;
 
 use super::{Hypervisor, Result, image_format, message};
 use crate::domain_xml::{self, DiskDevice, MachineConfig};
-use crate::host_xml::HostDevice;
+use crate::host_xml::{self, HostDevice};
 
 /// Whether a change reached the running machine as well as its definition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,8 +19,10 @@ pub enum Change {
 
 #[derive(Debug, Clone)]
 pub enum NewStorage {
-    /// A new, empty qcow2 volume of this many GiB in the pool of this name.
+    /// A new, empty volume of this many GiB in the pool of this name.
     Volume { pool: String, gib: u64 },
+    /// A volume already in a pool, by its path.
+    PoolVolume(String),
     /// An image file that is already there.
     Image(String),
     /// A disk of the host, by the path of its device node.
@@ -93,19 +97,18 @@ impl Hypervisor {
                 }
                 let name = dom.get_name().map_err(message)?;
                 let vol = self.new_disk(&pool, &name, *gib)?;
-                let path = vol.get_path().map_err(message)?;
-                let disk = domain_xml::disk_xml(
-                    DiskDevice::Disk,
-                    Some(&path),
-                    "qcow2",
-                    &domain_xml::next_target(&bus, &taken),
-                    &bus,
-                );
-                let attached = self.attach(uuid, &disk);
+                let attached = volume_disk_xml(&vol, &domain_xml::next_target(&bus, &taken), &bus)
+                    .and_then(|disk| self.attach(uuid, &disk));
                 if attached.is_err() {
                     let _ = vol.delete(0);
                 }
                 attached
+            }
+            NewStorage::PoolVolume(path) => {
+                let bus = bus_of(DiskDevice::Disk).unwrap_or_else(|| "virtio".to_owned());
+                let vol = StorageVol::lookup_by_path(&self.conn, path).map_err(message)?;
+                let disk = volume_disk_xml(&vol, &domain_xml::next_target(&bus, &taken), &bus)?;
+                self.attach(uuid, &disk)
             }
             NewStorage::Image(path) => {
                 let bus = bus_of(DiskDevice::Disk).unwrap_or_else(|| "virtio".to_owned());
@@ -164,5 +167,29 @@ impl Hypervisor {
             )
         });
         Ok(found)
+    }
+}
+
+/// A `<disk>` on the volume `vol`: an image file in its format, or a block device such as a
+/// logical volume or an iSCSI LUN.
+fn volume_disk_xml(vol: &StorageVol, target: &str, bus: &str) -> Result<String> {
+    let path = vol.get_path().map_err(message)?;
+    match vol.get_info().map_err(message)?.kind {
+        sys::VIR_STORAGE_VOL_FILE => {
+            let format = vol
+                .get_xml_desc(0)
+                .ok()
+                .and_then(|xml| host_xml::volume_format(&xml))
+                .unwrap_or_else(|| image_format(std::path::Path::new(&path)));
+            Ok(domain_xml::disk_xml(
+                DiskDevice::Disk,
+                Some(&path),
+                &format,
+                target,
+                bus,
+            ))
+        }
+        sys::VIR_STORAGE_VOL_BLOCK => Ok(domain_xml::block_disk_xml(&path, target, bus)),
+        _ => Err(gettext("{path} is neither a file nor a block device").replace("{path}", &path)),
     }
 }

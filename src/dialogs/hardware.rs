@@ -10,7 +10,7 @@ use crate::adw::prelude::*;
 use crate::dialogs::{self, new_machine};
 use crate::domain_xml::{self, Disk, MachineConfig, NetworkSource};
 use crate::host_xml::{HostDevice, HostDeviceId, HostDisk};
-use crate::hypervisor::{HostUse, MachineInfo, NewStorage, Pool};
+use crate::hypervisor::{HostUse, MachineInfo, NewStorage, Pool, Volume};
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
 use crate::{adw, glib, gtk};
@@ -52,6 +52,7 @@ pub fn disk_users(disk: &HostDisk, machines: &[MachineInfo]) -> Vec<String> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StorageKind {
     NewDisk,
+    Volume,
     Image,
     HostDisk,
     Cdrom,
@@ -70,6 +71,9 @@ struct StorageForm {
     pools: Vec<String>,
     pool: adw::ComboRow,
     size: adw::SpinRow,
+    /// Volumes no machine has, with the name of their pool.
+    volumes: Vec<(Volume, String)>,
+    volume: adw::ComboRow,
     host_disks: Vec<HostDiskChoice>,
     host_disk: adw::ComboRow,
     file_row: adw::ActionRow,
@@ -87,6 +91,16 @@ impl StorageForm {
         self.pool.set_visible(kind == StorageKind::NewDisk);
         self.size.set_visible(kind == StorageKind::NewDisk);
         self.host_disk.set_visible(kind == StorageKind::HostDisk);
+        self.volume.set_visible(kind == StorageKind::Volume);
+        if kind == StorageKind::Volume {
+            let choice = self.volumes.get(self.volume.selected() as usize);
+            self.volume
+                .set_subtitle(&choice.map_or_else(String::new, |(vol, pool)| {
+                    format!("{pool} · {}", dialogs::size(vol.capacity))
+                }));
+            self.add.set_sensitive(choice.is_some());
+            return;
+        }
         self.file_row
             .set_visible(matches!(kind, StorageKind::Image | StorageKind::Cdrom));
         if kind == StorageKind::HostDisk {
@@ -126,6 +140,13 @@ impl StorageForm {
                 gib: self.size.value() as u64,
             },
             StorageKind::Image => NewStorage::Image(self.file.borrow().clone()?),
+            StorageKind::Volume => NewStorage::PoolVolume(
+                self.volumes
+                    .get(self.volume.selected() as usize)?
+                    .0
+                    .path
+                    .clone(),
+            ),
             StorageKind::HostDisk => {
                 let choice = self.host_disks.get(self.host_disk.selected() as usize)?;
                 if choice.unavailable.is_some() {
@@ -138,8 +159,8 @@ impl StorageForm {
     }
 }
 
-/// "Add Storage": a new disk in one of the pools, a disk image that is already there, a
-/// disk of the host, or a CD/DVD drive.
+/// "Add Storage": a new disk in one of the pools, a volume or disk image that is already
+/// there, a disk of the host, or a CD/DVD drive.
 pub fn add_storage(view: &MachineView) {
     let Some(win) = window(view) else {
         return;
@@ -159,12 +180,24 @@ pub fn add_storage(view: &MachineView) {
                     Vec::new()
                 }
             };
+            let machines = win.machine_infos();
+            let used: Vec<&str> = machines
+                .iter()
+                .filter_map(|m| m.config.as_ref())
+                .flat_map(|c| c.disks.iter())
+                .filter_map(|d| d.source.as_deref())
+                .collect();
+            let volumes = pools
+                .iter()
+                .filter(|p| p.active)
+                .flat_map(|p| p.volumes.iter().map(move |v| (v.clone(), p.name.clone())))
+                .filter(|(v, _)| !used.contains(&v.path.as_str()))
+                .collect();
             let pools = pools
                 .into_iter()
-                .filter(Pool::holds_images)
+                .filter(Pool::makes_volumes)
                 .map(|p| p.name)
                 .collect();
-            let machines = win.machine_infos();
             let disks = disks
                 .unwrap_or_default()
                 .into_iter()
@@ -186,17 +219,26 @@ pub fn add_storage(view: &MachineView) {
                     }
                 })
                 .collect();
-            present_storage(&view, pools, disks);
+            present_storage(&view, pools, volumes, disks);
         }
     ));
 }
 
-fn present_storage(view: &MachineView, pools: Vec<String>, host_disks: Vec<HostDiskChoice>) {
+fn present_storage(
+    view: &MachineView,
+    pools: Vec<String>,
+    volumes: Vec<(Volume, String)>,
+    host_disks: Vec<HostDiskChoice>,
+) {
     let mut kinds = Vec::new();
     let mut labels = Vec::new();
     if !pools.is_empty() {
         kinds.push(StorageKind::NewDisk);
         labels.push(gettext("New Disk"));
+    }
+    if !volumes.is_empty() {
+        kinds.push(StorageKind::Volume);
+        labels.push(gettext("Existing Volume"));
     }
     kinds.push(StorageKind::Image);
     labels.push(gettext("Existing Disk Image"));
@@ -234,6 +276,12 @@ fn present_storage(view: &MachineView, pools: Vec<String>, host_disks: Vec<HostD
             0.0,
         ))
         .build();
+    let volume_labels: Vec<&str> = volumes.iter().map(|(v, _)| v.name.as_str()).collect();
+    let volume = adw::ComboRow::builder()
+        .title(gettext("_Volume"))
+        .use_underline(true)
+        .model(&gtk::StringList::new(&volume_labels))
+        .build();
     let disk_labels: Vec<String> = host_disks.iter().map(|c| c.disk.name()).collect();
     let disk_labels: Vec<&str> = disk_labels.iter().map(String::as_str).collect();
     let host_disk = adw::ComboRow::builder()
@@ -256,6 +304,7 @@ fn present_storage(view: &MachineView, pools: Vec<String>, host_disks: Vec<HostD
     group.add(&kind);
     group.add(&pool);
     group.add(&size);
+    group.add(&volume);
     group.add(&host_disk);
     group.add(&file_row);
     let page = adw::PreferencesPage::new();
@@ -268,6 +317,8 @@ fn present_storage(view: &MachineView, pools: Vec<String>, host_disks: Vec<HostD
         pools,
         pool,
         size,
+        volumes,
+        volume,
         host_disks,
         host_disk,
         file_row,
@@ -281,6 +332,11 @@ fn present_storage(view: &MachineView, pools: Vec<String>, host_disks: Vec<HostD
             form.file.take();
             form.sync();
         }
+    ));
+    form.volume.connect_selected_notify(glib::clone!(
+        #[strong]
+        form,
+        move |_| form.sync()
     ));
     form.host_disk.connect_selected_notify(glib::clone!(
         #[strong]

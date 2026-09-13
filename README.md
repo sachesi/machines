@@ -11,8 +11,9 @@ interfaces, gives it whole disks of the host, and passes USB and PCI devices of 
 through to it. It also picks the display protocol and video card (virtio, QXL, VGA…), and
 turns on 3D acceleration, which renders on the host's GPU with a virtio card. What a running
 machine cannot take at once, such as a SATA drive, it gets at its next start. The main
-menu also manages the connection's storage pools, with the volumes in them, and its
-virtual networks.
+menu also manages the connection's storage pools (directories, NFS shares, LVM volume
+groups and iSCSI targets) with the volumes in them, which it creates, grows, deletes and
+uploads files into, and its virtual networks.
 
 The console reaches a machine's display through libvirt rather than over the network, so
 new machines have a display with no listening socket at all: SPICE where
