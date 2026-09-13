@@ -188,6 +188,9 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
         }
     });
     klass.install_action("machine.delete", None, |view, _, _| view.delete());
+    klass.install_action("machine.usb-devices", None, |view, _, _| {
+        dialogs::hardware::plug_usb(view);
+    });
 }
 
 /// The scrolled window a preferences page keeps its groups in.
@@ -211,7 +214,7 @@ impl MachineView {
         self.imp().machine.borrow().clone()
     }
 
-    fn info(&self) -> Option<MachineInfo> {
+    pub fn info(&self) -> Option<MachineInfo> {
         self.machine().and_then(|m| m.info())
     }
 
@@ -362,6 +365,7 @@ impl MachineView {
         self.action_set_enabled("machine.reset", active);
         self.action_set_enabled("machine.force-off", active);
         self.action_set_enabled("machine.send-keys", running);
+        self.action_set_enabled("machine.usb-devices", running);
         self.action_set_enabled("machine.delete", state.is_some());
         self.action_set_enabled(
             "machine.fullscreen",

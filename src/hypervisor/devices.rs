@@ -43,6 +43,20 @@ impl Hypervisor {
         self.change_device(uuid, xml, false)
     }
 
+    /// Plug the device `xml` into the running machine, or pull it out, leaving the
+    /// definition as it is.
+    pub fn plug(&self, uuid: &str, xml: &str, plugged: bool) -> Result<()> {
+        let dom = self.domain(uuid)?;
+        let live = sys::VIR_DOMAIN_AFFECT_LIVE;
+        if plugged {
+            dom.attach_device_flags(xml, live)
+        } else {
+            dom.detach_device_flags(xml, live)
+        }
+        .map(drop)
+        .map_err(message)
+    }
+
     fn change_device(&self, uuid: &str, xml: &str, attach: bool) -> Result<Change> {
         let dom = self.domain(uuid)?;
         let apply = |flags| {

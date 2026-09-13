@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 01:03+0300\n"
+"POT-Creation-Date: 2026-09-24 01:05+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -524,7 +524,7 @@ msgstr ""
 msgid "No Host Devices"
 msgstr ""
 
-#: src/dialogs/hardware.rs:601
+#: src/dialogs/hardware.rs:601 src/dialogs/hardware.rs:687
 #, no-c-format
 msgid "USB Devices"
 msgstr ""
@@ -545,6 +545,19 @@ msgstr ""
 #: src/dialogs/hardware.rs:652
 #, no-c-format
 msgid "None to pass through"
+msgstr ""
+
+#: src/dialogs/hardware.rs:674
+#, no-c-format
+msgid ""
+"Plugged in here, a device stays with the virtual machine until it is "
+"unplugged              or the machine stops. To give it one for good, add it "
+"under Host Devices in              Details."
+msgstr ""
+
+#: src/dialogs/hardware.rs:715
+#, no-c-format
+msgid "No USB devices"
 msgstr ""
 
 #: src/dialogs/networks.rs:29 src/dialogs/networks.rs:93
@@ -1074,7 +1087,7 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor/devices.rs:193
+#: src/hypervisor/devices.rs:207
 #, no-c-format
 msgid "{path} is neither a file nor a block device"
 msgstr ""
@@ -1089,57 +1102,57 @@ msgstr ""
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:242
+#: src/machine_view.rs:245
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
 
-#: src/machine_view.rs:308
+#: src/machine_view.rs:311
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:310 ui/machine_view.ui:62
+#: src/machine_view.rs:313 ui/machine_view.ui:62
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:399
+#: src/machine_view.rs:403
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:412
+#: src/machine_view.rs:416
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:414
+#: src/machine_view.rs:418
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:422
+#: src/machine_view.rs:426
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:424
+#: src/machine_view.rs:428
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:431
+#: src/machine_view.rs:435
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:432
+#: src/machine_view.rs:436
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:516
+#: src/machine_view.rs:520
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -1205,10 +1218,14 @@ msgid "Force _Off"
 msgstr ""
 
 #: ui/machine_view.ui:183
+msgid "_USB Devices…"
+msgstr ""
+
+#: ui/machine_view.ui:187
 msgid "Send _Key"
 msgstr ""
 
-#: ui/machine_view.ui:213
+#: ui/machine_view.ui:217
 msgid "_Delete…"
 msgstr ""
 

@@ -657,3 +657,104 @@ fn host_devices_page(
     }
     page.upcast()
 }
+
+/// "USB Devices": the host's USB devices, each with a switch that plugs it into the
+/// running machine or pulls it out, as a cable would, without touching the definition.
+pub fn plug_usb(view: &MachineView) {
+    let (Some(win), Some(info)) = (window(view), view.info()) else {
+        return;
+    };
+    let plugged: Vec<HostDeviceId> = info
+        .live
+        .iter()
+        .flat_map(|l| l.host_devices.iter().map(|d| d.id.clone()))
+        .collect();
+    let group = adw::PreferencesGroup::builder()
+        .description(gettext(
+            "Plugged in here, a device stays with the virtual machine until it is unplugged \
+             or the machine stops. To give it one for good, add it under Host Devices in \
+             Details.",
+        ))
+        .build();
+    let page = adw::PreferencesPage::new();
+    page.add(&group);
+    let toast = adw::ToastOverlay::new();
+    toast.set_child(Some(&page));
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&adw::HeaderBar::new());
+    toolbar.set_content(Some(&toast));
+    let dialog = adw::Dialog::builder()
+        .title(gettext("USB Devices"))
+        .content_width(480)
+        .content_height(480)
+        .child(&toolbar)
+        .build();
+    dialog.present(Some(view));
+    let uuid = info.uuid.clone();
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        group,
+        #[weak]
+        toast,
+        async move {
+            let devices = match win.call(|hv| hv.host_devices()).await {
+                Some(Ok(devices)) => devices,
+                Some(Err(e)) => {
+                    group.set_description(Some(&e));
+                    return;
+                }
+                None => return,
+            };
+            let usb: Vec<&HostDevice> = devices
+                .iter()
+                .filter(|d| matches!(d.id, HostDeviceId::Usb { .. }) && d.can_pass_through())
+                .collect();
+            if usb.is_empty() {
+                group.add(
+                    &adw::ActionRow::builder()
+                        .title(gettext("No USB devices"))
+                        .css_classes(["dim-label"])
+                        .build(),
+                );
+            }
+            for dev in usb {
+                let row = adw::SwitchRow::builder()
+                    .title(device_title(dev))
+                    .subtitle(device_subtitle(dev))
+                    .active(plugged.iter().any(|p| p.matches(&dev.id)))
+                    .build();
+                let xml = dev.passthrough_id(&devices).hostdev_xml();
+                // Set while the switch goes back after a failure, which is no request.
+                let reverting = Rc::new(std::cell::Cell::new(false));
+                let (win, uuid, toast) = (win.clone(), uuid.clone(), toast.clone());
+                row.connect_active_notify(move |row| {
+                    if reverting.get() {
+                        return;
+                    }
+                    let (on, xml, uuid) = (row.is_active(), xml.clone(), uuid.clone());
+                    glib::spawn_future_local(glib::clone!(
+                        #[weak]
+                        row,
+                        #[weak]
+                        toast,
+                        #[strong]
+                        win,
+                        #[strong]
+                        reverting,
+                        async move {
+                            if let Some(Err(e)) = win.call(move |hv| hv.plug(&uuid, &xml, on)).await
+                            {
+                                toast.add_toast(adw::Toast::new(&e));
+                                reverting.set(true);
+                                row.set_active(!on);
+                                reverting.set(false);
+                            }
+                            win.refresh();
+                        }
+                    ));
+                });
+                group.add(&row);
+            }
+        }
+    ));
+}
