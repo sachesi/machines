@@ -51,6 +51,45 @@ pub struct HostDev {
     pub xml: String,
 }
 
+/// A device of the kinds the details page lists together, after disks, interfaces and the
+/// host's devices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Gadget {
+    /// A TPM, emulated by swtpm, or the host's own passed through.
+    Tpm {
+        emulated: bool,
+    },
+    /// A random number generator fed from the host, from this device.
+    Rng {
+        source: Option<String>,
+    },
+    Sound {
+        model: String,
+    },
+    /// A directory of the host the guest mounts by `tag`.
+    SharedFolder {
+        source: String,
+        tag: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GadgetDevice {
+    pub gadget: Gadget,
+    /// The element as the definition has it.
+    pub xml: String,
+}
+
+impl GadgetDevice {
+    /// Whether `other` is this device, in the definition or in the running machine.
+    pub fn same(&self, other: &Self) -> bool {
+        match (&self.gadget, &other.gadget) {
+            (Gadget::SharedFolder { tag: a, .. }, Gadget::SharedFolder { tag: b, .. }) => a == b,
+            (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MachineConfig {
     pub virt_type: String,
@@ -65,6 +104,7 @@ pub struct MachineConfig {
     pub disks: Vec<Disk>,
     pub nics: Vec<Nic>,
     pub host_devices: Vec<HostDev>,
+    pub gadgets: Vec<GadgetDevice>,
     /// The `type` of each graphics device, in order: `vnc`, `spice`, `dbus`…
     pub graphics: Vec<String>,
     pub video: Option<String>,
@@ -114,6 +154,7 @@ impl MachineConfig {
         let mut disks = Vec::new();
         let mut nics = Vec::new();
         let mut host_devices = Vec::new();
+        let mut gadgets = Vec::new();
         let mut graphics = Vec::new();
         let mut video = None;
         let mut accel3d = false;
@@ -178,6 +219,39 @@ impl MachineConfig {
                 "graphics" => {
                     graphics.push(dev.attribute("type").unwrap_or_default().to_owned());
                 }
+                "tpm" => gadgets.push(GadgetDevice {
+                    gadget: Gadget::Tpm {
+                        emulated: sub("backend").and_then(|b| b.attribute("type"))
+                            == Some("emulator"),
+                    },
+                    xml,
+                }),
+                "rng" => gadgets.push(GadgetDevice {
+                    gadget: Gadget::Rng {
+                        source: sub("backend")
+                            .and_then(|b| b.text())
+                            .map(|t| t.trim().to_owned()),
+                    },
+                    xml,
+                }),
+                "sound" => gadgets.push(GadgetDevice {
+                    gadget: Gadget::Sound {
+                        model: dev.attribute("model").unwrap_or_default().to_owned(),
+                    },
+                    xml,
+                }),
+                "filesystem" => {
+                    let dir = |name: &str| sub(name).and_then(|n| n.attribute("dir"));
+                    if let (Some(source), Some(tag)) = (dir("source"), dir("target")) {
+                        gadgets.push(GadgetDevice {
+                            gadget: Gadget::SharedFolder {
+                                source: source.to_owned(),
+                                tag: tag.to_owned(),
+                            },
+                            xml,
+                        });
+                    }
+                }
                 "video" if video.is_none() => {
                     let model = sub("model");
                     video = model.and_then(|m| m.attribute("type")).map(str::to_owned);
@@ -206,6 +280,7 @@ impl MachineConfig {
             disks,
             nics,
             host_devices,
+            gadgets,
             graphics,
             video,
             accel3d,
@@ -329,6 +404,131 @@ pub fn block_disk_xml(dev: &str, target: &str, bus: &str) -> String {
         escape(target),
         escape(bus)
     )
+}
+
+/// `xml` with `device` added to its devices, for the devices libvirt cannot attach.
+pub fn with_device(xml: &str, device: &str) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let devices = doc
+        .root_element()
+        .children()
+        .find(|n| n.has_tag_name("devices"))
+        .ok_or("the domain has no devices")?;
+    let mut out = xml.to_owned();
+    out.insert_str(devices.range().end - "</devices>".len(), device);
+    Ok(out)
+}
+
+/// `xml` without the device element `device`, as it is written there.
+pub fn without_device(xml: &str, device: &str) -> Result<String, String> {
+    let at = xml
+        .find(device)
+        .ok_or("the device is not in the definition")?;
+    let mut out = xml.to_owned();
+    out.replace_range(at..at + device.len(), "");
+    Ok(out)
+}
+
+/// An emulated TPM 2.0, which Windows 11 wants.
+pub fn tpm_xml() -> &'static str {
+    "<tpm model='tpm-crb'><backend type='emulator' version='2.0'/></tpm>"
+}
+
+/// A virtio random number generator the host's `/dev/urandom` feeds.
+pub fn rng_xml() -> &'static str {
+    "<rng model='virtio'><backend model='random'>/dev/urandom</backend></rng>"
+}
+
+/// A sound card for `machine`: the q35 chipset's own, else the older i440fx one's.
+pub fn sound_xml(machine: &str) -> String {
+    let model = if machine.contains("q35") {
+        "ich9"
+    } else {
+        "ich6"
+    };
+    format!("<sound model='{model}'/>")
+}
+
+/// The directory `source` of the host, shared with the guest over virtiofs by `tag`.
+pub fn shared_folder_xml(source: &str, tag: &str) -> String {
+    format!(
+        "<filesystem type='mount' accessmode='passthrough'><driver type='virtiofs'/>\
+         <source dir='{}'/><target dir='{}'/></filesystem>",
+        escape(source),
+        escape(tag)
+    )
+}
+
+/// A mount tag for the directory `path` that none of `taken` has: its name, in letters,
+/// digits, `-` and `_`.
+pub fn folder_tag(path: &str, taken: &[&str]) -> String {
+    let name = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
+    let stem: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let stem = if stem.is_empty() {
+        "share".to_owned()
+    } else {
+        stem
+    };
+    (0..)
+        .map(|i| match i {
+            0 => stem.clone(),
+            i => format!("{stem}{i}"),
+        })
+        .find(|t| !taken.contains(&t.as_str()))
+        .expect("an unused tag")
+}
+
+/// `xml` with the memory QEMU shares with virtiofsd, which virtiofs needs, or `None` where it
+/// has it already.
+pub fn with_shared_memory(xml: &str) -> Result<Option<String>, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let root = doc.root_element();
+    let backing = root.children().find(|n| n.has_tag_name("memoryBacking"));
+    let child = |name: &str| backing.and_then(|b| b.children().find(|n| n.has_tag_name(name)));
+    if child("access").is_some_and(|a| a.attribute("mode") == Some("shared")) {
+        return Ok(None);
+    }
+    let mut out = xml.to_owned();
+    match backing {
+        None => {
+            let end = root.range().end - "</domain>".len();
+            out.insert_str(
+                end,
+                "<memoryBacking><source type='memfd'/><access mode='shared'/></memoryBacking>",
+            );
+        }
+        Some(backing) => {
+            let mut added = String::new();
+            if child("source").is_none() {
+                added.push_str("<source type='memfd'/>");
+            }
+            added.push_str("<access mode='shared'/>");
+            let range = backing.range();
+            if xml[range.clone()].ends_with("/>") {
+                out.replace_range(range, &format!("<memoryBacking>{added}</memoryBacking>"));
+            } else {
+                // The end first, so the access element's range still holds.
+                out.insert_str(range.end - "</memoryBacking>".len(), &added);
+                if let Some(access) = child("access") {
+                    out.replace_range(access.range(), "");
+                }
+            }
+        }
+    }
+    Ok(Some(out))
 }
 
 /// The first device name for `bus` that none of `taken` has: `vda`, `vdb`… on virtio,
@@ -960,6 +1160,68 @@ mod tests {
         assert_eq!(c.nics[0].source.as_deref(), Some("br0"));
         assert_eq!(c.nics[0].xml, nic);
         assert_eq!(c.host_devices[0].id, usb);
+    }
+
+    #[test]
+    fn gadgets_read_back() {
+        let folder = shared_folder_xml("/home/me/Shared Stuff", "Shared_Stuff");
+        let xml = format!(
+            "<domain><devices>{}{}{}{folder}</devices></domain>",
+            tpm_xml(),
+            rng_xml(),
+            sound_xml("pc-q35-9.1")
+        );
+        let c = MachineConfig::parse(&xml).unwrap();
+        let gadgets: Vec<&Gadget> = c.gadgets.iter().map(|g| &g.gadget).collect();
+        assert_eq!(
+            gadgets,
+            [
+                &Gadget::Tpm { emulated: true },
+                &Gadget::Rng {
+                    source: Some("/dev/urandom".into())
+                },
+                &Gadget::Sound {
+                    model: "ich9".into()
+                },
+                &Gadget::SharedFolder {
+                    source: "/home/me/Shared Stuff".into(),
+                    tag: "Shared_Stuff".into()
+                },
+            ]
+        );
+        assert_eq!(c.gadgets[3].xml, folder);
+        assert_eq!(folder_tag("/home/me/Shared Stuff/", &[]), "Shared_Stuff");
+        assert_eq!(folder_tag("/srv/iso", &["iso"]), "iso1");
+        assert_eq!(folder_tag("/", &[]), "share");
+    }
+
+    #[test]
+    fn virtiofs_gets_shared_memory() {
+        let shared = "<memoryBacking><source type='memfd'/><access mode='shared'/></memoryBacking>";
+        let bare = "<domain><name>a</name></domain>";
+        let added = with_shared_memory(bare).unwrap().unwrap();
+        assert!(added.contains(shared), "{added}");
+        assert_eq!(with_shared_memory(&added).unwrap(), None);
+        let hugepages =
+            "<domain><memoryBacking><hugepages/><access mode='private'/></memoryBacking></domain>";
+        let changed = with_shared_memory(hugepages).unwrap().unwrap();
+        assert_eq!(
+            changed,
+            "<domain><memoryBacking><hugepages/><source type='memfd'/><access mode='shared'/></memoryBacking></domain>"
+        );
+        let empty = with_shared_memory("<domain><memoryBacking/></domain>")
+            .unwrap()
+            .unwrap();
+        assert_eq!(empty, format!("<domain>{shared}</domain>"));
+    }
+
+    #[test]
+    fn devices_libvirt_cannot_attach_go_into_the_definition() {
+        let bare = "<domain><devices><rng/></devices></domain>";
+        let tpm = with_device(bare, tpm_xml()).unwrap();
+        let c = MachineConfig::parse(&tpm).unwrap();
+        assert_eq!(c.gadgets[1].gadget, Gadget::Tpm { emulated: true });
+        assert_eq!(without_device(&tpm, &c.gadgets[1].xml).unwrap(), bare);
     }
 
     #[test]

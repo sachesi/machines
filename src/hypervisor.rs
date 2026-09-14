@@ -5,7 +5,7 @@ mod devices;
 mod networks;
 mod storage;
 
-pub use devices::{Change, NewStorage};
+pub use devices::{Change, NewGadget, NewStorage};
 pub use networks::VirtualNetwork;
 pub use storage::{HostUse, Pool, Volume};
 

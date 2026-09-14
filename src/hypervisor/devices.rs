@@ -1,12 +1,14 @@
 //! Devices given to a machine, or taken from it, after it was made.
 
 use gettextrs::gettext;
+use virt::domain::Domain;
+use virt::error::ErrorNumber;
 use virt::storage_pool::StoragePool;
 use virt::storage_vol::StorageVol;
 use virt::sys;
 
 use super::{Hypervisor, Result, image_format, message};
-use crate::domain_xml::{self, DiskDevice, MachineConfig};
+use crate::domain_xml::{self, DiskDevice, Gadget, MachineConfig};
 use crate::host_xml::{self, HostDevice};
 
 /// Whether a change reached the running machine as well as its definition.
@@ -29,6 +31,15 @@ pub enum NewStorage {
     HostDisk(String),
     /// A CD/DVD drive, empty or with this disc image in it.
     Cdrom(Option<String>),
+}
+
+#[derive(Debug, Clone)]
+pub enum NewGadget {
+    Tpm,
+    Rng,
+    Sound,
+    /// This directory of the host.
+    SharedFolder(String),
 }
 
 impl Hypervisor {
@@ -78,12 +89,32 @@ impl Hypervisor {
         }
         // Where the running machine refuses, e.g. a SATA disk, which cannot be hotplugged,
         // the definition alone still takes the change.
-        match apply(flags) {
-            Ok(_) => Ok(Change::Done),
-            Err(_) if active && persistent => {
-                apply(config).map(|_| Change::AtNextStart).map_err(message)
+        let at_next_start = if active {
+            Change::AtNextStart
+        } else {
+            Change::Done
+        };
+        let result = match apply(flags) {
+            Ok(_) => return Ok(Change::Done),
+            Err(_) if active && persistent => apply(config).map(|_| Change::AtNextStart),
+            Err(e) => Err(e),
+        };
+        match result {
+            // Some devices, such as a TPM, libvirt adds and removes in no way at all; the
+            // definition is edited instead.
+            Err(e) if persistent && e.code() == ErrorNumber::OperationUnsupported => {
+                let definition = dom
+                    .get_xml_desc(sys::VIR_DOMAIN_XML_INACTIVE | sys::VIR_DOMAIN_XML_SECURE)
+                    .map_err(message)?;
+                let edited = if attach {
+                    domain_xml::with_device(&definition, xml)?
+                } else {
+                    domain_xml::without_device(&definition, xml)?
+                };
+                Domain::define_xml(&self.conn, &edited).map_err(message)?;
+                Ok(at_next_start)
             }
-            Err(e) => Err(message(e)),
+            result => result.map_err(message),
         }
     }
 
@@ -161,6 +192,37 @@ impl Hypervisor {
                 self.attach(uuid, &drive)
             }
         }
+    }
+
+    /// Add a TPM, random number generator, sound card or shared folder. A shared folder
+    /// needs memory shared with virtiofsd, which the definition gets first, and so a
+    /// running machine without it only from its next start.
+    pub fn add_gadget(&self, uuid: &str, gadget: &NewGadget) -> Result<Change> {
+        let dom = self.domain(uuid)?;
+        let xml = dom
+            .get_xml_desc(sys::VIR_DOMAIN_XML_INACTIVE | sys::VIR_DOMAIN_XML_SECURE)
+            .map_err(message)?;
+        let config = MachineConfig::parse(&xml)?;
+        let device = match gadget {
+            NewGadget::Tpm => domain_xml::tpm_xml().to_owned(),
+            NewGadget::Rng => domain_xml::rng_xml().to_owned(),
+            NewGadget::Sound => domain_xml::sound_xml(&config.machine),
+            NewGadget::SharedFolder(path) => {
+                if let Some(shared) = domain_xml::with_shared_memory(&xml)? {
+                    Domain::define_xml(&self.conn, &shared).map_err(message)?;
+                }
+                let taken: Vec<&str> = config
+                    .gadgets
+                    .iter()
+                    .filter_map(|g| match &g.gadget {
+                        Gadget::SharedFolder { tag, .. } => Some(tag.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                domain_xml::shared_folder_xml(path, &domain_xml::folder_tag(path, &taken))
+            }
+        };
+        self.attach(uuid, &device)
     }
 
     /// The host's USB and PCI devices, USB first.

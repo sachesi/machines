@@ -8,9 +8,9 @@ use gettextrs::gettext;
 
 use crate::adw::prelude::*;
 use crate::dialogs::{self, new_machine};
-use crate::domain_xml::{self, Disk, MachineConfig, NetworkSource};
+use crate::domain_xml::{self, Disk, Gadget, MachineConfig, NetworkSource};
 use crate::host_xml::{HostDevice, HostDeviceId, HostDisk};
-use crate::hypervisor::{HostUse, MachineInfo, NewStorage, Pool, Volume};
+use crate::hypervisor::{HostUse, MachineInfo, NewGadget, NewStorage, Pool, Volume};
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
 use crate::{adw, glib, gtk};
@@ -757,4 +757,99 @@ pub fn plug_usb(view: &MachineView) {
             }
         }
     ));
+}
+
+/// "Add Device": a TPM, random number generator or sound card, where the machine has none,
+/// or a folder of the host to share.
+pub fn add_gadget(view: &MachineView, config: &MachineConfig) {
+    let has = |wanted: fn(&Gadget) -> bool| config.gadgets.iter().any(|g| wanted(&g.gadget));
+    let group = adw::PreferencesGroup::new();
+    let page = adw::PreferencesPage::new();
+    page.add(&group);
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&adw::HeaderBar::new());
+    toolbar.set_content(Some(&page));
+    let dialog = adw::Dialog::builder()
+        .title(gettext("Add Device"))
+        .content_width(480)
+        .child(&toolbar)
+        .build();
+    let choices = [
+        (
+            gettext("Shared Folder"),
+            gettext("A folder of the host, which the guest mounts over virtiofs"),
+            None,
+            false,
+        ),
+        (
+            gettext("TPM"),
+            gettext("An emulated TPM 2.0, which Windows 11 needs; swtpm has to be installed"),
+            Some(NewGadget::Tpm),
+            has(|g| matches!(g, Gadget::Tpm { .. })),
+        ),
+        (
+            gettext("Random Number Generator"),
+            gettext("Entropy from the host, for guests that start up waiting for it"),
+            Some(NewGadget::Rng),
+            has(|g| matches!(g, Gadget::Rng { .. })),
+        ),
+        (
+            gettext("Sound Card"),
+            gettext("Heard in the console with SPICE"),
+            Some(NewGadget::Sound),
+            has(|g| matches!(g, Gadget::Sound { .. })),
+        ),
+    ];
+    for (title, subtitle, gadget, present) in choices {
+        let row = adw::ActionRow::builder()
+            .title(title)
+            .subtitle(if present {
+                gettext("The virtual machine has one")
+            } else {
+                subtitle
+            })
+            .activatable(!present)
+            .sensitive(!present)
+            .build();
+        row.add_suffix(&gtk::Image::from_icon_name("list-add-symbolic"));
+        row.connect_activated(glib::clone!(
+            #[weak]
+            dialog,
+            #[weak]
+            view,
+            move |_| {
+                let gadget = gadget.clone();
+                glib::spawn_future_local(glib::clone!(
+                    #[weak]
+                    dialog,
+                    #[weak]
+                    view,
+                    async move {
+                        let gadget = match gadget {
+                            Some(gadget) => gadget,
+                            None => {
+                                let chooser = gtk::FileDialog::builder()
+                                    .title(gettext("Choose a Folder to Share"))
+                                    .build();
+                                let window = dialog.root().and_downcast::<gtk::Window>();
+                                let Ok(folder) =
+                                    chooser.select_folder_future(window.as_ref()).await
+                                else {
+                                    return;
+                                };
+                                let Some(path) = folder.path() else {
+                                    return;
+                                };
+                                NewGadget::SharedFolder(path.to_string_lossy().into_owned())
+                            }
+                        };
+                        dialog.close();
+                        view.change(move |hv, uuid| hv.add_gadget(uuid, &gadget));
+                    }
+                ));
+            }
+        ));
+        group.add(&row);
+    }
+    dialog.present(Some(view));
 }

@@ -10,7 +10,8 @@ use gettextrs::gettext;
 use crate::adw::prelude::*;
 use crate::dialogs::{add_button, hardware, remove_button};
 use crate::domain_xml::{
-    Disk, DiskDevice, Display, Firmware, HostDev, MachineConfig, Nic, Protocol,
+    Disk, DiskDevice, Display, Firmware, Gadget, GadgetDevice, HostDev, MachineConfig, Nic,
+    Protocol,
 };
 use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
@@ -38,6 +39,7 @@ pub fn page(view: &MachineView, info: &MachineInfo) -> adw::PreferencesPage {
     page.add(&storage(view, config, live));
     page.add(&network(view, info, config, live));
     page.add(&host_devices(view, config, live));
+    page.add(&gadgets(view, config, live));
     page.add(&display(view, info, config));
     page
 }
@@ -553,6 +555,68 @@ fn host_devices(
                 }
             }
         });
+    }
+    group
+}
+
+fn gadgets(
+    view: &MachineView,
+    config: &MachineConfig,
+    live: Option<&MachineConfig>,
+) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Devices"))
+        .build();
+    let add = add_button(&gettext("Add Device"));
+    add.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        config,
+        move |_| hardware::add_gadget(&view, &config)
+    ));
+    group.set_header_suffix(Some(&add));
+    let live = live.map(|l| l.gadgets.as_slice());
+    let gadgets = with_pending(&config.gadgets, live, GadgetDevice::same);
+    if gadgets.is_empty() {
+        group.set_description(Some(&gettext(
+            "A TPM, random number generator, sound card, or folders shared with the guest",
+        )));
+    }
+    for (device, pending) in gadgets {
+        let (title, subtitle) = match &device.gadget {
+            Gadget::Tpm { emulated: true } => (gettext("TPM"), gettext("Emulated, version 2.0")),
+            Gadget::Tpm { emulated: false } => (gettext("TPM"), gettext("The host’s own")),
+            Gadget::Rng { source } => (
+                gettext("Random Number Generator"),
+                source.clone().unwrap_or_default(),
+            ),
+            Gadget::Sound { model } => (
+                gettext("Sound Card"),
+                match model.as_str() {
+                    "ich6" | "ich7" | "ich9" => gettext("Intel HD Audio"),
+                    "ac97" => "AC’97".to_owned(),
+                    "usb" => gettext("USB Audio"),
+                    other => other.to_owned(),
+                },
+            ),
+            Gadget::SharedFolder { source, tag } => (
+                gettext("Shared Folder"),
+                gettext("{path}\nIn the guest: mount -t virtiofs {tag} /mnt")
+                    .replace("{path}", source)
+                    .replace("{tag}", tag),
+            ),
+        };
+        let row = adw::ActionRow::builder()
+            .title(title)
+            .subtitle(noted(subtitle, pending))
+            .subtitle_selectable(true)
+            .css_classes(["property"])
+            .build();
+        if pending != Pending::Removed {
+            row.add_suffix(&detach_button(view, &device.xml));
+        }
+        group.add(&row);
     }
     group
 }
