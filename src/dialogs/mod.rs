@@ -1,5 +1,6 @@
 pub mod delete;
 pub mod hardware;
+pub mod machine;
 pub mod networks;
 pub mod new_machine;
 pub mod storage;

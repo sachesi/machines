@@ -406,6 +406,17 @@ pub fn volume_xml(name: &str, gib: u64, format: Option<&str>) -> String {
     )
 }
 
+/// A volume of `bytes` in `format`, to copy another into.
+pub fn copy_volume_xml(name: &str, bytes: u64, format: Option<&str>) -> String {
+    let target = format
+        .map(|f| format!("<target><format type='{}'/></target>", escape(f)))
+        .unwrap_or_default();
+    format!(
+        "<volume><name>{}</name><capacity unit='bytes'>{bytes}</capacity>{target}</volume>",
+        escape(name)
+    )
+}
+
 /// A raw volume of exactly `bytes`, for a file to be uploaded into, which fills it with
 /// whatever format it is in.
 pub fn upload_volume_xml(name: &str, bytes: u64) -> String {

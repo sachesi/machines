@@ -281,6 +281,12 @@ impl MachinesWindow {
             .collect()
     }
 
+    /// Select the machine `uuid` once a listing has it.
+    pub fn select_when_listed(&self, uuid: &str) {
+        self.imp().pending_select.replace(Some(uuid.to_owned()));
+        self.refresh();
+    }
+
     pub fn machine_infos(&self) -> Vec<MachineInfo> {
         self.imp()
             .store

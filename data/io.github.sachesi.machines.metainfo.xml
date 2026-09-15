@@ -11,7 +11,8 @@
       <li>Start, shut down, pause, reboot and force off machines, and follow their state as it changes</li>
       <li>A built-in VNC and SPICE console that scales the guest's display to the window and passes the keyboard and pointer through, with sound and 3D acceleration over SPICE</li>
       <li>New machines from an installation ISO or an existing disk image, with a disk in libvirt's default storage pool</li>
-      <li>Processors, memory, autostart and the CD-ROM drive changed from the details page</li>
+      <li>Processors, memory, autostart, boot order and the CD-ROM drive changed from the details page</li>
+      <li>Machines renamed, and cloned with copies of their disks</li>
       <li>Disks, CD/DVD drives, network interfaces, display and video card, and USB and PCI devices of the host added and changed from the details page</li>
       <li>Storage pools, disks of the host and virtual networks</li>
       <li>Machines made with virt-manager</li>

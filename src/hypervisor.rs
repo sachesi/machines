@@ -24,7 +24,8 @@ use virt::storage_vol::StorageVol;
 use virt::sys;
 
 use crate::domain_xml::{
-    self, Disk, Display, DisplayOptions, GuestOs, MachineConfig, NetworkSource, NewMachine,
+    self, BootDevice, Disk, DiskDevice, Display, DisplayOptions, GuestOs, MachineConfig,
+    NetworkSource, NewMachine,
 };
 use crate::{glib, host_xml};
 
@@ -114,6 +115,15 @@ pub struct CreateRequest {
     pub memory_mib: u64,
     pub vcpus: u32,
     pub source: InstallSource,
+}
+
+/// What cloning a machine does with its disks.
+#[derive(Debug, Clone, Default)]
+pub struct ClonePlan {
+    /// Images the copy gets copies of.
+    pub copied: Vec<String>,
+    /// Disks the copy goes without, as no storage pool has their images to copy.
+    pub left_out: Vec<String>,
 }
 
 /// What the host can give its machines.
@@ -341,6 +351,113 @@ impl Hypervisor {
         Ok(())
     }
 
+    /// Boot from `order` from the next start on.
+    pub fn set_boot_order(&self, uuid: &str, order: &[BootDevice]) -> Result<()> {
+        let xml = self.definition(uuid)?;
+        Domain::define_xml(&self.conn, &domain_xml::set_boot_order(&xml, order)?)
+            .map(drop)
+            .map_err(message)
+    }
+
+    fn definition(&self, uuid: &str) -> Result<String> {
+        self.domain(uuid)?
+            .get_xml_desc(sys::VIR_DOMAIN_XML_INACTIVE | sys::VIR_DOMAIN_XML_SECURE)
+            .map_err(message)
+    }
+
+    pub fn rename(&self, uuid: &str, name: &str) -> Result<()> {
+        self.domain(uuid)?
+            .rename(name, 0)
+            .map(drop)
+            .map_err(message)
+    }
+
+    /// The disks a clone copies: those it writes to, where their images are volumes of a
+    /// pool. CD-ROMs and read-only disks it shares.
+    pub fn clone_plan(&self, uuid: &str) -> Result<ClonePlan> {
+        let config = MachineConfig::parse(&self.definition(uuid)?)?;
+        let mut plan = ClonePlan::default();
+        for (_, source) in self.writable_disks(&config) {
+            if StorageVol::lookup_by_path(&self.conn, &source).is_ok() {
+                plan.copied.push(source);
+            } else {
+                plan.left_out.push(source);
+            }
+        }
+        Ok(plan)
+    }
+
+    fn writable_disks(&self, config: &MachineConfig) -> Vec<(String, String)> {
+        config
+            .disks
+            .iter()
+            .filter(|d| {
+                d.device == DiskDevice::Disk
+                    && !d.xml.contains("<readonly")
+                    && !d.xml.contains("<shareable")
+            })
+            .filter_map(|d| Some((d.xml.clone(), d.source.clone()?)))
+            .collect()
+    }
+
+    /// Define a copy of the shut-off machine `uuid` named `name`, with copies of the disks
+    /// [`Self::clone_plan`] names, in their pools, and return its UUID.
+    pub fn clone_machine(&self, uuid: &str, name: &str) -> Result<String> {
+        let dom = self.domain(uuid)?;
+        if dom.is_active().map_err(message)? {
+            return Err(gettext("Shut the virtual machine down to clone it"));
+        }
+        let xml = self.definition(uuid)?;
+        let config = MachineConfig::parse(&xml)?;
+        let mut disks = Vec::new();
+        let mut made: Vec<StorageVol> = Vec::new();
+        let copied = self
+            .writable_disks(&config)
+            .into_iter()
+            .try_for_each(|(disk, source)| {
+                let copy = match StorageVol::lookup_by_path(&self.conn, &source) {
+                    Ok(vol) => {
+                        let copy = self.copy_volume(&vol, name, &source)?;
+                        let path = copy.get_path().map_err(message);
+                        made.push(copy);
+                        Some(path?)
+                    }
+                    Err(_) => None,
+                };
+                disks.push((disk, copy));
+                Ok(())
+            });
+        let defined = copied.and_then(|()| {
+            let dom = Domain::define_xml(&self.conn, &domain_xml::clone_xml(&xml, name, &disks)?)
+                .map_err(message)?;
+            dom.get_uuid_string().map_err(message)
+        });
+        if defined.is_err() {
+            for vol in made {
+                let _ = vol.delete(0);
+            }
+        }
+        defined
+    }
+
+    /// A copy of `vol`, the image at `path`, in its pool, named after the machine `machine`.
+    fn copy_volume(&self, vol: &StorageVol, machine: &str, path: &str) -> Result<StorageVol> {
+        let pool = StoragePool::lookup_by_volume(vol).map_err(message)?;
+        let format = vol
+            .get_xml_desc(0)
+            .ok()
+            .and_then(|xml| host_xml::volume_format(&xml));
+        let capacity = vol.get_info().map_err(message)?.capacity;
+        let extension = Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| format!(".{e}"))
+            .unwrap_or_default();
+        let name = unused_volume_name(&pool, machine, &extension);
+        let xml = host_xml::copy_volume_xml(&name, capacity, format.as_deref());
+        StorageVol::create_xml_from(&pool, &xml, vol, 0).map_err(message)
+    }
+
     /// Put `source` in the CD-ROM drive `disk`, or empty it, now and for later starts.
     pub fn change_media(&self, uuid: &str, disk: &Disk, source: Option<&str>) -> Result<()> {
         let dom = self.domain(uuid)?;
@@ -539,17 +656,6 @@ impl Hypervisor {
     /// A new volume in `pool`, named after the machine: a qcow2 image, or in a volume
     /// group, a logical volume.
     fn new_disk(&self, pool: &StoragePool, machine: &str, gib: u64) -> Result<StorageVol> {
-        let _ = pool.refresh(0);
-        let stem: String = machine
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || "._-".contains(c) {
-                    c
-                } else {
-                    '-'
-                }
-            })
-            .collect();
         let logical = pool
             .get_xml_desc(0)
             .ok()
@@ -560,13 +666,7 @@ impl Hypervisor {
         } else {
             (".qcow2", Some("qcow2"))
         };
-        let name = (0..)
-            .map(|i| match i {
-                0 => format!("{stem}{extension}"),
-                i => format!("{stem}-{i}{extension}"),
-            })
-            .find(|n| StorageVol::lookup_by_name(pool, n).is_err())
-            .expect("an unused name");
+        let name = unused_volume_name(pool, machine, extension);
         StorageVol::create_xml(pool, &host_xml::volume_xml(&name, gib, format), 0).map_err(message)
     }
 
@@ -597,6 +697,23 @@ impl Hypervisor {
         }
         Ok(pool)
     }
+}
+
+/// A name for a new volume in `pool`, after the machine `machine`, that no volume there has.
+fn unused_volume_name(pool: &StoragePool, machine: &str, extension: &str) -> String {
+    let _ = pool.refresh(0);
+    let stem = machine
+        .split(|c: char| !(c.is_alphanumeric() || "._".contains(c)))
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    (0..)
+        .map(|i| match i {
+            0 => format!("{stem}{extension}"),
+            i => format!("{stem}-{i}{extension}"),
+        })
+        .find(|n| StorageVol::lookup_by_name(pool, n).is_err())
+        .expect("an unused name")
 }
 
 /// qcow2 by its magic number, where the file can be read; otherwise by extension, with raw

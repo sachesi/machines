@@ -90,6 +90,14 @@ impl GadgetDevice {
     }
 }
 
+/// A device the firmware can boot from, by its place among the machine's devices of its kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BootDevice {
+    Disk(usize),
+    Nic(usize),
+    HostDev(usize),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MachineConfig {
     pub virt_type: String,
@@ -110,6 +118,8 @@ pub struct MachineConfig {
     pub video: Option<String>,
     /// Whether the video card renders 3D on the host's GPU.
     pub accel3d: bool,
+    /// What the firmware tries to boot from, first to last.
+    pub boot: Vec<BootDevice>,
 }
 
 const LIBOSINFO_NS: &str = "http://libosinfo.org/xmlns/libvirt/domain/1.0";
@@ -158,9 +168,18 @@ impl MachineConfig {
         let mut graphics = Vec::new();
         let mut video = None;
         let mut accel3d = false;
+        let mut boot = Vec::new();
         for dev in devices {
             let xml = xml[dev.range()].to_owned();
             let sub = |name: &str| dev.children().find(|n| n.has_tag_name(name));
+            let order = sub("boot")
+                .and_then(|b| b.attribute("order"))
+                .and_then(|o| o.parse::<u32>().ok());
+            let mut boots = |device| {
+                if let Some(order) = order {
+                    boot.push((order, device));
+                }
+            };
             match dev.tag_name().name() {
                 "disk" => {
                     let device = match dev.attribute("device") {
@@ -177,6 +196,7 @@ impl MachineConfig {
                             .map(str::to_owned)
                     });
                     let target = sub("target");
+                    boots(BootDevice::Disk(disks.len()));
                     disks.push(Disk {
                         device,
                         kind: dev.attribute("type").unwrap_or("file").to_owned(),
@@ -195,24 +215,28 @@ impl MachineConfig {
                         xml,
                     });
                 }
-                "interface" => nics.push(Nic {
-                    kind: dev.attribute("type").unwrap_or_default().to_owned(),
-                    source: sub("source").and_then(|s| {
-                        s.attribute("network")
-                            .or(s.attribute("bridge"))
-                            .or(s.attribute("dev"))
-                            .map(str::to_owned)
-                    }),
-                    model: sub("model")
-                        .and_then(|m| m.attribute("type"))
-                        .map(str::to_owned),
-                    mac: sub("mac")
-                        .and_then(|m| m.attribute("address"))
-                        .map(str::to_owned),
-                    xml,
-                }),
+                "interface" => {
+                    boots(BootDevice::Nic(nics.len()));
+                    nics.push(Nic {
+                        kind: dev.attribute("type").unwrap_or_default().to_owned(),
+                        source: sub("source").and_then(|s| {
+                            s.attribute("network")
+                                .or(s.attribute("bridge"))
+                                .or(s.attribute("dev"))
+                                .map(str::to_owned)
+                        }),
+                        model: sub("model")
+                            .and_then(|m| m.attribute("type"))
+                            .map(str::to_owned),
+                        mac: sub("mac")
+                            .and_then(|m| m.attribute("address"))
+                            .map(str::to_owned),
+                        xml,
+                    });
+                }
                 "hostdev" if dev.attribute("mode") == Some("subsystem") => {
                     if let Some(id) = HostDeviceId::from_hostdev(dev) {
+                        boots(BootDevice::HostDev(host_devices.len()));
                         host_devices.push(HostDev { id, xml });
                     }
                 }
@@ -263,6 +287,12 @@ impl MachineConfig {
             }
         }
 
+        boot.sort_by_key(|(order, _)| *order);
+        let mut boot: Vec<BootDevice> = boot.into_iter().map(|(_, device)| device).collect();
+        if boot.is_empty() {
+            boot = legacy_boot(os, &disks, nics.len());
+        }
+
         Ok(Self {
             virt_type: root.attribute("type").unwrap_or_default().to_owned(),
             arch: os_type
@@ -284,6 +314,7 @@ impl MachineConfig {
             graphics,
             video,
             accel3d,
+            boot,
         })
     }
 
@@ -295,6 +326,34 @@ impl MachineConfig {
             .filter_map(|d| d.source.clone())
             .collect()
     }
+}
+
+/// The boot order `<os><boot dev=…/>` gives: the first device of each kind it names.
+fn legacy_boot(os: Option<roxmltree::Node>, disks: &[Disk], nics: usize) -> Vec<BootDevice> {
+    let first = |device: DiskDevice| {
+        disks
+            .iter()
+            .position(|d| d.device == device)
+            .map(BootDevice::Disk)
+    };
+    let mut boot = Vec::new();
+    for dev in os
+        .iter()
+        .flat_map(|os| os.children())
+        .filter(|n| n.has_tag_name("boot"))
+    {
+        let device = match dev.attribute("dev") {
+            Some("hd") => first(DiskDevice::Disk),
+            Some("cdrom") => first(DiskDevice::Cdrom),
+            Some("fd") => first(DiskDevice::Floppy),
+            Some("network") => (nics > 0).then_some(BootDevice::Nic(0)),
+            _ => None,
+        };
+        if let Some(device) = device.filter(|d| !boot.contains(d)) {
+            boot.push(device);
+        }
+    }
+    boot
 }
 
 fn to_mib(value: &str, unit: &str) -> Option<u64> {
@@ -529,6 +588,130 @@ pub fn with_shared_memory(xml: &str) -> Result<Option<String>, String> {
         }
     }
     Ok(Some(out))
+}
+
+/// `xml` booting from `order`, first to last, and from nothing else.
+///
+/// The order goes on the devices themselves, as `<boot order=…/>`, which libvirt allows only
+/// once `<os>` names none by kind.
+pub fn set_boot_order(xml: &str, order: &[BootDevice]) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let root = doc.root_element();
+    let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+    if let Some(os) = child(root, "os") {
+        for boot in os.children().filter(|n| n.has_tag_name("boot")) {
+            edits.push((boot.range(), String::new()));
+        }
+    }
+    let devices = child(root, "devices").ok_or("the domain has no devices")?;
+    let elements = |name: &'static str| devices.children().filter(move |n| n.has_tag_name(name));
+    let disks: Vec<_> = elements("disk").collect();
+    let nics: Vec<_> = elements("interface").collect();
+    let host_devices: Vec<_> = elements("hostdev")
+        .filter(|n| {
+            n.attribute("mode") == Some("subsystem") && HostDeviceId::from_hostdev(*n).is_some()
+        })
+        .collect();
+    for dev in disks.iter().chain(&nics).chain(&host_devices) {
+        if let Some(boot) = child(*dev, "boot") {
+            edits.push((boot.range(), String::new()));
+        }
+    }
+    for (i, device) in order.iter().enumerate() {
+        let dev = match *device {
+            BootDevice::Disk(n) => disks.get(n),
+            BootDevice::Nic(n) => nics.get(n),
+            BootDevice::HostDev(n) => host_devices.get(n),
+        }
+        .ok_or("the device to boot from is not in the definition")?;
+        let boot = format!("<boot order='{}'/>", i + 1);
+        let range = dev.range();
+        if xml[range.clone()].ends_with("/>") {
+            let open = xml[range.start..range.end - 2].trim_end();
+            let name = dev.tag_name().name();
+            edits.push((range, format!("{open}>{boot}</{name}>")));
+        } else {
+            let end = range.end - format!("</{}>", dev.tag_name().name()).len();
+            edits.push((end..end, boot));
+        }
+    }
+    Ok(apply_edits(xml, edits))
+}
+
+fn child<'a, 'i>(parent: roxmltree::Node<'a, 'i>, name: &str) -> Option<roxmltree::Node<'a, 'i>> {
+    parent.children().find(|n| n.has_tag_name(name))
+}
+
+/// `xml` with each range replaced, where no two ranges overlap.
+fn apply_edits(xml: &str, mut edits: Vec<(std::ops::Range<usize>, String)>) -> String {
+    let mut out = xml.to_owned();
+    // Back to front, so the earlier ranges still point at the same text.
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    for (range, replacement) in edits {
+        out.replace_range(range, &replacement);
+    }
+    out
+}
+
+/// A copy of the machine `xml` named `name`, with a UUID and MAC addresses of its own, and
+/// firmware variables libvirt makes afresh.
+///
+/// `disks` pairs the element of each disk the copy changes with the image the copy reads
+/// instead, or with nothing for a disk the copy goes without.
+pub fn clone_xml(
+    xml: &str,
+    name: &str,
+    disks: &[(String, Option<String>)],
+) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let root = doc.root_element();
+    let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+    let name_node = child(root, "name").ok_or("the domain has no name")?;
+    edits.push((name_node.range(), format!("<name>{}</name>", escape(name))));
+    if let Some(uuid) = child(root, "uuid") {
+        edits.push((uuid.range(), String::new()));
+    }
+    if let Some(nvram) = child(root, "os").and_then(|os| child(os, "nvram")) {
+        let template = nvram
+            .attribute("template")
+            .map(|t| format!("<nvram template='{}'/>", escape(t)))
+            .unwrap_or_default();
+        edits.push((nvram.range(), template));
+    }
+    let devices = child(root, "devices").ok_or("the domain has no devices")?;
+    for dev in devices.children().filter(|n| n.is_element()) {
+        match dev.tag_name().name() {
+            "interface" => {
+                if let Some(mac) = child(dev, "mac") {
+                    edits.push((mac.range(), String::new()));
+                }
+            }
+            // A socket libvirt named after the machine; it makes the copy one of its own.
+            "channel" if dev.attribute("type") == Some("unix") => {
+                if let Some(source) = child(dev, "source") {
+                    edits.push((source.range(), String::new()));
+                }
+            }
+            "disk" => {
+                let Some((_, copy)) = disks.iter().find(|(d, _)| *d == xml[dev.range()]) else {
+                    continue;
+                };
+                let source = copy.as_ref().and_then(|copy| {
+                    let attribute = child(dev, "source")?
+                        .attributes()
+                        .find(|a| ["file", "dev", "volume", "name"].contains(&a.name()))?;
+                    Some((attribute.range_value(), escape(copy)))
+                });
+                match (copy, source) {
+                    (Some(_), Some(source)) => edits.push(source),
+                    (Some(_), None) => return Err("a disk to copy has no source".to_owned()),
+                    (None, _) => edits.push((dev.range(), String::new())),
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(apply_edits(xml, edits))
 }
 
 /// The first device name for `bus` that none of `taken` has: `vda`, `vdb`… on virtio,
@@ -1240,5 +1423,55 @@ mod tests {
             .unwrap();
         assert_eq!(source.attribute("file"), Some("/isos/a&b.iso"));
         assert!(!cdrom_xml(&c.disks[1], None).contains("source"));
+    }
+
+    #[test]
+    fn boot_order_moves_onto_the_devices() {
+        let c = MachineConfig::parse(VIRT_MANAGER).unwrap();
+        assert_eq!(c.boot, [BootDevice::Disk(0)]);
+        let order = [BootDevice::Disk(1), BootDevice::Nic(0), BootDevice::Disk(0)];
+        let xml = set_boot_order(VIRT_MANAGER, &order).unwrap();
+        assert!(!xml.contains("<boot dev="), "{xml}");
+        assert_eq!(MachineConfig::parse(&xml).unwrap().boot, order);
+        let again = set_boot_order(&xml, &[BootDevice::Nic(0)]).unwrap();
+        assert_eq!(again.matches("<boot order=").count(), 1, "{again}");
+        assert_eq!(
+            MachineConfig::parse(&again).unwrap().boot,
+            [BootDevice::Nic(0)]
+        );
+        let empty = "<domain><devices><interface type='user'/></devices></domain>";
+        let xml = set_boot_order(empty, &[BootDevice::Nic(0)]).unwrap();
+        assert!(
+            xml.contains("<interface type='user'><boot order='1'/></interface>"),
+            "{xml}"
+        );
+    }
+
+    #[test]
+    fn a_clone_gets_its_own_identity_and_disks() {
+        let with_nvram = VIRT_MANAGER.replace(
+            "<boot dev='hd'/>",
+            "<nvram template='/usr/share/edk2/ovmf/OVMF_VARS.fd'>/var/lib/libvirt/qemu/nvram/fedora41_VARS.fd</nvram>",
+        );
+        let c = MachineConfig::parse(&with_nvram).unwrap();
+        let disks = [(
+            c.disks[0].xml.clone(),
+            Some("/var/lib/libvirt/images/copy.qcow2".to_owned()),
+        )];
+        let xml = clone_xml(&with_nvram, "copy", &disks).unwrap();
+        assert!(xml.contains("<name>copy</name>"), "{xml}");
+        assert!(!xml.contains("<uuid>"), "{xml}");
+        assert!(!xml.contains("52:54:00:12:34:56"), "{xml}");
+        assert!(!xml.contains("fedora41_VARS"), "{xml}");
+        assert!(
+            xml.contains("<nvram template='/usr/share/edk2/ovmf/OVMF_VARS.fd'/>"),
+            "{xml}"
+        );
+        let copy = MachineConfig::parse(&xml).unwrap();
+        assert_eq!(copy.disk_files(), ["/var/lib/libvirt/images/copy.qcow2"]);
+        assert_eq!(copy.disks[1], c.disks[1]);
+
+        let without = clone_xml(VIRT_MANAGER, "copy", &[(c.disks[0].xml.clone(), None)]).unwrap();
+        assert_eq!(MachineConfig::parse(&without).unwrap().disks.len(), 1);
     }
 }

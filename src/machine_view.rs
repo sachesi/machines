@@ -199,6 +199,12 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
         }
     });
     klass.install_action("machine.delete", None, |view, _, _| view.delete());
+    klass.install_action("machine.rename", None, |view, _, _| {
+        dialogs::machine::rename(view);
+    });
+    klass.install_action("machine.clone", None, |view, _, _| {
+        dialogs::machine::clone(view);
+    });
     klass.install_action("machine.usb-devices", None, |view, _, _| {
         dialogs::hardware::plug_usb(view);
     });
@@ -378,6 +384,9 @@ impl MachineView {
         self.action_set_enabled("machine.send-keys", running);
         self.action_set_enabled("machine.usb-devices", running);
         self.action_set_enabled("machine.delete", state.is_some());
+        let editable = info.as_ref().is_some_and(|i| i.persistent) && !active;
+        self.action_set_enabled("machine.rename", editable);
+        self.action_set_enabled("machine.clone", editable);
         self.action_set_enabled(
             "machine.fullscreen",
             self.imp().console.is_open() || self.imp().fullscreen.get(),

@@ -8,7 +8,7 @@ use std::time::Duration;
 use gettextrs::gettext;
 
 use crate::adw::prelude::*;
-use crate::dialogs::{add_button, hardware, remove_button};
+use crate::dialogs::{self, add_button, hardware, remove_button};
 use crate::domain_xml::{
     Disk, DiskDevice, Display, Firmware, Gadget, GadgetDevice, HostDev, MachineConfig, Nic,
     Protocol,
@@ -150,8 +150,35 @@ fn overview(
             }
         ));
         group.add(&autostart);
+        let boot = adw::ActionRow::builder()
+            .title(gettext("Boot Order"))
+            .subtitle(boot_summary(config))
+            .activatable(true)
+            .build();
+        boot.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+        let running = info.state.is_active();
+        boot.connect_activated(glib::clone!(
+            #[weak]
+            view,
+            #[strong]
+            config,
+            move |_| dialogs::machine::boot_order(&view, &config, running)
+        ));
+        group.add(&boot);
     }
     group
+}
+
+fn boot_summary(config: &MachineConfig) -> String {
+    if config.boot.is_empty() {
+        return gettext("Nothing to boot from");
+    }
+    config
+        .boot
+        .iter()
+        .map(|d| dialogs::machine::boot_label(config, *d).0)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// "http://fedoraproject.org/fedora/41" as "fedora 41".
