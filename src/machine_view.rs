@@ -129,6 +129,17 @@ mod imp {
                 }
             ));
             obj.add_controller(motion);
+
+            // The display is connected only while it is on screen, so nothing holds it
+            // while the details show or the window is gone.
+            self.view_stack
+                .connect_visible_child_name_notify(glib::clone!(
+                    #[weak(rename_to = view)]
+                    obj,
+                    move |_| view.update()
+                ));
+            obj.connect_map(|view| view.update());
+            obj.connect_unmap(|view| view.update());
             obj.update();
         }
     }
@@ -404,6 +415,10 @@ impl MachineView {
             );
             return;
         }
+        if !self.console_wanted() {
+            self.release_console();
+            return;
+        }
         if imp.console.is_open() || imp.connecting.get() {
             return;
         }
@@ -437,6 +452,19 @@ impl MachineView {
                 None,
             ),
         }
+    }
+
+    fn console_wanted(&self) -> bool {
+        self.is_mapped() && self.imp().view_stack.visible_child_name().as_deref() == Some("console")
+    }
+
+    /// Let go of the display, or of the socket still on its way to it.
+    fn release_console(&self) {
+        let imp = self.imp();
+        if imp.connecting.replace(false) {
+            imp.generation.set(imp.generation.get() + 1);
+        }
+        imp.console.close();
     }
 
     fn open_console(&self, spice: bool) {

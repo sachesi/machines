@@ -220,7 +220,10 @@ impl Console {
         conn.connect_vnc_disconnected(glib::clone!(
             #[weak(rename_to = console)]
             self,
-            move |_| {
+            move |conn| {
+                if console.imp().connection.borrow().as_ref() != Some(conn) {
+                    return;
+                }
                 let reason = console.imp().error.take().unwrap_or_default();
                 console.close();
                 console.emit_by_name::<()>("disconnected", &[&reason]);
