@@ -759,6 +759,204 @@ pub fn plug_usb(view: &MachineView) {
     ));
 }
 
+/// "Redirect USB Devices": devices of the computer the console runs on, passed to the guest
+/// through the SPICE session, with a switch each.
+pub fn redirect_usb(view: &MachineView) {
+    let (Some(win), Some(usb)) = (window(view), view.usb_redirection()) else {
+        return;
+    };
+    let group = adw::PreferencesGroup::builder()
+        .description(gettext(
+            "Devices of this computer, lent to the virtual machine through the console. \
+             They come back when it disconnects or the device is switched off here.",
+        ))
+        .build();
+    let page = adw::PreferencesPage::new();
+    page.add(&group);
+    let toast = adw::ToastOverlay::new();
+    toast.set_child(Some(&page));
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&adw::HeaderBar::new());
+    toolbar.set_content(Some(&toast));
+    let dialog = adw::Dialog::builder()
+        .title(gettext("Redirect USB Devices"))
+        .content_width(480)
+        .content_height(480)
+        .child(&toolbar)
+        .build();
+    let rows: Rc<RefCell<Vec<gtk::Widget>>> = Rc::default();
+    let fill = Rc::new(glib::clone!(
+        #[weak]
+        view,
+        #[weak]
+        group,
+        #[weak]
+        toast,
+        #[weak]
+        dialog,
+        #[strong]
+        usb,
+        #[strong]
+        rows,
+        move || {
+            for row in rows.take() {
+                group.remove(&row);
+            }
+            let devices = usb.devices();
+            let connected = devices.iter().any(|d| usb.is_device_connected(d));
+            if usb.free_channels() == 0 && !connected {
+                let add = adw::ButtonRow::builder()
+                    .title(gettext("_Add USB Redirection"))
+                    .use_underline(true)
+                    .build();
+                add.add_css_class("suggested-action");
+                add.connect_activated(glib::clone!(
+                    #[strong]
+                    win,
+                    move |_| add_redirection(&view, &win, &dialog)
+                ));
+                let row = adw::ActionRow::builder()
+                    .title(gettext(
+                        "The virtual machine takes no USB devices from the console",
+                    ))
+                    .subtitle(gettext("Adding two slots for them reconnects the console"))
+                    .build();
+                for widget in [row.upcast::<gtk::Widget>(), add.upcast()] {
+                    group.add(&widget);
+                    rows.borrow_mut().push(widget);
+                }
+                return;
+            }
+            if devices.is_empty() {
+                let row = adw::ActionRow::builder()
+                    .title(gettext("No USB devices"))
+                    .css_classes(["dim-label"])
+                    .build();
+                group.add(&row);
+                rows.borrow_mut().push(row.upcast());
+            }
+            for mut device in devices {
+                let redirected = usb.is_device_connected(&device);
+                let refused = usb.can_redirect_device(&device).err();
+                let row = adw::SwitchRow::builder()
+                    .title(
+                        device
+                            .description(Some("%1$s %2$s"))
+                            .unwrap_or_default()
+                            .trim(),
+                    )
+                    // Printf's numbered arguments may skip none, so the first two print
+                    // nothing rather than go unnamed.
+                    .subtitle(match &refused {
+                        Some(e) if !redirected => e.message().to_owned(),
+                        _ => device
+                            .description(Some("%1$.0s%2$.0s%3$s"))
+                            .unwrap_or_default()
+                            .into(),
+                    })
+                    .active(redirected)
+                    .sensitive(redirected || refused.is_none())
+                    .build();
+                // Set while the switch goes back after a failure, which is no request.
+                let reverting = Rc::new(std::cell::Cell::new(false));
+                row.connect_active_notify(glib::clone!(
+                    #[strong]
+                    usb,
+                    #[weak]
+                    toast,
+                    #[weak]
+                    view,
+                    move |row| {
+                        if reverting.get() {
+                            return;
+                        }
+                        let on = row.is_active();
+                        glib::spawn_future_local(glib::clone!(
+                            #[strong]
+                            usb,
+                            #[strong]
+                            device,
+                            #[weak]
+                            row,
+                            #[strong]
+                            reverting,
+                            async move {
+                                let done = if on {
+                                    usb.connect_device_future(&device).await
+                                } else {
+                                    usb.disconnect_device_future(&device).await
+                                };
+                                if let Err(e) = done {
+                                    toast.add_toast(adw::Toast::new(e.message()));
+                                    reverting.set(true);
+                                    row.set_active(!on);
+                                    reverting.set(false);
+                                }
+                                view.recheck_console();
+                            }
+                        ));
+                    }
+                ));
+                group.add(&row);
+                rows.borrow_mut().push(row.upcast());
+            }
+        }
+    ));
+    fill();
+    let handlers = [
+        usb.connect_device_added(glib::clone!(
+            #[strong]
+            fill,
+            move |_, _| fill()
+        )),
+        usb.connect_device_removed(glib::clone!(
+            #[strong]
+            fill,
+            move |_, _| fill()
+        )),
+    ];
+    let handlers = RefCell::new(Some(handlers));
+    dialog.connect_closed(move |_| {
+        for handler in handlers.take().into_iter().flatten() {
+            usb.disconnect(handler);
+        }
+    });
+    dialog.present(Some(view));
+}
+
+/// Give the machine slots for redirected USB devices, now and from its next start, and
+/// reconnect the console, which only learns of new slots as it connects.
+fn add_redirection(view: &MachineView, win: &MachinesWindow, dialog: &adw::Dialog) {
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        view,
+        #[weak]
+        win,
+        #[weak]
+        dialog,
+        async move {
+            let Some(uuid) = view.info().map(|i| i.uuid) else {
+                return;
+            };
+            let added = win
+                .call(move |hv| {
+                    for _ in 0..domain_xml::REDIRDEV_SLOTS {
+                        hv.attach(&uuid, domain_xml::REDIRDEV_XML)?;
+                    }
+                    Ok(())
+                })
+                .await;
+            dialog.close();
+            match added {
+                Some(Ok(())) => view.reconnect_console(),
+                Some(Err(e)) => win.toast(&e),
+                None => {}
+            }
+            win.refresh();
+        }
+    ));
+}
+
 /// "Add Device": a TPM, random number generator or sound card, where the machine has none,
 /// or a folder of the host to share.
 pub fn add_gadget(view: &MachineView, config: &MachineConfig) {

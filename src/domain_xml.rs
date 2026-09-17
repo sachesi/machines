@@ -493,6 +493,11 @@ pub fn tpm_xml() -> &'static str {
     "<tpm model='tpm-crb'><backend type='emulator' version='2.0'/></tpm>"
 }
 
+/// A slot for a USB device a SPICE client redirects to the guest.
+pub const REDIRDEV_XML: &str = "<redirdev bus='usb' type='spicevmc'/>";
+/// How many USB devices a SPICE machine takes from the client at once, as virt-manager has it.
+pub const REDIRDEV_SLOTS: usize = 2;
+
 /// A virtio random number generator the host's `/dev/urandom` feeds.
 pub fn rng_xml() -> &'static str {
     "<rng model='virtio'><backend model='random'>/dev/urandom</backend></rng>"
@@ -856,7 +861,8 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
         "    <graphics type='spice'>\n      <listen type='none'/>\n    </graphics>\n    \
          <channel type='spicevmc'>\n      <target type='virtio' name='com.redhat.spice.0'/>\n    </channel>\n    \
          <sound model='ich9'>\n      <audio id='1'/>\n    </sound>\n    \
-         <audio id='1' type='spice'/>\n"
+         <audio id='1' type='spice'/>\n    \
+         <redirdev bus='usb' type='spicevmc'/>\n    <redirdev bus='usb' type='spicevmc'/>\n"
     } else {
         "    <graphics type='vnc'>\n      <listen type='none'/>\n    </graphics>\n"
     });
@@ -1020,6 +1026,7 @@ pub fn set_display(xml: &str, display: &Display) -> Result<String, String> {
     let mut graphics = Some(graphics);
     let mut video = Some(video);
     let mut has_agent = false;
+    let mut redirdevs = 0;
     for dev in devices.children().filter(|n| n.is_element()) {
         let kind = dev.attribute("type");
         let spicevmc = kind == Some("spicevmc")
@@ -1032,7 +1039,8 @@ pub fn set_display(xml: &str, display: &Display) -> Result<String, String> {
                 edits.push((dev.range(), video.take().unwrap_or_default()))
             }
             "channel" if spicevmc && spice => has_agent = true,
-            "channel" | "redirdev" | "smartcard" if spicevmc => {
+            "redirdev" if spicevmc && spice => redirdevs += 1,
+            "channel" | "redirdev" | "smartcard" if spicevmc && !spice => {
                 edits.push((dev.range(), String::new()));
             }
             "audio" if !spice && kind == Some("spice") || spice && kind == Some("none") => {
@@ -1052,15 +1060,14 @@ pub fn set_display(xml: &str, display: &Display) -> Result<String, String> {
             "<channel type='spicevmc'><target type='virtio' name='com.redhat.spice.0'/></channel>",
         );
     }
+    if spice {
+        for _ in redirdevs..REDIRDEV_SLOTS {
+            added.push_str(REDIRDEV_XML);
+        }
+    }
     let end = devices.range().end - "</devices>".len();
     edits.push((end..end, added));
-    let mut out = xml.to_owned();
-    // Back to front, so the earlier ranges still point at the same text.
-    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
-    for (range, replacement) in edits {
-        out.replace_range(range, &replacement);
-    }
-    Ok(out)
+    Ok(apply_edits(xml, edits))
 }
 
 #[cfg(test)]
@@ -1163,6 +1170,8 @@ mod tests {
     #[test]
     fn spice_becomes_vnc_and_its_devices_go() {
         let c = MachineConfig::parse(VIRT_MANAGER).unwrap();
+        let kept = set_display(VIRT_MANAGER, &c.display()).unwrap();
+        assert_eq!(kept.matches("<redirdev").count(), REDIRDEV_SLOTS, "{kept}");
         let xml = set_display(VIRT_MANAGER, &vnc("virtio", false)).unwrap();
         let back = MachineConfig::parse(&xml).unwrap();
         assert_eq!(back.graphics, ["vnc"]);
@@ -1181,6 +1190,11 @@ mod tests {
         assert_eq!(back.display(), spice);
         assert!(again.contains("<audio id='1' type='spice'/>"), "{again}");
         assert_eq!(again.matches("com.redhat.spice.0").count(), 1, "{again}");
+        assert_eq!(
+            again.matches("<redirdev").count(),
+            REDIRDEV_SLOTS,
+            "{again}"
+        );
     }
 
     #[test]
@@ -1267,7 +1281,7 @@ mod tests {
                 .unwrap()
                 .matches("spicevmc")
                 .count(),
-            1
+            1 + REDIRDEV_SLOTS
         );
     }
 

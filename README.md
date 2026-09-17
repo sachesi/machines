@@ -21,8 +21,10 @@ into, and its virtual networks: NAT, routed, isolated, or on a bridge of the hos
 The console reaches a machine's display through libvirt rather than over the network, so
 new machines have a display with no listening socket at all: SPICE where
 QEMU has it, which carries sound and, with the SPICE agent in the guest, sizes the guest's
-screen to the window; VNC otherwise. With 3D acceleration, SPICE hands the console the GPU's
-frames as they are, while VNC has QEMU read them back.
+screen to the window and shares the clipboard's text with it; VNC otherwise. SPICE also
+lends USB devices of the computer the console runs on to the machine, which works on
+remote connections and the user session too. With 3D acceleration, SPICE hands the console
+the GPU's frames as they are, while VNC has QEMU read them back.
 
 You need libvirt with its QEMU driver, gvnc (from gtk-vnc), spice-glib, GTK 4.22 and
 libadwaita 1.9.

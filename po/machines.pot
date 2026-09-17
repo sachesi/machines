@@ -69,8 +69,8 @@ msgstr ""
 #: data/io.github.sachesi.machines.metainfo.xml:12
 msgid ""
 "A built-in VNC and SPICE console that scales the guest's display to the "
-"window and passes the keyboard and pointer through, with sound and 3D "
-"acceleration over SPICE"
+"window and passes the keyboard and pointer through, with sound, clipboard "
+"sharing, USB redirection and 3D acceleration over SPICE"
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:13
@@ -323,7 +323,7 @@ msgstr ""
 msgid "Devices"
 msgstr ""
 
-#: src/details.rs:597 src/dialogs/hardware.rs:773
+#: src/details.rs:597 src/dialogs/hardware.rs:971
 #, no-c-format
 msgid "Add Device"
 msgstr ""
@@ -339,7 +339,7 @@ msgstr ""
 msgid "Emulated, version 2.0"
 msgstr ""
 
-#: src/details.rs:615 src/details.rs:616 src/dialogs/hardware.rs:785
+#: src/details.rs:615 src/details.rs:616 src/dialogs/hardware.rs:983
 #, no-c-format
 msgid "TPM"
 msgstr ""
@@ -349,12 +349,12 @@ msgstr ""
 msgid "The host’s own"
 msgstr ""
 
-#: src/details.rs:618 src/dialogs/hardware.rs:791
+#: src/details.rs:618 src/dialogs/hardware.rs:989
 #, no-c-format
 msgid "Random Number Generator"
 msgstr ""
 
-#: src/details.rs:622 src/dialogs/hardware.rs:797
+#: src/details.rs:622 src/dialogs/hardware.rs:995
 #, no-c-format
 msgid "Sound Card"
 msgstr ""
@@ -369,7 +369,7 @@ msgstr ""
 msgid "USB Audio"
 msgstr ""
 
-#: src/details.rs:631 src/dialogs/hardware.rs:779
+#: src/details.rs:631 src/dialogs/hardware.rs:977
 #, no-c-format
 msgid "Shared Folder"
 msgstr ""
@@ -632,37 +632,65 @@ msgid ""
 "under Host Devices in              Details."
 msgstr ""
 
-#: src/dialogs/hardware.rs:715
+#: src/dialogs/hardware.rs:715 src/dialogs/hardware.rs:832
 #, no-c-format
 msgid "No USB devices"
 msgstr ""
 
-#: src/dialogs/hardware.rs:780
+#: src/dialogs/hardware.rs:770
+#, no-c-format
+msgid ""
+"Devices of this computer, lent to the virtual machine through the "
+"console.              They come back when it disconnects or the device is "
+"switched off here."
+msgstr ""
+
+#: src/dialogs/hardware.rs:782
+#, no-c-format
+msgid "Redirect USB Devices"
+msgstr ""
+
+#: src/dialogs/hardware.rs:809
+#, no-c-format
+msgid "_Add USB Redirection"
+msgstr ""
+
+#: src/dialogs/hardware.rs:820
+#, no-c-format
+msgid "The virtual machine takes no USB devices from the console"
+msgstr ""
+
+#: src/dialogs/hardware.rs:822
+#, no-c-format
+msgid "Adding two slots for them reconnects the console"
+msgstr ""
+
+#: src/dialogs/hardware.rs:978
 #, no-c-format
 msgid "A folder of the host, which the guest mounts over virtiofs"
 msgstr ""
 
-#: src/dialogs/hardware.rs:786
+#: src/dialogs/hardware.rs:984
 #, no-c-format
 msgid "An emulated TPM 2.0, which Windows 11 needs; swtpm has to be installed"
 msgstr ""
 
-#: src/dialogs/hardware.rs:792
+#: src/dialogs/hardware.rs:990
 #, no-c-format
 msgid "Entropy from the host, for guests that start up waiting for it"
 msgstr ""
 
-#: src/dialogs/hardware.rs:798
+#: src/dialogs/hardware.rs:996
 #, no-c-format
 msgid "Heard in the console with SPICE"
 msgstr ""
 
-#: src/dialogs/hardware.rs:807
+#: src/dialogs/hardware.rs:1005
 #, no-c-format
 msgid "The virtual machine has one"
 msgstr ""
 
-#: src/dialogs/hardware.rs:832
+#: src/dialogs/hardware.rs:1030
 #, no-c-format
 msgid "Choose a Folder to Share"
 msgstr ""
@@ -1294,57 +1322,57 @@ msgstr ""
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:262
+#: src/machine_view.rs:265
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
 
-#: src/machine_view.rs:328
+#: src/machine_view.rs:331
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:330 ui/machine_view.ui:62
+#: src/machine_view.rs:333 ui/machine_view.ui:62
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:423
+#: src/machine_view.rs:430
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:440
+#: src/machine_view.rs:447
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:442
+#: src/machine_view.rs:449
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:450
+#: src/machine_view.rs:457
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:452
+#: src/machine_view.rs:459
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:459
+#: src/machine_view.rs:466
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:460
+#: src/machine_view.rs:467
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:557
+#: src/machine_view.rs:583
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -1414,18 +1442,22 @@ msgid "_USB Devices…"
 msgstr ""
 
 #: ui/machine_view.ui:187
+msgid "_Redirect USB Devices…"
+msgstr ""
+
+#: ui/machine_view.ui:191
 msgid "Send _Key"
 msgstr ""
 
-#: ui/machine_view.ui:217
+#: ui/machine_view.ui:221
 msgid "Re_name…"
 msgstr ""
 
-#: ui/machine_view.ui:221
+#: ui/machine_view.ui:225
 msgid "_Clone…"
 msgstr ""
 
-#: ui/machine_view.ui:225
+#: ui/machine_view.ui:229
 msgid "_Delete…"
 msgstr ""
 

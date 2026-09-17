@@ -28,6 +28,10 @@ const MOUSE_BUTTON_DOWN: i32 = 5;
 const RESIZE_SETTLE: Duration = Duration::from_millis(300);
 /// `DRM_FORMAT_MOD_INVALID`: the buffer's layout is whatever the driver made it.
 const DRM_FORMAT_MOD_INVALID: u64 = 0x00ff_ffff_ffff_ffff;
+/// The agent's `VD_AGENT_CLIPBOARD_SELECTION_CLIPBOARD` and `VD_AGENT_CLIPBOARD_UTF8_TEXT`:
+/// the clipboard proper, not the primary selection, and text in it.
+const CLIPBOARD: u32 = 0;
+const UTF8_TEXT: u32 = 1;
 
 #[derive(Default)]
 pub(super) struct Spice {
@@ -37,6 +41,9 @@ pub(super) struct Spice {
     pub inputs: Option<spice::InputsChannel>,
     pub cursor: Option<spice::CursorChannel>,
     pub audio: Option<spice::Audio>,
+    pub usb: Option<spice::UsbDeviceManager>,
+    /// Watches the host's clipboard, to offer what is copied there to the guest.
+    pub clipboard_changed: Option<glib::SignalHandlerId>,
     /// A 3D frame drawn that QEMU waits to hear is done with.
     pub draw_pending: bool,
     pub resize: Option<glib::SourceId>,
@@ -53,7 +60,7 @@ impl Console {
         self.close();
         let session = spice::Session::new();
         session.set_enable_audio(true);
-        session.set_enable_usbredir(false);
+        session.set_enable_usbredir(true);
         session.set_gl_scanout(true);
         session.connect_channel_new(glib::clone!(
             #[weak(rename_to = console)]
@@ -74,6 +81,16 @@ impl Console {
         ));
         self.spice_state().session = Some(session.clone());
         self.spice_state().audio = spice::Audio::get(&session, None);
+        // Before the session opens, so the manager sees every USB redirection channel.
+        self.spice_state().usb = spice::UsbDeviceManager::get(&session)
+            .ok()
+            .inspect(|usb| usb.set_auto_connect(false));
+        let changed = self.clipboard().connect_changed(glib::clone!(
+            #[weak(rename_to = console)]
+            self,
+            move |_| console.offer_clipboard()
+        ));
+        self.spice_state().clipboard_changed = Some(changed);
         if !session.open_fd(fd) {
             self.close();
             self.emit_by_name::<()>("disconnected", &[&String::new()]);
@@ -82,6 +99,9 @@ impl Console {
 
     pub(super) fn close_spice(&self) {
         let state = self.imp().spice.take();
+        if let Some(changed) = state.clipboard_changed {
+            self.clipboard().disconnect(changed);
+        }
         if let Some(source) = state.resize {
             source.remove();
         }
@@ -95,6 +115,74 @@ impl Console {
 
     pub(super) fn spice_is_open(&self) -> bool {
         self.imp().spice.borrow().session.is_some()
+    }
+
+    /// What passes USB devices of this computer to the guest, while a SPICE session is open.
+    pub fn usb_redirection(&self) -> Option<spice::UsbDeviceManager> {
+        self.imp().spice.borrow().usb.clone()
+    }
+
+    /// Whether the guest has any USB device of this computer.
+    pub fn redirects_usb(&self) -> bool {
+        self.usb_redirection()
+            .is_some_and(|usb| usb.devices().iter().any(|d| usb.is_device_connected(d)))
+    }
+
+    /// Tell the guest's agent the host's clipboard has text, when something other than the
+    /// guest put it there.
+    fn offer_clipboard(&self) {
+        let main = self.imp().spice.borrow().main.clone();
+        let Some(main) = main.filter(|m| m.is_agent_connected()) else {
+            return;
+        };
+        let clipboard = self.clipboard();
+        let formats = clipboard.formats();
+        let text = formats.contains_type(glib::Type::STRING)
+            || formats
+                .mime_types()
+                .iter()
+                .any(|m| m.starts_with("text/plain") || m == "UTF8_STRING");
+        if !clipboard.is_local() && text {
+            main.clipboard_selection_grab(CLIPBOARD, &[UTF8_TEXT]);
+        }
+    }
+
+    fn share_clipboard(&self, main: &spice::MainChannel) {
+        // The guest copied text: fetch it for the host's clipboard.
+        main.connect_main_clipboard_selection_grab(|main, selection, types| {
+            if selection == CLIPBOARD && types.contains(&UTF8_TEXT) {
+                main.clipboard_selection_request(CLIPBOARD, UTF8_TEXT);
+            }
+        });
+        main.connect_main_clipboard_selection(glib::clone!(
+            #[weak(rename_to = console)]
+            self,
+            move |_, selection, kind, data| {
+                if selection == CLIPBOARD && kind == UTF8_TEXT {
+                    let text = String::from_utf8_lossy(data);
+                    console.clipboard().set_text(text.trim_end_matches('\0'));
+                }
+            }
+        ));
+        // The guest pastes what the host offered.
+        main.connect_main_clipboard_selection_request(glib::clone!(
+            #[weak(rename_to = console)]
+            self,
+            #[upgrade_or]
+            false,
+            move |main, selection, kind| {
+                if selection != CLIPBOARD || kind != UTF8_TEXT {
+                    return false;
+                }
+                let (main, clipboard) = (main.clone(), console.clipboard());
+                glib::spawn_future_local(async move {
+                    let text = clipboard.read_text_future().await.ok().flatten();
+                    let text = text.as_deref().unwrap_or_default();
+                    main.clipboard_selection_notify(CLIPBOARD, UTF8_TEXT, text.as_bytes());
+                });
+                true
+            }
+        ));
     }
 
     fn on_channel(&self, session: &spice::Session, channel: &spice::Channel, more: &FdSource) {
@@ -161,8 +249,12 @@ impl Console {
             main.connect_agent_connected_notify(glib::clone!(
                 #[weak(rename_to = console)]
                 self,
-                move |_| console.resize_guest()
+                move |_| {
+                    console.resize_guest();
+                    console.offer_clipboard();
+                }
             ));
+            self.share_clipboard(main);
             self.spice_state().main = Some(main.clone());
         } else if let Some(display) = channel.downcast_ref::<spice::DisplayChannel>() {
             if channel.channel_id() != 0 {

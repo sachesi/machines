@@ -208,6 +208,9 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     klass.install_action("machine.usb-devices", None, |view, _, _| {
         dialogs::hardware::plug_usb(view);
     });
+    klass.install_action("machine.redirect-usb", None, |view, _, _| {
+        dialogs::hardware::redirect_usb(view);
+    });
 }
 
 /// The scrolled window a preferences page keeps its groups in.
@@ -383,6 +386,10 @@ impl MachineView {
         self.action_set_enabled("machine.force-off", active);
         self.action_set_enabled("machine.send-keys", running);
         self.action_set_enabled("machine.usb-devices", running);
+        self.action_set_enabled(
+            "machine.redirect-usb",
+            running && self.usb_redirection().is_some(),
+        );
         self.action_set_enabled("machine.delete", state.is_some());
         let editable = info.as_ref().is_some_and(|i| i.persistent) && !active;
         self.action_set_enabled("machine.rename", editable);
@@ -463,8 +470,27 @@ impl MachineView {
         }
     }
 
+    /// While the guest has USB devices through the console, the console stays, not to pull
+    /// them out from under it.
     fn console_wanted(&self) -> bool {
-        self.is_mapped() && self.imp().view_stack.visible_child_name().as_deref() == Some("console")
+        let imp = self.imp();
+        self.is_mapped() && imp.view_stack.visible_child_name().as_deref() == Some("console")
+            || imp.console.redirects_usb()
+    }
+
+    pub fn usb_redirection(&self) -> Option<spice_client_glib::UsbDeviceManager> {
+        self.imp().console.usb_redirection()
+    }
+
+    /// Keep the display or let it go, as the console and its USB devices now need.
+    pub fn recheck_console(&self) {
+        self.update();
+    }
+
+    /// Open the display afresh, for what the machine gained since it was opened.
+    pub fn reconnect_console(&self) {
+        self.release_console();
+        self.update();
     }
 
     /// Let go of the display, or of the socket still on its way to it.
