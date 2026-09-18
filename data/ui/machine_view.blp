@@ -5,12 +5,29 @@ template $MachinesMachineView: Adw.BreakpointBin {
   width-request: 300;
   height-request: 200;
 
+  // Only the last breakpoint that matches applies, so the narrow one repeats the one-column
+  // details.
+  Adw.Breakpoint {
+    condition ("max-width: 860sp")
+
+    setters {
+      details_clamp.maximum-size: 640;
+      details_clamp.tightening-threshold: 400;
+      details_columns.orientation: vertical;
+    }
+  }
+
   Adw.Breakpoint {
     condition ("max-width: 480sp")
 
     setters {
       view_toggle.visible: false;
       switcher_bar.reveal: true;
+      details_clamp.maximum-size: 640;
+      details_clamp.tightening-threshold: 400;
+      details_columns.orientation: vertical;
+      details_columns.margin-start: 12;
+      details_columns.margin-end: 12;
     }
   }
 
@@ -125,7 +142,35 @@ template $MachinesMachineView: Adw.BreakpointBin {
         title: _("Details");
         icon-name: "document-properties-symbolic";
 
-        child: Adw.Bin details_bin {};
+        child: ScrolledWindow details_scroller {
+          hscrollbar-policy: never;
+
+          child: Adw.Clamp details_clamp {
+            maximum-size: 1240;
+            tightening-threshold: 1000;
+
+            child: Box details_columns {
+              homogeneous: true;
+              spacing: 24;
+              margin-top: 24;
+              margin-bottom: 24;
+              margin-start: 24;
+              margin-end: 24;
+
+              Box details_start {
+                orientation: vertical;
+                spacing: 24;
+                valign: start;
+              }
+
+              Box details_end {
+                orientation: vertical;
+                spacing: 24;
+                valign: start;
+              }
+            };
+          };
+        };
       }
     };
   };

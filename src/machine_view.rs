@@ -46,7 +46,11 @@ mod imp {
         #[template_child]
         pub console_button: TemplateChild<gtk::Button>,
         #[template_child]
-        pub details_bin: TemplateChild<adw::Bin>,
+        pub details_scroller: TemplateChild<gtk::ScrolledWindow>,
+        #[template_child]
+        pub details_start: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub details_end: TemplateChild<gtk::Box>,
 
         pub(super) machine: RefCell<Option<Machine>>,
         pub(super) changed_handler: RefCell<Option<glib::SignalHandlerId>>,
@@ -240,18 +244,6 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     });
 }
 
-/// The scrolled window a preferences page keeps its groups in.
-fn scroller(page: &gtk::Widget) -> Option<gtk::ScrolledWindow> {
-    let mut child = page.first_child();
-    while let Some(widget) = child {
-        if let Ok(scroller) = widget.clone().downcast::<gtk::ScrolledWindow>() {
-            return Some(scroller);
-        }
-        child = widget.first_child();
-    }
-    None
-}
-
 impl MachineView {
     fn window(&self) -> Option<MachinesWindow> {
         self.root().and_downcast()
@@ -311,7 +303,8 @@ impl MachineView {
         imp.console_error.take();
         imp.console.close();
         imp.shown.take();
-        imp.details_bin.set_child(gtk::Widget::NONE);
+        self.clear_details();
+        imp.details_scroller.vadjustment().set_value(0.0);
         if let Some(win) = self.window().filter(|w| w.is_fullscreen()) {
             win.unfullscreen();
         }
@@ -366,33 +359,27 @@ impl MachineView {
         self.update_actions();
         self.update_console(&info);
         if imp.shown.borrow().as_ref() != Some(&info) {
-            let scrolled = imp
-                .details_bin
-                .child()
-                .and_then(|page| scroller(&page))
-                .map(|s| s.vadjustment().value());
-            let page = details::page(self, &info);
-            imp.details_bin.set_child(Some(&page));
-            // The same machine's page, rebuilt after a change, stays where it was
-            // scrolled to. Its size is only known once it is laid out.
-            if let (Some(value), Some(scroller)) = (scrolled, scroller(page.upcast_ref())) {
-                let adjustment = scroller.vadjustment();
-                let handler: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
-                let id = adjustment.connect_changed(glib::clone!(
-                    #[strong]
-                    handler,
-                    move |adjustment| {
-                        if adjustment.upper() > 0.0 {
-                            adjustment.set_value(value);
-                            if let Some(id) = handler.take() {
-                                adjustment.disconnect(id);
-                            }
-                        }
-                    }
-                ));
-                handler.replace(Some(id));
+            // Focus left in a group that goes would move to the first row of the new
+            // page, which the page would scroll to; without it, the page stays put.
+            if let Some(root) = self.root()
+                && root
+                    .focus()
+                    .is_some_and(|f| f.is_ancestor(&*imp.details_scroller))
+            {
+                root.set_focus(gtk::Widget::NONE);
             }
+            self.clear_details();
+            details::fill(self, &info, &imp.details_start, &imp.details_end);
             imp.shown.replace(Some(info));
+        }
+    }
+
+    fn clear_details(&self) {
+        let imp = self.imp();
+        for column in [&*imp.details_start, &*imp.details_end] {
+            while let Some(child) = column.first_child() {
+                column.remove(&child);
+            }
         }
     }
 

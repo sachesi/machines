@@ -22,26 +22,26 @@ use crate::{adw, gio, glib, gtk};
 /// How long a spin row has to rest before its value is saved.
 const SETTLE: Duration = Duration::from_millis(700);
 
-pub fn page(view: &MachineView, info: &MachineInfo) -> adw::PreferencesPage {
-    let page = adw::PreferencesPage::new();
+/// Fill two columns with the machine's settings: what it is and what it runs with in
+/// `start`, the devices it has in `end`.
+pub fn fill(view: &MachineView, info: &MachineInfo, start: &gtk::Box, end: &gtk::Box) {
     let Some(config) = &info.config else {
         let group = adw::PreferencesGroup::builder()
             .description(gettext(
                 "The definition of this virtual machine cannot be read.",
             ))
             .build();
-        page.add(&group);
-        return page;
+        start.append(&group);
+        return;
     };
-    page.add(&overview(view, info, config));
-    page.add(&resources(view, info, config));
     let live = info.live.as_ref();
-    page.add(&storage(view, config, live));
-    page.add(&network(view, info, config, live));
-    page.add(&host_devices(view, config, live));
-    page.add(&gadgets(view, config, live));
-    page.add(&display(view, info, config));
-    page
+    start.append(&overview(view, info, config));
+    start.append(&resources(view, info, config));
+    start.append(&display(view, info, config));
+    end.append(&storage(view, config, live));
+    end.append(&network(view, info, config, live));
+    end.append(&host_devices(view, config, live));
+    end.append(&gadgets(view, config, live));
 }
 
 /// Where a device stands between the running machine and the definition it starts from.
@@ -115,7 +115,9 @@ fn overview(
     info: &MachineInfo,
     config: &MachineConfig,
 ) -> adw::PreferencesGroup {
-    let group = adw::PreferencesGroup::new();
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Overview"))
+        .build();
     if let Some(os) = config.os_id.as_deref().and_then(os_name) {
         group.add(&info_row(&gettext("Operating System"), &os));
     }
