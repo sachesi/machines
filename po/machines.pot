@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 09:09+0300\n"
+"POT-Creation-Date: 2026-09-24 09:16+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1322,57 +1322,91 @@ msgstr ""
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:265
+#: src/machine_view.rs:176
+#, no-c-format
+msgid "Force Reset?"
+msgstr ""
+
+#: src/machine_view.rs:178
+#, no-c-format
+msgid ""
+"The virtual machine restarts at once, as if its reset button were "
+"pressed.                  Work not saved in it is lost."
+msgstr ""
+
+#: src/machine_view.rs:181
+#, no-c-format
+msgid "Force _Reset"
+msgstr ""
+
+#: src/machine_view.rs:191
+#, no-c-format
+msgid "Force Off?"
+msgstr ""
+
+#: src/machine_view.rs:193
+#, no-c-format
+msgid ""
+"The virtual machine stops at once, as if its power were cut. Work not "
+"saved                  in it is lost, and its disks may be left inconsistent."
+msgstr ""
+
+#: src/machine_view.rs:196
+#, no-c-format
+msgid "Force _Off"
+msgstr ""
+
+#: src/machine_view.rs:292
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
 
-#: src/machine_view.rs:331
+#: src/machine_view.rs:358
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:333 ui/machine_view.ui:62
+#: src/machine_view.rs:360 ui/machine_view.ui:62
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:430
+#: src/machine_view.rs:460
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:447
+#: src/machine_view.rs:477
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:449
+#: src/machine_view.rs:479
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:457
+#: src/machine_view.rs:487
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:459
+#: src/machine_view.rs:489
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:466
+#: src/machine_view.rs:496
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:467
+#: src/machine_view.rs:497
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:583
+#: src/machine_view.rs:613
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -1409,8 +1443,8 @@ msgstr ""
 msgid "Machine Menu"
 msgstr ""
 
-#: ui/machine_view.ui:55
-msgid "Shut Down"
+#: ui/machine_view.ui:56
+msgid "Power"
 msgstr ""
 
 #: ui/machine_view.ui:69
@@ -1418,46 +1452,54 @@ msgid "Leave Fullscreen"
 msgstr ""
 
 #: ui/machine_view.ui:157
-msgid "_Fullscreen"
+msgid "_Resume"
 msgstr ""
 
-#: ui/machine_view.ui:163
+#: ui/machine_view.ui:162
 msgid "_Pause"
 msgstr ""
 
-#: ui/machine_view.ui:167
-msgid "_Reboot"
+#: ui/machine_view.ui:169
+msgid "_Shut Down"
 msgstr ""
 
 #: ui/machine_view.ui:173
-msgid "Force _Reset"
+msgid "_Reboot"
 msgstr ""
 
-#: ui/machine_view.ui:177
-msgid "Force _Off"
+#: ui/machine_view.ui:179
+msgid "Force _Reset…"
 msgstr ""
 
 #: ui/machine_view.ui:183
-msgid "_USB Devices…"
-msgstr ""
-
-#: ui/machine_view.ui:187
-msgid "_Redirect USB Devices…"
+msgid "Force _Off…"
 msgstr ""
 
 #: ui/machine_view.ui:191
+msgid "_Fullscreen"
+msgstr ""
+
+#: ui/machine_view.ui:197
+msgid "_USB Devices…"
+msgstr ""
+
+#: ui/machine_view.ui:201
+msgid "_Redirect USB Devices…"
+msgstr ""
+
+#: ui/machine_view.ui:205
 msgid "Send _Key"
 msgstr ""
 
-#: ui/machine_view.ui:221
+#: ui/machine_view.ui:235
 msgid "Re_name…"
 msgstr ""
 
-#: ui/machine_view.ui:225
+#: ui/machine_view.ui:239
 msgid "_Clone…"
 msgstr ""
 
-#: ui/machine_view.ui:229
+#: ui/machine_view.ui:243
 msgid "_Delete…"
 msgstr ""
 

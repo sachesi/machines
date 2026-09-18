@@ -44,10 +44,10 @@ template $MachinesMachineView: Adw.BreakpointBin {
       }
 
       [end]
-      Button shut_down_button {
+      MenuButton power_button {
         icon-name: "system-shutdown-symbolic";
-        tooltip-text: _("Shut Down");
-        action-name: "machine.shut-down";
+        menu-model: power_menu;
+        tooltip-text: _("Power");
       }
 
       [end]
@@ -131,18 +131,25 @@ template $MachinesMachineView: Adw.BreakpointBin {
   };
 }
 
-menu machine_menu {
+menu power_menu {
   section {
     item {
-      label: _("_Fullscreen");
-      action: "machine.fullscreen";
+      label: _("_Resume");
+      action: "machine.resume";
+      hidden-when: "action-disabled";
+    }
+
+    item {
+      label: _("_Pause");
+      action: "machine.pause";
+      hidden-when: "action-disabled";
     }
   }
 
   section {
     item {
-      label: _("_Pause");
-      action: "machine.pause";
+      label: _("_Shut Down");
+      action: "machine.shut-down";
     }
 
     item {
@@ -153,13 +160,22 @@ menu machine_menu {
 
   section {
     item {
-      label: _("Force _Reset");
+      label: _("Force _Reset…");
       action: "machine.reset";
     }
 
     item {
-      label: _("Force _Off");
+      label: _("Force _Off…");
       action: "machine.force-off";
+    }
+  }
+}
+
+menu machine_menu {
+  section {
+    item {
+      label: _("_Fullscreen");
+      action: "machine.fullscreen";
     }
   }
 

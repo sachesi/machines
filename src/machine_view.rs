@@ -34,7 +34,7 @@ mod imp {
         #[template_child]
         pub start_button: TemplateChild<gtk::Button>,
         #[template_child]
-        pub shut_down_button: TemplateChild<gtk::Button>,
+        pub power_button: TemplateChild<gtk::MenuButton>,
         #[template_child]
         pub fullscreen_button: TemplateChild<gtk::Button>,
         #[template_child]
@@ -167,11 +167,38 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     klass.install_action("machine.reboot", None, |view, _, _| {
         view.run(|hv, uuid| hv.reboot(uuid));
     });
-    klass.install_action("machine.reset", None, |view, _, _| {
-        view.run(|hv, uuid| hv.reset(uuid));
+    klass.install_action("machine.resume", None, |view, _, _| {
+        view.run(|hv, uuid| hv.start(uuid));
     });
-    klass.install_action("machine.force-off", None, |view, _, _| {
-        view.run(|hv, uuid| hv.force_off(uuid));
+    klass.install_action_async("machine.reset", None, |view, _, _| async move {
+        let confirmed = dialogs::confirm(
+            &view,
+            &gettext("Force Reset?"),
+            &gettext(
+                "The virtual machine restarts at once, as if its reset button were pressed. \
+                 Work not saved in it is lost.",
+            ),
+            &gettext("Force _Reset"),
+        )
+        .await;
+        if confirmed {
+            view.run(|hv, uuid| hv.reset(uuid));
+        }
+    });
+    klass.install_action_async("machine.force-off", None, |view, _, _| async move {
+        let confirmed = dialogs::confirm(
+            &view,
+            &gettext("Force Off?"),
+            &gettext(
+                "The virtual machine stops at once, as if its power were cut. Work not saved \
+                 in it is lost, and its disks may be left inconsistent.",
+            ),
+            &gettext("Force _Off"),
+        )
+        .await;
+        if confirmed {
+            view.run(|hv, uuid| hv.force_off(uuid));
+        }
     });
     klass.install_action("machine.reconnect", None, |view, _, _| {
         view.imp().console_error.take();
@@ -332,8 +359,7 @@ impl MachineView {
         } else {
             gettext("Start")
         }));
-        imp.shut_down_button
-            .set_visible(!imp.start_button.is_visible());
+        imp.power_button.set_visible(info.state.is_active());
         if !info.state.is_active() {
             imp.console_error.take();
         }
@@ -381,6 +407,10 @@ impl MachineView {
         );
         self.action_set_enabled("machine.shut-down", running);
         self.action_set_enabled("machine.pause", running);
+        self.action_set_enabled(
+            "machine.resume",
+            matches!(state, Some(MachineState::Paused | MachineState::Suspended)),
+        );
         self.action_set_enabled("machine.reboot", running);
         self.action_set_enabled("machine.reset", active);
         self.action_set_enabled("machine.force-off", active);
