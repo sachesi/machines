@@ -38,6 +38,10 @@ mod imp {
         #[template_child]
         pub fullscreen_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub console_place: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub console_bin: TemplateChild<adw::Bin>,
+        #[template_child]
         pub console_stack: TemplateChild<gtk::Stack>,
         #[template_child]
         pub console: TemplateChild<Console>,
@@ -63,6 +67,10 @@ mod imp {
         /// Why the display went away while the machine kept running.
         pub(super) console_error: RefCell<Option<String>>,
         pub(super) fullscreen: Cell<bool>,
+        /// What the console's button does, by action name.
+        pub(super) console_action: RefCell<String>,
+        /// The window the display is in while it is out of this view, and its title.
+        pub(super) detached: RefCell<Option<(adw::Window, adw::WindowTitle)>>,
     }
 
     #[glib::object_subclass]
@@ -112,27 +120,20 @@ mod imp {
                 }
             ));
 
-            // In fullscreen the header bar hides, and comes back while the pointer is at
-            // the top edge or over the bar itself.
-            let motion = gtk::EventControllerMotion::new();
-            motion.set_propagation_phase(gtk::PropagationPhase::Capture);
-            motion.connect_motion(glib::clone!(
+            let view = obj.downgrade();
+            reveal_at_top_edge(&self.toolbar, move || {
+                view.upgrade().is_some_and(|v| v.imp().fullscreen.get())
+            });
+            // Not an action name on the button: the button goes with the display when that
+            // moves to a window of its own, out of reach of the view's actions.
+            self.console_button.connect_clicked(glib::clone!(
                 #[weak(rename_to = view)]
                 obj,
-                move |_, _, y| {
-                    let imp = view.imp();
-                    if !imp.fullscreen.get() {
-                        return;
-                    }
-                    let bar = f64::from(imp.toolbar.top_bar_height());
-                    if y <= REVEAL_EDGE {
-                        imp.toolbar.set_reveal_top_bars(true);
-                    } else if y > bar + REVEAL_EDGE {
-                        imp.toolbar.set_reveal_top_bars(false);
-                    }
+                move |_| {
+                    let action = view.imp().console_action.borrow().clone();
+                    let _ = view.activate_action(&action, None);
                 }
             ));
-            obj.add_controller(motion);
 
             // The display is connected only while it is on screen, so nothing holds it
             // while the details show or the window is gone.
@@ -156,6 +157,29 @@ glib::wrapper! {
     pub struct MachineView(ObjectSubclass<imp::MachineView>)
         @extends adw::BreakpointBin, gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+/// While `hidden` says so, as in fullscreen, `toolbar`'s header bar stays hidden, and
+/// comes back while the pointer is at the top edge or over the bar itself.
+fn reveal_at_top_edge(toolbar: &adw::ToolbarView, hidden: impl Fn() -> bool + 'static) {
+    let motion = gtk::EventControllerMotion::new();
+    motion.set_propagation_phase(gtk::PropagationPhase::Capture);
+    motion.connect_motion(glib::clone!(
+        #[weak]
+        toolbar,
+        move |_, _, y| {
+            if !hidden() {
+                return;
+            }
+            let bar = f64::from(toolbar.top_bar_height());
+            if y <= REVEAL_EDGE {
+                toolbar.set_reveal_top_bars(true);
+            } else if y > bar + REVEAL_EDGE {
+                toolbar.set_reveal_top_bars(false);
+            }
+        }
+    ));
+    toolbar.add_controller(motion);
 }
 
 fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
@@ -229,6 +253,12 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
             win.set_fullscreened(!win.is_fullscreen());
         }
     });
+    klass.install_action("machine.detach-console", None, |view, _, _| {
+        view.detach_console();
+    });
+    klass.install_action("machine.attach-console", None, |view, _, _| {
+        view.attach_console();
+    });
     klass.install_action("machine.delete", None, |view, _, _| view.delete());
     klass.install_action("machine.rename", None, |view, _, _| {
         dialogs::machine::rename(view);
@@ -298,6 +328,7 @@ impl MachineView {
         if let (Some(old), Some(handler)) = (imp.machine.take(), imp.changed_handler.take()) {
             old.disconnect(handler);
         }
+        self.put_back_console();
         imp.generation.set(imp.generation.get() + 1);
         imp.connecting.set(false);
         imp.console_error.take();
@@ -344,6 +375,11 @@ impl MachineView {
         };
         imp.title.set_title(&info.name);
         imp.title.set_subtitle(&info.state.label());
+        if let Some((window, title)) = &*imp.detached.borrow() {
+            window.set_title(Some(&info.name));
+            title.set_title(&info.name);
+            title.set_subtitle(&info.state.label());
+        }
         let resumable = matches!(info.state, MachineState::Paused | MachineState::Suspended);
         imp.start_button
             .set_visible(!info.state.is_active() || resumable);
@@ -411,10 +447,17 @@ impl MachineView {
         let editable = info.as_ref().is_some_and(|i| i.persistent) && !active;
         self.action_set_enabled("machine.rename", editable);
         self.action_set_enabled("machine.clone", editable);
+        let imp = self.imp();
+        let detached = imp.detached.borrow().is_some();
         self.action_set_enabled(
             "machine.fullscreen",
-            self.imp().console.is_open() || self.imp().fullscreen.get(),
+            imp.console.is_open() && !detached || imp.fullscreen.get(),
         );
+        self.action_set_enabled(
+            "machine.detach-console",
+            active && !detached && !imp.fullscreen.get(),
+        );
+        self.action_set_enabled("machine.attach-console", detached);
     }
 
     fn console_message(
@@ -431,7 +474,7 @@ impl MachineView {
         imp.console_button.set_visible(button.is_some());
         if let Some((label, action)) = button {
             imp.console_button.set_label(label);
-            imp.console_button.set_action_name(Some(action));
+            imp.console_action.replace(action.to_owned());
         }
         imp.console_stack.set_visible_child_name("message");
     }
@@ -492,7 +535,105 @@ impl MachineView {
     fn console_wanted(&self) -> bool {
         let imp = self.imp();
         self.is_mapped() && imp.view_stack.visible_child_name().as_deref() == Some("console")
+            || imp.detached.borrow().is_some()
             || imp.console.redirects_usb()
+    }
+
+    /// Move the display to a window of its own, to put it on another screen.
+    fn detach_console(&self) {
+        let imp = self.imp();
+        let Some(info) = self.info() else {
+            return;
+        };
+        if imp.detached.borrow().is_some() {
+            return;
+        }
+        let title = adw::WindowTitle::new(&info.name, &info.state.label());
+        let fullscreen = gtk::Button::builder()
+            .icon_name("view-fullscreen-symbolic")
+            .tooltip_text(gettext("Fullscreen"))
+            .build();
+        let header = adw::HeaderBar::builder().title_widget(&title).build();
+        header.pack_end(&fullscreen);
+        let toolbar = adw::ToolbarView::builder().css_classes(["console"]).build();
+        toolbar.add_top_bar(&header);
+        let (width, height) = (imp.console.width(), imp.console.height());
+        imp.console_bin.set_child(gtk::Widget::NONE);
+        toolbar.set_content(Some(&*imp.console_stack));
+        let window = adw::Window::builder()
+            .title(&info.name)
+            .content(&toolbar)
+            .default_width(width.max(640))
+            .default_height(height.max(480))
+            .build();
+        window.set_application(self.window().and_then(|w| w.application()).as_ref());
+        fullscreen.connect_clicked(glib::clone!(
+            #[weak]
+            window,
+            move |_| window.set_fullscreened(!window.is_fullscreen())
+        ));
+        window.connect_fullscreened_notify(glib::clone!(
+            #[weak]
+            toolbar,
+            #[weak]
+            fullscreen,
+            move |window| {
+                let on = window.is_fullscreen();
+                toolbar.set_reveal_top_bars(!on);
+                toolbar.set_extend_content_to_top_edge(on);
+                fullscreen.set_icon_name(if on {
+                    "view-restore-symbolic"
+                } else {
+                    "view-fullscreen-symbolic"
+                });
+                fullscreen.set_tooltip_text(Some(&if on {
+                    gettext("Leave Fullscreen")
+                } else {
+                    gettext("Fullscreen")
+                }));
+            }
+        ));
+        let weak = window.downgrade();
+        reveal_at_top_edge(&toolbar, move || {
+            weak.upgrade().is_some_and(|w| w.is_fullscreen())
+        });
+        window.connect_close_request(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            #[upgrade_or]
+            glib::Propagation::Proceed,
+            move |_| {
+                view.attach_console();
+                glib::Propagation::Stop
+            }
+        ));
+        imp.console_place.set_visible_child_name("away");
+        imp.detached.replace(Some((window.clone(), title)));
+        window.present();
+        imp.console.grab_focus();
+        self.update();
+    }
+
+    /// Put the display back into this view from its own window, if it is in one.
+    pub fn attach_console(&self) {
+        if self.put_back_console() {
+            self.update();
+        }
+    }
+
+    /// Whether the display was in a window of its own, which it now leaves.
+    fn put_back_console(&self) -> bool {
+        let imp = self.imp();
+        let Some((window, _)) = imp.detached.take() else {
+            return false;
+        };
+        if let Some(toolbar) = window.content().and_downcast::<adw::ToolbarView>() {
+            toolbar.set_content(gtk::Widget::NONE);
+        }
+        imp.console_bin.set_child(Some(&*imp.console_stack));
+        imp.console_place.set_visible_child_name("here");
+        window.destroy();
+        true
     }
 
     pub fn usb_redirection(&self) -> Option<spice_client_glib::UsbDeviceManager> {

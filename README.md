@@ -11,7 +11,8 @@ A machine's details page adds and removes its disks, CD/DVD drives and network i
 gives it whole disks of the host, a TPM, sound card, random number generator and folders
 shared over virtiofs, and passes USB and PCI devices of the host through to it, or plugs
 USB devices into it while it runs. It also picks the display protocol and video card
-(virtio, QXL, VGA…), turns on 3D acceleration, which renders on the host's GPU with a
+(virtio, QXL, VGA…), or none for a machine whose screen is a passed-through graphics
+card's, turns on 3D acceleration, which renders on the host's GPU with a
 virtio card, and sets the order the machine boots from its disks, drives, network
 interfaces and passed-through devices in. What a running machine cannot take at once,
 such as a SATA drive, it gets at its next start. The main menu also manages the
@@ -25,7 +26,8 @@ QEMU has it, which carries sound and, with the SPICE agent in the guest, sizes t
 screen to the window and shares the clipboard's text with it; VNC otherwise. SPICE also
 lends USB devices of the computer the console runs on to the machine, which works on
 remote connections and the user session too. With 3D acceleration, SPICE hands the console
-the GPU's frames as they are, while VNC has QEMU read them back.
+the GPU's frames as they are, while VNC has QEMU read them back. The display can also move to a
+window of its own, to put it on another screen.
 
 You need libvirt with its QEMU driver, gvnc (from gtk-vnc), spice-glib, GTK 4.22 and
 libadwaita 1.9.

@@ -180,6 +180,7 @@ mod imp {
     impl WindowImpl for MachinesWindow {
         fn close_request(&self) -> glib::Propagation {
             let obj = self.obj();
+            self.machine_view.attach_console();
             if !obj.is_fullscreen() {
                 let (w, h) = obj.default_size();
                 let _ = self.settings.set("window-size", (w, h));

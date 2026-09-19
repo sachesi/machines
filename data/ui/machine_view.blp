@@ -100,40 +100,68 @@ template $MachinesMachineView: Adw.BreakpointBin {
         title: _("Console");
         icon-name: "video-display-symbolic";
 
-        child: Stack console_stack {
-          transition-type: crossfade;
-
+        child: Stack console_place {
           StackPage {
-            name: "display";
+            name: "here";
 
-            child: $MachinesConsole console {
-              hexpand: true;
-              vexpand: true;
+            child: Adw.Bin console_bin {
+              child: Stack console_stack {
+                transition-type: crossfade;
+
+                StackPage {
+                  name: "display";
+
+                  child: $MachinesConsole console {
+                    hexpand: true;
+                    vexpand: true;
+                  };
+                }
+
+                StackPage {
+                  name: "connecting";
+
+                  child: Adw.Spinner {
+                    halign: center;
+                    valign: center;
+                    width-request: 32;
+                    height-request: 32;
+                  };
+                }
+
+                StackPage {
+                  name: "message";
+
+                  child: Adw.StatusPage console_message {
+                    child: Button console_button {
+                      use-underline: true;
+                      halign: center;
+
+                      styles [
+                        "pill",
+                        "suggested-action",
+                      ]
+                    };
+                  };
+                }
+              };
             };
           }
 
           StackPage {
-            name: "connecting";
+            name: "away";
 
-            child: Adw.Spinner {
-              halign: center;
-              valign: center;
-              width-request: 32;
-              height-request: 32;
-            };
-          }
+            child: Adw.StatusPage {
+              icon-name: "window-new-symbolic";
+              title: _("Display in Its Own Window");
 
-          StackPage {
-            name: "message";
-
-            child: Adw.StatusPage console_message {
-              child: Button console_button {
+              child: Button {
+                label: _("_Bring Back");
                 use-underline: true;
                 halign: center;
+                action-name: "machine.attach-console";
 
                 styles [
                   "pill",
-                  "suggested-action",
                 ]
               };
             };
@@ -225,6 +253,11 @@ menu machine_menu {
     item {
       label: _("_Fullscreen");
       action: "machine.fullscreen";
+    }
+
+    item {
+      label: _("Open Display in New _Window");
+      action: "machine.detach-console";
     }
   }
 

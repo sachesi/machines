@@ -1094,7 +1094,7 @@ msgstr ""
 msgid "_Disk Size"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:208 src/window.rs:519
+#: src/dialogs/new_machine.rs:208 src/window.rs:520
 #, no-c-format
 msgid "System"
 msgstr ""
@@ -1436,189 +1436,207 @@ msgstr ""
 msgid "libvirt stopped taking the file"
 msgstr ""
 
-#: src/machine_view.rs:102
+#: src/machine_view.rs:110
 #, no-c-format
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:180
+#: src/machine_view.rs:204
 #, no-c-format
 msgid "Force Reset?"
 msgstr ""
 
-#: src/machine_view.rs:182
+#: src/machine_view.rs:206
 #, no-c-format
 msgid ""
 "The virtual machine restarts at once, as if its reset button were "
 "pressed.                  Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:185
+#: src/machine_view.rs:209
 #, no-c-format
 msgid "Force _Reset"
 msgstr ""
 
-#: src/machine_view.rs:195
+#: src/machine_view.rs:219
 #, no-c-format
 msgid "Force Off?"
 msgstr ""
 
-#: src/machine_view.rs:197
+#: src/machine_view.rs:221
 #, no-c-format
 msgid ""
 "The virtual machine stops at once, as if its power were cut. Work not "
 "saved                  in it is lost, and its disks may be left inconsistent."
 msgstr ""
 
-#: src/machine_view.rs:200
+#: src/machine_view.rs:224
 #, no-c-format
 msgid "Force _Off"
 msgstr ""
 
-#: src/machine_view.rs:284
+#: src/machine_view.rs:314
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
 
-#: src/machine_view.rs:351
+#: src/machine_view.rs:387
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:353 ui/machine_view.ui:75
+#: src/machine_view.rs:389 ui/machine_view.ui:78
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:447
+#: src/machine_view.rs:490
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:464
+#: src/machine_view.rs:507
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:466
+#: src/machine_view.rs:509
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:474
+#: src/machine_view.rs:517
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:476
+#: src/machine_view.rs:519
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:483
+#: src/machine_view.rs:526
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:484
+#: src/machine_view.rs:527
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:600
+#: src/machine_view.rs:554 src/machine_view.rs:592
+#, no-c-format
+msgid "Fullscreen"
+msgstr ""
+
+#: src/machine_view.rs:590 ui/machine_view.ui:85
+#, no-c-format
+msgid "Leave Fullscreen"
+msgstr ""
+
+#: src/machine_view.rs:741
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
 
-#: src/window.rs:372
+#: src/window.rs:373
 #, no-c-format
 msgid "The connection attempt failed"
 msgstr ""
 
-#: src/window.rs:470 ui/window.ui:165
+#: src/window.rs:471 ui/window.ui:165
 #, no-c-format
 msgid "Virtual Machine"
 msgstr ""
 
-#: src/window.rs:478
+#: src/window.rs:479
 #, no-c-format
 msgid "Creating “{name}”…"
 msgstr ""
 
-#: src/window.rs:520
+#: src/window.rs:521
 #, no-c-format
 msgid "User Session"
 msgstr ""
 
-#: ui/machine_view.ui:46 ui/machine_view.ui:100
+#: ui/machine_view.ui:49 ui/machine_view.ui:103
 msgid "Console"
 msgstr ""
 
-#: ui/machine_view.ui:53 ui/machine_view.ui:155
+#: ui/machine_view.ui:56 ui/machine_view.ui:193
 msgid "Details"
 msgstr ""
 
-#: ui/machine_view.ui:62
+#: ui/machine_view.ui:65
 msgid "Machine Menu"
 msgstr ""
 
-#: ui/machine_view.ui:69
+#: ui/machine_view.ui:72
 msgid "Power"
 msgstr ""
 
-#: ui/machine_view.ui:82
-msgid "Leave Fullscreen"
+#: ui/machine_view.ui:170
+msgid "Display in Its Own Window"
 msgstr ""
 
-#: ui/machine_view.ui:202
+#: ui/machine_view.ui:173
+msgid "_Bring Back"
+msgstr ""
+
+#: ui/machine_view.ui:240
 msgid "_Resume"
 msgstr ""
 
-#: ui/machine_view.ui:207
+#: ui/machine_view.ui:245
 msgid "_Pause"
 msgstr ""
 
-#: ui/machine_view.ui:214
+#: ui/machine_view.ui:252
 msgid "_Shut Down"
 msgstr ""
 
-#: ui/machine_view.ui:218
+#: ui/machine_view.ui:256
 msgid "_Reboot"
 msgstr ""
 
-#: ui/machine_view.ui:224
+#: ui/machine_view.ui:262
 msgid "Force _Reset…"
 msgstr ""
 
-#: ui/machine_view.ui:228
+#: ui/machine_view.ui:266
 msgid "Force _Off…"
 msgstr ""
 
-#: ui/machine_view.ui:236
+#: ui/machine_view.ui:274
 msgid "_Fullscreen"
 msgstr ""
 
-#: ui/machine_view.ui:242
-msgid "_USB Devices…"
-msgstr ""
-
-#: ui/machine_view.ui:246
-msgid "_Redirect USB Devices…"
-msgstr ""
-
-#: ui/machine_view.ui:250
-msgid "Send _Key"
-msgstr ""
-
-#: ui/machine_view.ui:280
-msgid "Re_name…"
+#: ui/machine_view.ui:278
+msgid "Open Display in New _Window"
 msgstr ""
 
 #: ui/machine_view.ui:284
-msgid "_Clone…"
+msgid "_USB Devices…"
 msgstr ""
 
 #: ui/machine_view.ui:288
+msgid "_Redirect USB Devices…"
+msgstr ""
+
+#: ui/machine_view.ui:292
+msgid "Send _Key"
+msgstr ""
+
+#: ui/machine_view.ui:322
+msgid "Re_name…"
+msgstr ""
+
+#: ui/machine_view.ui:326
+msgid "_Clone…"
+msgstr ""
+
+#: ui/machine_view.ui:330
 msgid "_Delete…"
 msgstr ""
 
