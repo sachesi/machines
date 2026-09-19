@@ -919,6 +919,8 @@ pub fn cdrom_xml(disk: &Disk, source: Option<&str>) -> String {
 pub enum Protocol {
     Vnc,
     Spice,
+    /// No display at all, for a machine whose screen is a passed-through graphics card's.
+    None,
 }
 
 /// How a machine shows its screen: the remote display protocol, the video card, and
@@ -936,6 +938,8 @@ impl MachineConfig {
         Display {
             protocol: if self.graphics.iter().any(|g| g == "spice") {
                 Protocol::Spice
+            } else if self.graphics.is_empty() {
+                Protocol::None
             } else {
                 Protocol::Vnc
             },
@@ -985,6 +989,7 @@ impl DisplayOptions {
             && match protocol {
                 Protocol::Spice => self.graphics.iter().any(|g| g == "spice"),
                 Protocol::Vnc => self.graphics.iter().any(|g| g == "egl-headless"),
+                Protocol::None => false,
             }
     }
 }
@@ -994,6 +999,7 @@ impl DisplayOptions {
 /// Both protocols listen on no socket: the console reaches them through libvirt. What only
 /// works with SPICE goes with it when it goes: its agent channel, USB redirection,
 /// smartcard, and audio, which becomes none; SPICE brings its agent channel and audio back.
+/// With no protocol, the machine has no display at all.
 pub fn set_display(xml: &str, display: &Display) -> Result<String, String> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
     let devices = doc
@@ -1002,12 +1008,13 @@ pub fn set_display(xml: &str, display: &Display) -> Result<String, String> {
         .find(|n| n.has_tag_name("devices"))
         .ok_or("the domain has no devices")?;
     let spice = display.protocol == Protocol::Spice;
-    let accel3d = display.accel3d && display.video == "virtio";
+    let accel3d =
+        display.accel3d && display.video == "virtio" && display.protocol != Protocol::None;
     let gl = if accel3d { "<gl enable='yes'/>" } else { "" };
-    let mut graphics = if spice {
-        format!("<graphics type='spice'><listen type='none'/>{gl}</graphics>")
-    } else {
-        "<graphics type='vnc'><listen type='none'/></graphics>".to_owned()
+    let mut graphics = match display.protocol {
+        Protocol::Spice => format!("<graphics type='spice'><listen type='none'/>{gl}</graphics>"),
+        Protocol::Vnc => "<graphics type='vnc'><listen type='none'/></graphics>".to_owned(),
+        Protocol::None => String::new(),
     };
     if accel3d && !spice {
         graphics.push_str("<graphics type='egl-headless'/>");
@@ -1267,6 +1274,31 @@ mod tests {
         let qxl = MachineConfig::parse(&set_display(&accel, &vnc("qxl", true)).unwrap()).unwrap();
         assert_eq!(qxl.display(), vnc("qxl", false));
         assert_eq!(qxl.graphics, ["vnc"]);
+    }
+
+    #[test]
+    fn a_machine_can_go_without_a_display() {
+        let none = Display {
+            protocol: Protocol::None,
+            video: "none".into(),
+            accel3d: true,
+        };
+        let xml = set_display(VIRT_MANAGER, &none).unwrap();
+        let c = MachineConfig::parse(&xml).unwrap();
+        assert!(c.graphics.is_empty(), "{xml}");
+        assert!(!xml.contains("spicevmc"), "{xml}");
+        assert_eq!(
+            c.display(),
+            Display {
+                accel3d: false,
+                ..none
+            }
+        );
+        let back = set_display(&xml, &vnc("vga", false)).unwrap();
+        assert_eq!(
+            MachineConfig::parse(&back).unwrap().display(),
+            vnc("vga", false)
+        );
     }
 
     #[test]

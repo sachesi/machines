@@ -746,16 +746,17 @@ fn display(
         view.run(move |hv, uuid| hv.set_display(uuid, &display));
     };
 
-    let mut protocols: Vec<(Protocol, &str)> = Vec::new();
+    let mut protocols: Vec<(Protocol, String)> = Vec::new();
     for (protocol, kind, label) in [
-        (Protocol::Spice, "spice", "SPICE"),
-        (Protocol::Vnc, "vnc", "VNC"),
+        (Protocol::Spice, "spice", "SPICE".to_owned()),
+        (Protocol::Vnc, "vnc", "VNC".to_owned()),
     ] {
         if options.graphics.iter().any(|g| g == kind) || current.protocol == protocol {
             protocols.push((protocol, label));
         }
     }
-    let labels: Vec<&str> = protocols.iter().map(|(_, l)| *l).collect();
+    protocols.push((Protocol::None, gettext("None")));
+    let labels: Vec<&str> = protocols.iter().map(|(_, l)| l.as_str()).collect();
     let protocol = adw::ComboRow::builder()
         .title(gettext("Protocol"))
         .model(&gtk::StringList::new(&labels))
@@ -771,6 +772,9 @@ fn display(
             gettext("With sound, and the screen sized to the window where the guest runs its agent")
         }
         Protocol::Vnc => gettext("The screen alone, without sound"),
+        Protocol::None => {
+            gettext("No console, for a passed-through graphics card with its own screen")
+        }
     });
     protocol.connect_selected_notify(glib::clone!(
         #[weak]
@@ -792,13 +796,12 @@ fn display(
     group.add(&protocol);
 
     let mut models = options.video.clone();
-    models.retain(|m| m != "none");
-    // The ones worth choosing first; the rest as QEMU lists them.
+    // The ones worth choosing first, the rest as QEMU lists them, and none last.
     let rank = |m: &String| {
-        ["virtio", "qxl", "vga", "bochs"]
+        let first = ["virtio", "qxl", "vga", "bochs"]
             .iter()
-            .position(|p| p == m)
-            .unwrap_or(usize::MAX)
+            .position(|p| p == m);
+        (m == "none", first.unwrap_or(usize::MAX))
     };
     models.sort_by_key(rank);
     if !models.contains(&current.video) {
@@ -867,6 +870,7 @@ fn video_label(model: &str) -> String {
         "ramfb" => "Ramfb".to_owned(),
         "cirrus" => "Cirrus".to_owned(),
         "vmvga" => "VMware SVGA".to_owned(),
+        "none" => gettext("None"),
         other => other.to_owned(),
     }
 }
