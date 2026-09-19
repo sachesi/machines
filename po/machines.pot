@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 09:41+0300\n"
+"POT-Creation-Date: 2026-09-24 09:49+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,6 +16,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #: data/io.github.sachesi.machines.desktop:2
 #: data/io.github.sachesi.machines.metainfo.xml:6
@@ -86,29 +87,35 @@ msgid ""
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:15
-msgid "Machines renamed, and cloned with copies of their disks"
+msgid ""
+"Processor model, topology and pinning, huge pages, and BIOS or UEFI firmware "
+"with Secure Boot"
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:16
+msgid "Machines renamed, and cloned with copies of their disks"
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:17
 msgid ""
 "Snapshots of a machine's disks, and of its memory while it runs, to revert to"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:17
+#: data/io.github.sachesi.machines.metainfo.xml:18
 msgid ""
 "Disks, CD/DVD drives, network interfaces, display and video card, and USB "
 "and PCI devices of the host added and changed from the details page"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:18
+#: data/io.github.sachesi.machines.metainfo.xml:19
 msgid "Storage pools, disks of the host and virtual networks"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:19
+#: data/io.github.sachesi.machines.metainfo.xml:20
 msgid "Machines made with virt-manager"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:26
+#: data/io.github.sachesi.machines.metainfo.xml:27
 msgid "sachesi"
 msgstr ""
 
@@ -147,348 +154,435 @@ msgstr ""
 msgid "Operating System"
 msgstr ""
 
-#: src/details.rs:129
-#, no-c-format
-msgid "Firmware"
-msgstr ""
-
-#: src/details.rs:132
+#: src/details.rs:128
 #, no-c-format
 msgid "QEMU (emulated)"
 msgstr ""
 
-#: src/details.rs:136
+#: src/details.rs:132
 #, no-c-format
 msgid "Machine"
 msgstr ""
 
-#: src/details.rs:141 src/dialogs/networks.rs:223 src/dialogs/storage.rs:303
+#: src/details.rs:137 src/dialogs/networks.rs:223 src/dialogs/storage.rs:303
 #, no-c-format
 msgid "Start With the Host"
 msgstr ""
 
-#: src/details.rs:143
+#: src/details.rs:139
 #, no-c-format
 msgid "Start when libvirt starts, at boot for the system connection"
 msgstr ""
 
-#: src/details.rs:157 src/dialogs/machine.rs:386
+#: src/details.rs:153 src/dialogs/machine.rs:386
 #, no-c-format
 msgid "Boot Order"
 msgstr ""
 
-#: src/details.rs:177
+#: src/details.rs:175
+#, no-c-format
+msgid "UEFI with Secure Boot"
+msgstr ""
+
+#: src/details.rs:179
+#, no-c-format
+msgid "Firmware"
+msgstr ""
+
+#: src/details.rs:189
+#, no-c-format
+msgid "Changes take effect at the next start"
+msgstr ""
+
+#: src/details.rs:206
 #, no-c-format
 msgid "Nothing to boot from"
 msgstr ""
 
-#: src/details.rs:200
+#: src/details.rs:229
 #, no-c-format
 msgid "Processor and Memory"
 msgstr ""
 
-#: src/details.rs:204 src/details.rs:740
+#: src/details.rs:233 src/details.rs:952
 #, no-c-format
 msgid "Changes take effect the next time the virtual machine starts."
 msgstr ""
 
-#: src/details.rs:208
+#: src/details.rs:237
 #, no-c-format
 msgid "Processors"
 msgstr ""
 
-#: src/details.rs:233
+#: src/details.rs:269
 #, no-c-format
 msgid "Memory"
 msgstr ""
 
-#: src/details.rs:234 src/dialogs/new_machine.rs:139 src/dialogs/storage.rs:731
+#: src/details.rs:270 src/dialogs/new_machine.rs:139 src/dialogs/storage.rs:731
 #: src/dialogs/storage.rs:808
 #, no-c-format
 msgid "GiB"
 msgstr ""
 
-#: src/details.rs:294 src/dialogs/storage.rs:74
+#: src/details.rs:295
+#, no-c-format
+msgid "Huge Pages"
+msgstr ""
+
+#: src/details.rs:297
+#, no-c-format
+msgid ""
+"Memory from the huge pages the host has set aside, which it needs to start"
+msgstr ""
+
+#: src/details.rs:323
+#, no-c-format
+msgid "Same as the Host"
+msgstr ""
+
+#: src/details.rs:326
+#, no-c-format
+msgid "Like the Host, Portable"
+msgstr ""
+
+#: src/details.rs:328
+#, no-c-format
+msgid "QEMU’s Default"
+msgstr ""
+
+#: src/details.rs:341
+#, no-c-format
+msgid "Processor Model"
+msgstr ""
+
+#: src/details.rs:380
+#, no-c-format
+msgid "{n} socket"
+msgid_plural "{n} sockets"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/details.rs:384
+#, no-c-format
+msgid "1 socket, {n} core"
+msgid_plural "1 socket, {n} cores"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/details.rs:391
+#, no-c-format
+msgid "1 socket, {n} core, 2 threads"
+msgid_plural "1 socket, {n} cores, 2 threads"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/details.rs:406
+#, no-c-format
+msgid "{sockets} sockets, {cores} cores, {threads} threads"
+msgstr ""
+
+#: src/details.rs:414
+#, no-c-format
+msgid "Topology"
+msgstr ""
+
+#: src/details.rs:415
+#, no-c-format
+msgid "Windows uses no more than two sockets"
+msgstr ""
+
+#: src/details.rs:443
+#, no-c-format
+msgid "Pinned Host Processors, Like “2-5”"
+msgstr ""
+
+#: src/details.rs:462
+#, no-c-format
+msgid "“{text}” is not a list of processors, like “2-5,8”"
+msgstr ""
+
+#: src/details.rs:506 src/dialogs/storage.rs:74
 #, no-c-format
 msgid "Storage"
 msgstr ""
 
-#: src/details.rs:296 src/dialogs/hardware.rs:312
+#: src/details.rs:508 src/dialogs/hardware.rs:312
 #, no-c-format
 msgid "Add Storage"
 msgstr ""
 
-#: src/details.rs:308
+#: src/details.rs:520
 #, no-c-format
 msgid "No disks"
 msgstr ""
 
-#: src/details.rs:315 src/dialogs/hardware.rs:250 src/dialogs/machine.rs:315
+#: src/details.rs:527 src/dialogs/hardware.rs:250 src/dialogs/machine.rs:315
 #, no-c-format
 msgid "CD/DVD Drive"
 msgstr ""
 
-#: src/details.rs:316 src/dialogs/machine.rs:316
+#: src/details.rs:528 src/dialogs/machine.rs:316
 #, no-c-format
 msgid "Floppy Drive"
 msgstr ""
 
-#: src/details.rs:317 src/dialogs/hardware.rs:247 src/dialogs/machine.rs:317
+#: src/details.rs:529 src/dialogs/hardware.rs:247 src/dialogs/machine.rs:317
 #, no-c-format
 msgid "Host Disk"
 msgstr ""
 
-#: src/details.rs:318 src/dialogs/machine.rs:318 src/dialogs/storage.rs:99
+#: src/details.rs:530 src/dialogs/machine.rs:318 src/dialogs/storage.rs:99
 #, no-c-format
 msgid "Disk"
 msgstr ""
 
-#: src/details.rs:320
+#: src/details.rs:532
 #, no-c-format
 msgid "Empty"
 msgstr ""
 
-#: src/details.rs:340 src/details.rs:518
+#: src/details.rs:552 src/details.rs:730
 #, no-c-format
 msgid "Remove"
 msgstr ""
 
-#: src/details.rs:370 src/details.rs:424
+#: src/details.rs:582 src/details.rs:636
 #, no-c-format
 msgid "Insert Disc Image"
 msgstr ""
 
-#: src/details.rs:396
+#: src/details.rs:608
 #, no-c-format
 msgid "Eject"
 msgstr ""
 
-#: src/details.rs:418 src/dialogs/new_machine.rs:342
+#: src/details.rs:630 src/dialogs/new_machine.rs:342
 #, no-c-format
 msgid "Disc Images"
 msgstr ""
 
-#: src/details.rs:439
+#: src/details.rs:651
 #, no-c-format
 msgid "Network"
 msgstr ""
 
-#: src/details.rs:441 src/dialogs/hardware.rs:462
+#: src/details.rs:653 src/dialogs/hardware.rs:462
 #, no-c-format
 msgid "Add Network Interface"
 msgstr ""
 
-#: src/details.rs:458
+#: src/details.rs:670
 #, no-c-format
 msgid "No network interfaces"
 msgstr ""
 
-#: src/details.rs:493 src/dialogs/hardware.rs:421
+#: src/details.rs:705 src/dialogs/hardware.rs:421
 #, no-c-format
 msgid "Virtual Network “{name}”"
 msgstr ""
 
-#: src/details.rs:494
+#: src/details.rs:706
 #, no-c-format
 msgid "Bridge {name}"
 msgstr ""
 
-#: src/details.rs:495
+#: src/details.rs:707
 #, no-c-format
 msgid "Host Device {name}"
 msgstr ""
 
-#: src/details.rs:496 src/dialogs/hardware.rs:424
+#: src/details.rs:708 src/dialogs/hardware.rs:424
 #, no-c-format
 msgid "User Networking"
 msgstr ""
 
-#: src/details.rs:537
+#: src/details.rs:749
 #, no-c-format
 msgid "Host Devices"
 msgstr ""
 
-#: src/details.rs:539 src/dialogs/hardware.rs:565
+#: src/details.rs:751 src/dialogs/hardware.rs:565
 #, no-c-format
 msgid "Add Host Device"
 msgstr ""
 
-#: src/details.rs:552
+#: src/details.rs:764
 #, no-c-format
 msgid "USB and PCI devices of the host passed through to the virtual machine"
 msgstr ""
 
-#: src/details.rs:560 src/dialogs/hardware.rs:530 src/dialogs/machine.rs:344
+#: src/details.rs:772 src/dialogs/hardware.rs:530 src/dialogs/machine.rs:344
 #, no-c-format
 msgid "USB Device"
 msgstr ""
 
-#: src/details.rs:561 src/dialogs/hardware.rs:531 src/dialogs/machine.rs:345
+#: src/details.rs:773 src/dialogs/hardware.rs:531 src/dialogs/machine.rs:345
 #, no-c-format
 msgid "PCI Device"
 msgstr ""
 
-#: src/details.rs:598
+#: src/details.rs:810
 #, no-c-format
 msgid "Devices"
 msgstr ""
 
-#: src/details.rs:600 src/dialogs/hardware.rs:971
+#: src/details.rs:812 src/dialogs/hardware.rs:971
 #, no-c-format
 msgid "Add Device"
 msgstr ""
 
-#: src/details.rs:613
+#: src/details.rs:825
 #, no-c-format
 msgid ""
 "A TPM, random number generator, sound card, or folders shared with the guest"
 msgstr ""
 
-#: src/details.rs:618
+#: src/details.rs:830
 #, no-c-format
 msgid "Emulated, version 2.0"
 msgstr ""
 
-#: src/details.rs:618 src/details.rs:619 src/dialogs/hardware.rs:983
+#: src/details.rs:830 src/details.rs:831 src/dialogs/hardware.rs:983
 #, no-c-format
 msgid "TPM"
 msgstr ""
 
-#: src/details.rs:619
+#: src/details.rs:831
 #, no-c-format
 msgid "The host’s own"
 msgstr ""
 
-#: src/details.rs:621 src/dialogs/hardware.rs:989
+#: src/details.rs:833 src/dialogs/hardware.rs:989
 #, no-c-format
 msgid "Random Number Generator"
 msgstr ""
 
-#: src/details.rs:625 src/dialogs/hardware.rs:995
+#: src/details.rs:837 src/dialogs/hardware.rs:995
 #, no-c-format
 msgid "Sound Card"
 msgstr ""
 
-#: src/details.rs:627
+#: src/details.rs:839
 #, no-c-format
 msgid "Intel HD Audio"
 msgstr ""
 
-#: src/details.rs:629
+#: src/details.rs:841
 #, no-c-format
 msgid "USB Audio"
 msgstr ""
 
-#: src/details.rs:634 src/dialogs/hardware.rs:977
+#: src/details.rs:846 src/dialogs/hardware.rs:977
 #, no-c-format
 msgid "Shared Folder"
 msgstr ""
 
-#: src/details.rs:635
+#: src/details.rs:847
 #, no-c-format
 msgid ""
 "{path}\n"
 "In the guest: mount -t virtiofs {tag} /mnt"
 msgstr ""
 
-#: src/details.rs:656
+#: src/details.rs:868
 #, no-c-format
 msgid "Snapshots"
 msgstr ""
 
-#: src/details.rs:658 src/dialogs/machine.rs:213
+#: src/details.rs:870 src/dialogs/machine.rs:213
 #, no-c-format
 msgid "Take Snapshot"
 msgstr ""
 
-#: src/details.rs:667
+#: src/details.rs:879
 #, no-c-format
 msgid ""
 "Saved states of the disks, and of the memory while it runs, to go back to"
 msgstr ""
 
-#: src/details.rs:683
+#: src/details.rs:895
 #, no-c-format
 msgid "With memory"
 msgstr ""
 
-#: src/details.rs:685
+#: src/details.rs:897
 #, no-c-format
 msgid "Disks only"
 msgstr ""
 
-#: src/details.rs:699
+#: src/details.rs:911
 #, no-c-format
 msgid "Current"
 msgstr ""
 
-#: src/details.rs:707
+#: src/details.rs:919
 #, no-c-format
 msgid "Revert to Snapshot"
 msgstr ""
 
-#: src/details.rs:720
+#: src/details.rs:932
 #, no-c-format
 msgid "Delete Snapshot"
 msgstr ""
 
-#: src/details.rs:736
+#: src/details.rs:948
 #, no-c-format
 msgid "Display"
 msgstr ""
 
-#: src/details.rs:758 src/details.rs:873
+#: src/details.rs:970 src/details.rs:1085
 #, no-c-format
 msgid "None"
 msgstr ""
 
-#: src/details.rs:761
+#: src/details.rs:973
 #, no-c-format
 msgid "Protocol"
 msgstr ""
 
-#: src/details.rs:772
+#: src/details.rs:984
 #, no-c-format
 msgid ""
 "With sound, and the screen sized to the window where the guest runs its agent"
 msgstr ""
 
-#: src/details.rs:774
+#: src/details.rs:986
 #, no-c-format
 msgid "The screen alone, without sound"
 msgstr ""
 
-#: src/details.rs:776
+#: src/details.rs:988
 #, no-c-format
 msgid "No console, for a passed-through graphics card with its own screen"
 msgstr ""
 
-#: src/details.rs:813
+#: src/details.rs:1025
 #, no-c-format
 msgid "Video Card"
 msgstr ""
 
-#: src/details.rs:837
+#: src/details.rs:1049
 #, no-c-format
 msgid "3D Acceleration"
 msgstr ""
 
-#: src/details.rs:839
+#: src/details.rs:1051
 #, no-c-format
 msgid "Renders on the host’s graphics card; needs a virtio video card"
 msgstr ""
 
-#: src/details.rs:866
+#: src/details.rs:1078
 #, no-c-format
 msgid "Virtio (Linux guests)"
 msgstr ""
 
-#: src/details.rs:867
+#: src/details.rs:1079
 #, no-c-format
 msgid "QXL (older SPICE guests)"
 msgstr ""
 
-#: src/details.rs:868
+#: src/details.rs:1080
 #, no-c-format
 msgid "VGA (any guest)"
 msgstr ""
@@ -1383,37 +1477,37 @@ msgstr ""
 msgid "{sent} of {total}"
 msgstr ""
 
-#: src/hypervisor.rs:65
+#: src/hypervisor.rs:70
 #, no-c-format
 msgid "Shut Off"
 msgstr ""
 
-#: src/hypervisor.rs:66
+#: src/hypervisor.rs:71
 #, no-c-format
 msgid "Running"
 msgstr ""
 
-#: src/hypervisor.rs:67
+#: src/hypervisor.rs:72
 #, no-c-format
 msgid "Paused"
 msgstr ""
 
-#: src/hypervisor.rs:68
+#: src/hypervisor.rs:73
 #, no-c-format
 msgid "Shutting Down"
 msgstr ""
 
-#: src/hypervisor.rs:69
+#: src/hypervisor.rs:74
 #, no-c-format
 msgid "Crashed"
 msgstr ""
 
-#: src/hypervisor.rs:70
+#: src/hypervisor.rs:75
 #, no-c-format
 msgid "Suspended"
 msgstr ""
 
-#: src/hypervisor.rs:267
+#: src/hypervisor.rs:269
 #, no-c-format
 msgid ""
 "The host’s devices cannot be listed, as libvirt’s node device service "
@@ -1421,7 +1515,7 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:411
+#: src/hypervisor.rs:468
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""

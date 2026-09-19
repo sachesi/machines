@@ -25,12 +25,17 @@ use virt::storage_vol::StorageVol;
 use virt::sys;
 
 use crate::domain_xml::{
-    self, BootDevice, Disk, DiskDevice, Display, DisplayOptions, GuestOs, MachineConfig,
-    NetworkSource, NewMachine, Snapshot,
+    self, BootDevice, Capabilities, Cpu, Disk, DiskDevice, Display, Firmware, GuestOs,
+    MachineConfig, NetworkSource, NewMachine, Snapshot,
 };
 use crate::{glib, host_xml};
 
 pub type Result<T> = std::result::Result<T, String>;
+
+/// The namespace of what the app keeps in a machine's `<metadata>`.
+const METADATA_NS: &str = "https://github.com/sachesi/machines/metadata/1";
+/// Marks a machine whose firmware variables are to be made afresh at its next start.
+const RESET_NVRAM: &str = "reset-nvram";
 
 fn message(e: virt::error::Error) -> String {
     e.message().to_owned()
@@ -90,8 +95,8 @@ pub struct MachineInfo {
     /// What QEMU is running with, while it runs, which differs from `config` after an edit
     /// until the next start.
     pub live: Option<MachineConfig>,
-    /// What QEMU can give this kind of machine for its display.
-    pub display_options: DisplayOptions,
+    /// What QEMU can give this kind of machine.
+    pub capabilities: Capabilities,
     pub snapshots: Vec<Snapshot>,
 }
 
@@ -149,7 +154,7 @@ pub struct Hypervisor {
     uri: String,
     /// Domain capabilities by virtualization type, architecture and machine type, which
     /// only change with QEMU.
-    display_options: Mutex<HashMap<(String, String, String), DisplayOptions>>,
+    capabilities: Mutex<HashMap<(String, String, String), Capabilities>>,
 }
 
 impl Hypervisor {
@@ -158,7 +163,7 @@ impl Hypervisor {
         Ok(Self {
             conn,
             uri: uri.to_owned(),
-            display_options: Mutex::default(),
+            capabilities: Mutex::default(),
         })
     }
 
@@ -206,9 +211,9 @@ impl Hypervisor {
         } else {
             None
         };
-        let display_options = config
+        let capabilities = config
             .as_ref()
-            .map(|c| self.display_options(c))
+            .map(|c| self.capabilities(c))
             .unwrap_or_default();
         Ok(MachineInfo {
             uuid: dom.get_uuid_string().map_err(message)?,
@@ -218,21 +223,18 @@ impl Hypervisor {
             autostart: persistent && dom.get_autostart().unwrap_or(false),
             config,
             live,
-            display_options,
+            capabilities,
             snapshots: snapshots::snapshots(dom),
         })
     }
 
-    fn display_options(&self, config: &MachineConfig) -> DisplayOptions {
+    fn capabilities(&self, config: &MachineConfig) -> Capabilities {
         let key = (
             config.virt_type.clone(),
             config.arch.clone(),
             config.machine.clone(),
         );
-        let mut cache = self
-            .display_options
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut cache = self.capabilities.lock().unwrap_or_else(|e| e.into_inner());
         cache
             .entry(key)
             .or_insert_with(|| {
@@ -249,7 +251,7 @@ impl Hypervisor {
                         .map(String::as_str),
                     0,
                 );
-                caps.map(|caps| DisplayOptions::parse(&caps))
+                caps.map(|caps| Capabilities::parse(&caps))
                     .unwrap_or_default()
             })
             .clone()
@@ -280,10 +282,42 @@ impl Hypervisor {
     pub fn start(&self, uuid: &str) -> Result<()> {
         let dom = self.domain(uuid)?;
         match MachineState::from_raw(dom.get_state().map_err(message)?.0) {
-            MachineState::Paused => dom.resume().map(drop),
-            MachineState::Suspended => dom.pm_wakeup(0).map(drop),
-            _ => dom.create().map(drop),
+            MachineState::Paused => dom.resume().map(drop).map_err(message),
+            MachineState::Suspended => dom.pm_wakeup(0).map(drop).map_err(message),
+            _ => {
+                let reset = dom
+                    .get_metadata(
+                        sys::VIR_DOMAIN_METADATA_ELEMENT as i32,
+                        Some(METADATA_NS),
+                        sys::VIR_DOMAIN_AFFECT_CONFIG,
+                    )
+                    .is_ok_and(|m| m.contains(RESET_NVRAM));
+                let flags = if reset {
+                    sys::VIR_DOMAIN_START_RESET_NVRAM
+                } else {
+                    0
+                };
+                dom.create_with_flags(flags).map_err(message)?;
+                if reset {
+                    let _ = self.set_reset_nvram(&dom, false);
+                }
+                Ok(())
+            }
         }
+    }
+
+    /// Mark the machine's firmware variables to be made afresh at its next start, or clear
+    /// the mark.
+    fn set_reset_nvram(&self, dom: &Domain, reset: bool) -> Result<()> {
+        let element = format!("<machine><{RESET_NVRAM}/></machine>");
+        dom.set_metadata(
+            sys::VIR_DOMAIN_METADATA_ELEMENT as i32,
+            reset.then_some(element.as_str()),
+            Some("machines"),
+            Some(METADATA_NS),
+            sys::VIR_DOMAIN_AFFECT_CONFIG,
+        )
+        .map(drop)
         .map_err(message)
     }
 
@@ -316,20 +350,46 @@ impl Hypervisor {
             .map_err(message)
     }
 
-    /// Takes effect at the next start. The maximum moves with the count, and moves first
-    /// when the count goes past it.
+    /// Redefine the machine with its definition as `edit` changes it; takes effect at the
+    /// next start.
+    fn edit_definition(
+        &self,
+        uuid: &str,
+        edit: impl FnOnce(&str) -> std::result::Result<String, String>,
+    ) -> Result<()> {
+        let xml = self.definition(uuid)?;
+        Domain::define_xml(&self.conn, &edit(&xml)?)
+            .map(drop)
+            .map_err(message)
+    }
+
+    /// Takes effect at the next start. The topology follows the count, laid out as before.
     pub fn set_vcpus(&self, uuid: &str, vcpus: u32) -> Result<()> {
-        let dom = self.domain(uuid)?;
-        let config = sys::VIR_DOMAIN_AFFECT_CONFIG;
-        let maximum = config | sys::VIR_DOMAIN_VCPU_MAXIMUM;
-        let current_max = dom.get_vcpus_flags(maximum).map_err(message)?;
-        let order = if vcpus > current_max {
-            [maximum, config]
-        } else {
-            [config, maximum]
-        };
-        for flags in order {
-            dom.set_vcpus_flags(vcpus, flags).map_err(message)?;
+        self.edit_definition(uuid, |xml| {
+            let cpu = Cpu {
+                count: vcpus,
+                ..MachineConfig::parse(xml)?.cpu
+            };
+            domain_xml::set_cpu(xml, &cpu)
+        })
+    }
+
+    pub fn set_cpu(&self, uuid: &str, cpu: &Cpu) -> Result<()> {
+        self.edit_definition(uuid, |xml| domain_xml::set_cpu(xml, cpu))
+    }
+
+    pub fn set_hugepages(&self, uuid: &str, on: bool) -> Result<()> {
+        self.edit_definition(uuid, |xml| domain_xml::set_hugepages(xml, on))
+    }
+
+    /// Boot with `firmware` from the next start. Between UEFI with and without Secure Boot,
+    /// the variables, keys among them, come afresh from the new firmware's template.
+    pub fn set_firmware(&self, uuid: &str, firmware: Firmware) -> Result<()> {
+        let old = MachineConfig::parse(&self.definition(uuid)?)?.firmware;
+        self.edit_definition(uuid, |xml| domain_xml::set_firmware(xml, firmware))?;
+        let uefi = |f| matches!(f, Firmware::Uefi | Firmware::UefiSecureBoot);
+        if uefi(old) && uefi(firmware) && old != firmware {
+            self.set_reset_nvram(&self.domain(uuid)?, true)?;
         }
         Ok(())
     }
@@ -356,10 +416,7 @@ impl Hypervisor {
 
     /// Boot from `order` from the next start on.
     pub fn set_boot_order(&self, uuid: &str, order: &[BootDevice]) -> Result<()> {
-        let xml = self.definition(uuid)?;
-        Domain::define_xml(&self.conn, &domain_xml::set_boot_order(&xml, order)?)
-            .map(drop)
-            .map_err(message)
+        self.edit_definition(uuid, |xml| domain_xml::set_boot_order(xml, order))
     }
 
     fn definition(&self, uuid: &str) -> Result<String> {
@@ -617,7 +674,7 @@ impl Hypervisor {
             cdrom,
             network: self.network(),
             video: domain_xml::video_model(&caps, req.os),
-            spice: DisplayOptions::parse(&caps)
+            spice: Capabilities::parse(&caps)
                 .graphics
                 .iter()
                 .any(|g| g == "spice"),

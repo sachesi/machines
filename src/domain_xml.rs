@@ -9,6 +9,104 @@ use crate::host_xml::HostDeviceId;
 pub enum Firmware {
     Bios,
     Uefi,
+    UefiSecureBoot,
+}
+
+/// The processor the machine sees.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CpuModel {
+    /// QEMU's own, as with no `<cpu>` mode or model at all.
+    Default,
+    /// The host's processor as it is, the fastest.
+    HostPassthrough,
+    /// A named model with what the host's processor adds to it.
+    HostModel,
+    Named(String),
+    /// Another `<cpu mode>`, such as `maximum`, which is left as it is.
+    Other(String),
+}
+
+/// How the machine's processors are laid out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Topology {
+    /// A socket for each, which is what libvirt does without a topology.
+    Sockets,
+    /// One socket with a core for each.
+    Cores,
+    /// One socket with two threads to a core, where the count is even.
+    Threads,
+    /// Anything else, which the machine keeps until its count changes.
+    Other {
+        sockets: u32,
+        cores: u32,
+        threads: u32,
+    },
+}
+
+impl Topology {
+    /// Sockets, cores and threads of `count` processors laid out this way; `None` leaves
+    /// the layout to libvirt.
+    fn layout(self, count: u32) -> Option<(u32, u32, u32)> {
+        match self {
+            Self::Sockets => None,
+            Self::Threads if count.is_multiple_of(2) => Some((1, count / 2, 2)),
+            Self::Other {
+                sockets,
+                cores,
+                threads,
+            } if sockets * cores * threads == count => Some((sockets, cores, threads)),
+            _ => Some((1, count, 1)),
+        }
+    }
+}
+
+/// "2-5,8" as `[2, 3, 4, 5, 8]`, in the order given; `None` if it is no such list.
+pub fn parse_cpu_list(text: &str) -> Option<Vec<u32>> {
+    let mut cpus = Vec::new();
+    for part in text.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        match part.split_once('-') {
+            Some((first, last)) => {
+                let (first, last): (u32, u32) =
+                    (first.trim().parse().ok()?, last.trim().parse().ok()?);
+                if first > last {
+                    return None;
+                }
+                cpus.extend(first..=last);
+            }
+            None => cpus.push(part.parse().ok()?),
+        }
+    }
+    Some(cpus)
+}
+
+/// `[2, 3, 4, 5, 8]` as "2-5,8".
+pub fn cpu_list(cpus: &[u32]) -> String {
+    let mut runs: Vec<(u32, u32)> = Vec::new();
+    for &cpu in cpus {
+        match runs.last_mut() {
+            Some((_, last)) if cpu == *last + 1 => *last = cpu,
+            _ => runs.push((cpu, cpu)),
+        }
+    }
+    runs.iter()
+        .map(|&(first, last)| match last - first {
+            0 => first.to_string(),
+            1 => format!("{first},{last}"),
+            _ => format!("{first}-{last}"),
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// What the processors of a machine are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cpu {
+    pub count: u32,
+    pub model: CpuModel,
+    pub topology: Topology,
+    /// The host processor each of the machine's runs on, first to last, or `None` where
+    /// the pinning is more than one to one, and not this app's to change.
+    pub pins: Option<Vec<u32>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,7 +203,10 @@ pub struct MachineConfig {
     pub machine: String,
     pub firmware: Firmware,
     pub memory_mib: u64,
+    /// Whether the memory comes in huge pages the host has set aside.
+    pub hugepages: bool,
     pub vcpus: u32,
+    pub cpu: Cpu,
     /// The libosinfo id virt-manager and virt-install record, e.g.
     /// `http://fedoraproject.org/fedora/41`.
     pub os_id: Option<String>,
@@ -134,9 +235,24 @@ impl MachineConfig {
         let loader_is_pflash = os
             .and_then(|os| os.children().find(|n| n.has_tag_name("loader")))
             .is_some_and(|l| l.attribute("type") == Some("pflash"));
+        let secure_boot = os
+            .and_then(|os| self::child(os, "loader"))
+            .is_some_and(|l| l.attribute("secure") == Some("yes"))
+            || os
+                .and_then(|os| self::child(os, "firmware"))
+                .iter()
+                .flat_map(|f| f.children())
+                .any(|f| {
+                    f.attribute("name") == Some("secure-boot")
+                        && f.attribute("enabled") == Some("yes")
+                });
         let firmware =
             if os.and_then(|os| os.attribute("firmware")) == Some("efi") || loader_is_pflash {
-                Firmware::Uefi
+                if secure_boot {
+                    Firmware::UefiSecureBoot
+                } else {
+                    Firmware::Uefi
+                }
             } else {
                 Firmware::Bios
             };
@@ -150,6 +266,9 @@ impl MachineConfig {
                     .and_then(|n| n.trim().parse().ok())
             })
             .unwrap_or(1);
+        let cpu = parse_cpu(root, vcpus);
+        let hugepages = child("memoryBacking")
+            .is_some_and(|m| m.children().any(|n| n.has_tag_name("hugepages")));
         let os_id = root
             .descendants()
             .find(|n| n.tag_name().namespace() == Some(LIBOSINFO_NS) && n.has_tag_name("os"))
@@ -305,7 +424,9 @@ impl MachineConfig {
                 .to_owned(),
             firmware,
             memory_mib,
+            hugepages,
             vcpus,
+            cpu,
             os_id,
             disks,
             nics,
@@ -325,6 +446,66 @@ impl MachineConfig {
             .filter(|d| d.device == DiskDevice::Disk && d.kind == "file")
             .filter_map(|d| d.source.clone())
             .collect()
+    }
+}
+
+fn parse_cpu(root: roxmltree::Node, count: u32) -> Cpu {
+    let cpu = child(root, "cpu");
+    let named = cpu
+        .and_then(|c| child(c, "model"))
+        .and_then(|m| m.text())
+        .map(|m| CpuModel::Named(m.trim().to_owned()));
+    let model = match cpu.and_then(|c| c.attribute("mode")) {
+        Some("host-passthrough") => CpuModel::HostPassthrough,
+        Some("host-model") => CpuModel::HostModel,
+        None | Some("custom") => named.unwrap_or(CpuModel::Default),
+        Some(other) => CpuModel::Other(other.to_owned()),
+    };
+    let topology = match cpu.and_then(|c| child(c, "topology")) {
+        None => Topology::Sockets,
+        Some(t) => {
+            let n = |name: &str| {
+                t.attribute(name)
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(1)
+            };
+            match (
+                n("sockets"),
+                n("dies") * n("clusters"),
+                n("cores"),
+                n("threads"),
+            ) {
+                (s, 1, 1, 1) if s == count => Topology::Sockets,
+                (1, 1, _, 1) => Topology::Cores,
+                (1, 1, _, 2) => Topology::Threads,
+                (sockets, _, cores, threads) => Topology::Other {
+                    sockets,
+                    cores,
+                    threads,
+                },
+            }
+        }
+    };
+    let mut pinned: Vec<(u32, Option<u32>)> = child(root, "cputune")
+        .iter()
+        .flat_map(|t| t.children())
+        .filter(|n| n.has_tag_name("vcpupin"))
+        .filter_map(|p| {
+            let vcpu = p.attribute("vcpu")?.parse().ok()?;
+            Some((vcpu, p.attribute("cpuset")?.parse().ok()))
+        })
+        .collect();
+    pinned.sort_by_key(|(vcpu, _)| *vcpu);
+    let pins = pinned
+        .iter()
+        .enumerate()
+        .map(|(i, (vcpu, host))| (*vcpu == i as u32).then_some(*host).flatten())
+        .collect();
+    Cpu {
+        count,
+        model,
+        topology,
+        pins,
     }
 }
 
@@ -643,6 +824,169 @@ pub fn set_boot_order(xml: &str, order: &[BootDevice]) -> Result<String, String>
     Ok(apply_edits(xml, edits))
 }
 
+/// `xml` with its processors as `cpu` says. Features, caches and NUMA cells its `<cpu>`
+/// has stay, and pinning more than one to one stays where `cpu` leaves it alone.
+pub fn set_cpu(xml: &str, cpu: &Cpu) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let root = doc.root_element();
+    let end = root.range().end - "</domain>".len();
+    let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+    let mut put = |node: Option<roxmltree::Node>, text: String| match node {
+        Some(node) => edits.push((node.range(), text)),
+        None => edits.push((end..end, text)),
+    };
+
+    put(
+        child(root, "vcpu"),
+        format!("<vcpu placement='static'>{}</vcpu>", cpu.count),
+    );
+
+    let old = child(root, "cpu");
+    let open = match &cpu.model {
+        CpuModel::Default => "<cpu>".to_owned(),
+        CpuModel::HostPassthrough => {
+            "<cpu mode='host-passthrough' check='none' migratable='on'>".to_owned()
+        }
+        CpuModel::HostModel => "<cpu mode='host-model' check='partial'>".to_owned(),
+        CpuModel::Named(model) => format!(
+            "<cpu mode='custom' match='exact' check='none'><model fallback='allow'>{}</model>",
+            escape(model)
+        ),
+        CpuModel::Other(mode) => format!("<cpu mode='{}'>", escape(mode)),
+    };
+    let topology = cpu
+        .topology
+        .layout(cpu.count)
+        .map(|(s, c, t)| format!("<topology sockets='{s}' cores='{c}' threads='{t}'/>"))
+        .unwrap_or_default();
+    let kept: String = old
+        .iter()
+        .flat_map(|c| c.children())
+        .filter(|n| {
+            n.is_element() && !["model", "topology", "vendor"].contains(&n.tag_name().name())
+        })
+        .map(|n| &xml[n.range()])
+        .collect();
+    let element = if cpu.model == CpuModel::Default && topology.is_empty() && kept.is_empty() {
+        String::new()
+    } else {
+        format!("{open}{topology}{kept}</cpu>")
+    };
+    if old.is_some() || !element.is_empty() {
+        put(old, element);
+    }
+
+    if let Some(pins) = &cpu.pins {
+        let pins: String = pins
+            .iter()
+            .take(cpu.count as usize)
+            .enumerate()
+            .map(|(vcpu, host)| format!("<vcpupin vcpu='{vcpu}' cpuset='{host}'/>"))
+            .collect();
+        match child(root, "cputune") {
+            None if pins.is_empty() => {}
+            None => put(None, format!("<cputune>{pins}</cputune>")),
+            Some(tune) => {
+                let (old_pins, others): (Vec<_>, Vec<_>) = tune
+                    .children()
+                    .filter(|n| n.is_element())
+                    .partition(|n| n.has_tag_name("vcpupin"));
+                if others.is_empty() {
+                    let tune_xml = if pins.is_empty() {
+                        String::new()
+                    } else {
+                        format!("<cputune>{pins}</cputune>")
+                    };
+                    put(Some(tune), tune_xml);
+                } else {
+                    for pin in old_pins {
+                        edits.push((pin.range(), String::new()));
+                    }
+                    let at = tune.range().end - "</cputune>".len();
+                    edits.push((at..at, pins));
+                }
+            }
+        }
+    }
+    Ok(apply_edits(xml, edits))
+}
+
+/// `xml` with its memory in huge pages, or out of them.
+pub fn set_hugepages(xml: &str, on: bool) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let root = doc.root_element();
+    let backing = child(root, "memoryBacking");
+    let pages = backing.and_then(|b| child(b, "hugepages"));
+    let mut edits = Vec::new();
+    match (on, backing, pages) {
+        (true, None, _) => {
+            let end = root.range().end - "</domain>".len();
+            edits.push((
+                end..end,
+                "<memoryBacking><hugepages/></memoryBacking>".to_owned(),
+            ));
+        }
+        (true, Some(backing), None) => {
+            let range = backing.range();
+            let text = &xml[range.clone()];
+            if text.ends_with("/>") {
+                edits.push((
+                    range,
+                    "<memoryBacking><hugepages/></memoryBacking>".to_owned(),
+                ));
+            } else {
+                let at = range.start + text.find('>').ok_or("a broken memoryBacking")? + 1;
+                edits.push((at..at, "<hugepages/>".to_owned()));
+            }
+        }
+        (false, Some(backing), Some(pages)) => {
+            if backing.children().filter(|n| n.is_element()).count() == 1 {
+                edits.push((backing.range(), String::new()));
+            } else {
+                edits.push((pages.range(), String::new()));
+            }
+        }
+        _ => {}
+    }
+    Ok(apply_edits(xml, edits))
+}
+
+/// `xml` booting with `firmware`, which libvirt picks the files for.
+pub fn set_firmware(xml: &str, firmware: Firmware) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let os = child(doc.root_element(), "os").ok_or("the domain has no os")?;
+    let range = os.range();
+    let open_end = range.start + xml[range.clone()].find('>').ok_or("a broken os")? + 1;
+    let mut open: String = "<os".to_owned();
+    for attribute in os.attributes().filter(|a| a.name() != "firmware") {
+        let _ = write!(
+            open,
+            " {}='{}'",
+            attribute.name(),
+            escape(attribute.value())
+        );
+    }
+    let features = |secure: &str| {
+        format!(
+            " firmware='efi'><firmware><feature enabled='{secure}' name='enrolled-keys'/>\
+             <feature enabled='{secure}' name='secure-boot'/></firmware>"
+        )
+    };
+    open.push_str(&match firmware {
+        Firmware::Bios => ">".to_owned(),
+        Firmware::Uefi => features("no"),
+        Firmware::UefiSecureBoot => features("yes"),
+    });
+    let mut edits = vec![(range.start..open_end, open)];
+    for gone in os
+        .children()
+        .filter(|n| ["loader", "nvram", "firmware"].contains(&n.tag_name().name()))
+    {
+        edits.push((gone.range(), String::new()));
+    }
+    Ok(apply_edits(xml, edits))
+}
+
 fn child<'a, 'i>(parent: roxmltree::Node<'a, 'i>, name: &str) -> Option<roxmltree::Node<'a, 'i>> {
     parent.children().find(|n| n.has_tag_name(name))
 }
@@ -889,7 +1233,7 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
 /// `caps` list: virtio where the guest will have a driver for it, else plain VGA, else
 /// whatever QEMU has.
 pub fn video_model(caps: &str, os: GuestOs) -> String {
-    let models = DisplayOptions::parse(caps).video;
+    let models = Capabilities::parse(caps).video;
     let preferred: &[&str] = match os {
         GuestOs::Windows => &["vga", "bochs"],
         _ => &["virtio", "vga", "bochs"],
@@ -951,14 +1295,20 @@ impl MachineConfig {
 
 /// What QEMU can give a machine, from its domain capabilities.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DisplayOptions {
+pub struct Capabilities {
     /// Graphics types: `vnc`, `spice`, `egl-headless`…
     pub graphics: Vec<String>,
     /// Video card models: `virtio`, `qxl`, `vga`…
     pub video: Vec<String>,
+    /// Whether there is UEFI firmware to boot with.
+    pub efi: bool,
+    pub host_passthrough: bool,
+    pub host_model: bool,
+    /// The CPU models QEMU can give the machine on this host.
+    pub cpu_models: Vec<String>,
 }
 
-impl DisplayOptions {
+impl Capabilities {
     pub fn parse(caps: &str) -> Self {
         let Ok(doc) = roxmltree::Document::parse(caps) else {
             return Self::default();
@@ -976,9 +1326,34 @@ impl DisplayOptions {
                 })
                 .unwrap_or_default()
         };
+        let cpu_mode = |name: &str| {
+            doc.descendants()
+                .filter(|n| n.has_tag_name("mode") && n.attribute("name") == Some(name))
+                .find(|n| n.parent().is_some_and(|p| p.has_tag_name("cpu")))
+        };
+        let supported =
+            |name: &str| cpu_mode(name).is_some_and(|m| m.attribute("supported") == Some("yes"));
+        let efi = doc
+            .descendants()
+            .find(|n| n.has_tag_name("os"))
+            .and_then(|os| {
+                os.children()
+                    .find(|n| n.has_tag_name("enum") && n.attribute("name") == Some("firmware"))
+            })
+            .is_some_and(|list| list.children().any(|v| v.text() == Some("efi")));
+        let cpu_models = cpu_mode("custom")
+            .iter()
+            .flat_map(|m| m.children())
+            .filter(|n| n.has_tag_name("model") && n.attribute("usable") == Some("yes"))
+            .filter_map(|n| n.text().map(str::to_owned))
+            .collect();
         Self {
             graphics: values("graphics", "type"),
             video: values("video", "modelType"),
+            efi,
+            host_passthrough: supported("host-passthrough"),
+            host_model: supported("host-model"),
+            cpu_models,
         }
     }
 
@@ -1302,13 +1677,13 @@ mod tests {
     }
 
     #[test]
-    fn display_options_come_from_the_capabilities() {
+    fn capabilities_come_from_the_capabilities() {
         let caps = "<domainCapabilities><devices>\
             <graphics supported='yes'><enum name='type'><value>vnc</value>\
             <value>egl-headless</value></enum></graphics>\
             <video supported='yes'><enum name='modelType'><value>vga</value>\
             <value>virtio</value></enum></video></devices></domainCapabilities>";
-        let options = DisplayOptions::parse(caps);
+        let options = Capabilities::parse(caps);
         assert_eq!(options.graphics, ["vnc", "egl-headless"]);
         assert_eq!(options.video, ["vga", "virtio"]);
         assert!(options.has_accel3d(Protocol::Vnc));
@@ -1567,6 +1942,160 @@ mod tests {
 
         let without = clone_xml(VIRT_MANAGER, "copy", &[(c.disks[0].xml.clone(), None)]).unwrap();
         assert_eq!(MachineConfig::parse(&without).unwrap().disks.len(), 1);
+    }
+
+    #[test]
+    fn processors_change_with_what_their_cpu_has() {
+        let c = MachineConfig::parse(VIRT_MANAGER).unwrap();
+        assert_eq!(c.cpu.model, CpuModel::Default);
+        assert_eq!(c.cpu.topology, Topology::Sockets);
+        assert_eq!(c.cpu.pins, Some(vec![]));
+        let cpu = Cpu {
+            count: 6,
+            model: CpuModel::HostPassthrough,
+            topology: Topology::Threads,
+            pins: Some(vec![2, 3, 4, 5, 6, 7, 8]),
+        };
+        let xml = set_cpu(VIRT_MANAGER, &cpu).unwrap();
+        let back = MachineConfig::parse(&xml).unwrap();
+        assert_eq!(back.vcpus, 6);
+        assert_eq!(
+            back.cpu,
+            Cpu {
+                pins: Some(vec![2, 3, 4, 5, 6, 7]),
+                ..cpu.clone()
+            }
+        );
+        assert!(
+            xml.contains("<topology sockets='1' cores='3' threads='2'/>"),
+            "{xml}"
+        );
+
+        // An odd count cannot have two threads to a core; features and NUMA cells stay.
+        let numa = xml.replace(
+            "</cpu>",
+            "<feature policy='require' name='topoext'/><numa><cell id='0' cpus='0-4' memory='4' unit='GiB'/></numa></cpu>",
+        );
+        let odd = set_cpu(
+            &numa,
+            &Cpu {
+                count: 5,
+                model: CpuModel::Named("EPYC".into()),
+                pins: Some(vec![]),
+                ..cpu.clone()
+            },
+        )
+        .unwrap();
+        let back = MachineConfig::parse(&odd).unwrap();
+        assert_eq!(back.cpu.model, CpuModel::Named("EPYC".into()));
+        assert_eq!(back.cpu.topology, Topology::Cores);
+        assert_eq!(back.cpu.pins, Some(vec![]));
+        assert!(!odd.contains("cputune"), "{odd}");
+        assert!(odd.contains("<numa><cell id='0'"), "{odd}");
+        assert!(odd.contains("name='topoext'"), "{odd}");
+
+        let plain = set_cpu(
+            &xml,
+            &Cpu {
+                model: CpuModel::Default,
+                topology: Topology::Sockets,
+                pins: Some(vec![]),
+                ..cpu.clone()
+            },
+        )
+        .unwrap();
+        assert!(!plain.contains("<cpu"), "{plain}");
+
+        // Pins to more than one host processor each are not this app's to touch.
+        let wide = xml
+            .replace("<cputune>", "<cputune><emulatorpin cpuset='0-1'/>")
+            .replace("cpuset='2'", "cpuset='2-3'");
+        let c = MachineConfig::parse(&wide).unwrap();
+        assert_eq!(c.cpu.pins, None);
+        let kept = set_cpu(
+            &wide,
+            &Cpu {
+                count: 8,
+                ..c.cpu.clone()
+            },
+        )
+        .unwrap();
+        assert!(
+            kept.contains("cpuset='2-3'") && kept.contains("emulatorpin"),
+            "{kept}"
+        );
+        let unpinned = set_cpu(
+            &wide,
+            &Cpu {
+                pins: Some(vec![]),
+                ..c.cpu
+            },
+        )
+        .unwrap();
+        assert!(
+            !unpinned.contains("vcpupin") && unpinned.contains("emulatorpin"),
+            "{unpinned}"
+        );
+    }
+
+    #[test]
+    fn cpu_lists_read_and_write() {
+        assert_eq!(parse_cpu_list(" 2-5, 8"), Some(vec![2, 3, 4, 5, 8]));
+        assert_eq!(parse_cpu_list(""), Some(vec![]));
+        assert_eq!(parse_cpu_list("5-2"), None);
+        assert_eq!(parse_cpu_list("two"), None);
+        assert_eq!(cpu_list(&[2, 3, 4, 5, 8, 9, 11]), "2-5,8,9,11");
+        assert_eq!(cpu_list(&[]), "");
+    }
+
+    #[test]
+    fn hugepages_come_and_go() {
+        let on = set_hugepages(VIRT_MANAGER, true).unwrap();
+        assert!(MachineConfig::parse(&on).unwrap().hugepages);
+        assert!(!set_hugepages(&on, false).unwrap().contains("memoryBacking"));
+        let shared = with_shared_memory(VIRT_MANAGER).unwrap().unwrap();
+        let both = set_hugepages(&shared, true).unwrap();
+        assert!(
+            both.contains("<memoryBacking><hugepages/><source type='memfd'/>"),
+            "{both}"
+        );
+        let back = set_hugepages(&both, false).unwrap();
+        assert_eq!(back, shared);
+    }
+
+    #[test]
+    fn firmware_is_left_for_libvirt_to_pick() {
+        let defined = VIRT_MANAGER.replace(
+            "<boot dev='hd'/>",
+            "<firmware><feature enabled='yes' name='secure-boot'/></firmware>\
+             <loader readonly='yes' secure='yes' type='pflash'>/usr/share/OVMF_CODE.secboot.fd</loader>\
+             <nvram>/var/lib/libvirt/qemu/nvram/f_VARS.fd</nvram><boot dev='hd'/>",
+        );
+        let c = MachineConfig::parse(&defined).unwrap();
+        assert_eq!(c.firmware, Firmware::UefiSecureBoot);
+        let uefi = set_firmware(&defined, Firmware::Uefi).unwrap();
+        assert!(
+            !uefi.contains("<loader") && !uefi.contains("<nvram"),
+            "{uefi}"
+        );
+        assert_eq!(
+            MachineConfig::parse(&uefi).unwrap().firmware,
+            Firmware::Uefi
+        );
+        let bios = set_firmware(&uefi, Firmware::Bios).unwrap();
+        assert!(
+            bios.contains("<os>") && !bios.contains("<firmware>"),
+            "{bios}"
+        );
+        assert_eq!(
+            MachineConfig::parse(&bios).unwrap().firmware,
+            Firmware::Bios
+        );
+        let secure = set_firmware(&bios, Firmware::UefiSecureBoot).unwrap();
+        assert_eq!(
+            MachineConfig::parse(&secure).unwrap().firmware,
+            Firmware::UefiSecureBoot
+        );
     }
 
     #[test]

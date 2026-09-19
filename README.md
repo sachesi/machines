@@ -10,7 +10,10 @@ their disks.
 A machine's details page adds and removes its disks, CD/DVD drives and network interfaces,
 gives it whole disks of the host, a TPM, sound card, random number generator and folders
 shared over virtiofs, and passes USB and PCI devices of the host through to it, or plugs
-USB devices into it while it runs. It also picks the display protocol and video card
+USB devices into it while it runs. It sets the processor model (the host's own, for the
+fastest), how the processors are laid out in sockets, cores and threads, which host
+processors they run on, huge pages for the memory, and the firmware: BIOS, or UEFI with
+or without Secure Boot. It also picks the display protocol and video card
 (virtio, QXL, VGA…), or none for a machine whose screen is a passed-through graphics
 card's, turns on 3D acceleration, which renders on the host's GPU with a
 virtio card, and sets the order the machine boots from its disks, drives, network

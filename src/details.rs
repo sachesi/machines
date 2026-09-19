@@ -5,13 +5,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gettextrs::gettext;
+use gettextrs::{gettext, ngettext};
 
 use crate::adw::prelude::*;
 use crate::dialogs::{self, add_button, hardware, remove_button};
 use crate::domain_xml::{
-    Disk, DiskDevice, Display, Firmware, Gadget, GadgetDevice, HostDev, MachineConfig, Nic,
-    Protocol, Snapshot,
+    Cpu, CpuModel, Disk, DiskDevice, Display, Firmware, Gadget, GadgetDevice, HostDev,
+    MachineConfig, Nic, Protocol, Snapshot, Topology, cpu_list, parse_cpu_list,
 };
 use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
@@ -122,11 +122,7 @@ fn overview(
     if let Some(os) = config.os_id.as_deref().and_then(os_name) {
         group.add(&info_row(&gettext("Operating System"), &os));
     }
-    let firmware = match config.firmware {
-        Firmware::Uefi => "UEFI",
-        Firmware::Bios => "BIOS",
-    };
-    group.add(&info_row(&gettext("Firmware"), firmware));
+    group.add(&firmware_row(view, info, config));
     let hypervisor = match config.virt_type.as_str() {
         "kvm" => "KVM".to_owned(),
         "qemu" => gettext("QEMU (emulated)"),
@@ -170,6 +166,39 @@ fn overview(
         group.add(&boot);
     }
     group
+}
+
+fn firmware_row(view: &MachineView, info: &MachineInfo, config: &MachineConfig) -> adw::ComboRow {
+    let mut choices = vec![(Firmware::Bios, "BIOS".to_owned())];
+    if info.capabilities.efi || config.firmware != Firmware::Bios {
+        choices.push((Firmware::Uefi, "UEFI".to_owned()));
+        choices.push((Firmware::UefiSecureBoot, gettext("UEFI with Secure Boot")));
+    }
+    let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
+    let row = adw::ComboRow::builder()
+        .title(gettext("Firmware"))
+        .model(&gtk::StringList::new(&labels))
+        .selected(
+            choices
+                .iter()
+                .position(|(f, _)| *f == config.firmware)
+                .unwrap_or(0) as u32,
+        )
+        .build();
+    if info.state.is_active() {
+        row.set_subtitle(&gettext("Changes take effect at the next start"));
+    }
+    row.connect_selected_notify(glib::clone!(
+        #[weak]
+        view,
+        move |row| {
+            if let Some((firmware, _)) = choices.get(row.selected() as usize) {
+                let firmware = *firmware;
+                view.run(move |hv, uuid| hv.set_firmware(uuid, firmware));
+            }
+        }
+    ));
+    row
 }
 
 fn boot_summary(config: &MachineConfig) -> String {
@@ -227,6 +256,13 @@ fn resources(
         ),
     );
     group.add(&vcpus);
+    group.add(&cpu_model_row(view, info, config));
+    if let Some(row) = topology_row(view, config) {
+        group.add(&row);
+    }
+    if let Some(row) = pins_row(view, config) {
+        group.add(&row);
+    }
 
     let gib = |mib: u64| mib as f64 / 1024.0;
     let memory = adw::SpinRow::builder()
@@ -254,7 +290,183 @@ fn resources(
         ),
     );
     group.add(&memory);
+
+    let hugepages = adw::SwitchRow::builder()
+        .title(gettext("Huge Pages"))
+        .subtitle(gettext(
+            "Memory from the huge pages the host has set aside, which it needs to start",
+        ))
+        .active(config.hugepages)
+        .build();
+    hugepages.connect_active_notify(glib::clone!(
+        #[weak]
+        view,
+        move |row| {
+            let on = row.is_active();
+            view.run(move |hv, uuid| hv.set_hugepages(uuid, on));
+        }
+    ));
+    group.add(&hugepages);
     group
+}
+
+/// Save the machine's processors as `cpu`.
+fn set_cpu(view: &MachineView, cpu: Cpu) {
+    view.run(move |hv, uuid| hv.set_cpu(uuid, &cpu));
+}
+
+fn cpu_model_row(view: &MachineView, info: &MachineInfo, config: &MachineConfig) -> adw::ComboRow {
+    let caps = &info.capabilities;
+    let current = &config.cpu.model;
+    let mut choices: Vec<(CpuModel, String)> = Vec::new();
+    if caps.host_passthrough || *current == CpuModel::HostPassthrough {
+        choices.push((CpuModel::HostPassthrough, gettext("Same as the Host")));
+    }
+    if caps.host_model || *current == CpuModel::HostModel {
+        choices.push((CpuModel::HostModel, gettext("Like the Host, Portable")));
+    }
+    choices.push((CpuModel::Default, gettext("QEMU’s Default")));
+    for model in &caps.cpu_models {
+        choices.push((CpuModel::Named(model.clone()), model.clone()));
+    }
+    match current {
+        CpuModel::Named(model) if !caps.cpu_models.contains(model) => {
+            choices.push((current.clone(), model.clone()));
+        }
+        CpuModel::Other(mode) => choices.push((current.clone(), mode.clone())),
+        _ => {}
+    }
+    let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
+    let row = adw::ComboRow::builder()
+        .title(gettext("Processor Model"))
+        .model(&gtk::StringList::new(&labels))
+        .enable_search(choices.len() > 8)
+        .expression(gtk::PropertyExpression::new(
+            gtk::StringObject::static_type(),
+            gtk::Expression::NONE,
+            "string",
+        ))
+        .selected(choices.iter().position(|(m, _)| m == current).unwrap_or(0) as u32)
+        .build();
+    let cpu = config.cpu.clone();
+    row.connect_selected_notify(glib::clone!(
+        #[weak]
+        view,
+        move |row| {
+            if let Some((model, _)) = choices.get(row.selected() as usize) {
+                set_cpu(
+                    &view,
+                    Cpu {
+                        model: model.clone(),
+                        ..cpu.clone()
+                    },
+                );
+            }
+        }
+    ));
+    row
+}
+
+/// How the processors are laid out, where there is more than one way for their count.
+fn topology_row(view: &MachineView, config: &MachineConfig) -> Option<adw::ComboRow> {
+    let n = config.cpu.count;
+    let current = config.cpu.topology;
+    if n < 2 && !matches!(current, Topology::Other { .. }) {
+        return None;
+    }
+    let mut choices = vec![
+        (
+            Topology::Sockets,
+            ngettext("{n} socket", "{n} sockets", n).replace("{n}", &n.to_string()),
+        ),
+        (
+            Topology::Cores,
+            ngettext("1 socket, {n} core", "1 socket, {n} cores", n).replace("{n}", &n.to_string()),
+        ),
+    ];
+    if n.is_multiple_of(2) {
+        choices.push((
+            Topology::Threads,
+            ngettext(
+                "1 socket, {n} core, 2 threads",
+                "1 socket, {n} cores, 2 threads",
+                n / 2,
+            )
+            .replace("{n}", &(n / 2).to_string()),
+        ));
+    }
+    if let Topology::Other {
+        sockets,
+        cores,
+        threads,
+    } = current
+    {
+        choices.push((
+            current,
+            gettext("{sockets} sockets, {cores} cores, {threads} threads")
+                .replace("{sockets}", &sockets.to_string())
+                .replace("{cores}", &cores.to_string())
+                .replace("{threads}", &threads.to_string()),
+        ));
+    }
+    let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
+    let row = adw::ComboRow::builder()
+        .title(gettext("Topology"))
+        .subtitle(gettext("Windows uses no more than two sockets"))
+        .model(&gtk::StringList::new(&labels))
+        .selected(choices.iter().position(|(t, _)| *t == current).unwrap_or(0) as u32)
+        .build();
+    let cpu = config.cpu.clone();
+    row.connect_selected_notify(glib::clone!(
+        #[weak]
+        view,
+        move |row| {
+            if let Some((topology, _)) = choices.get(row.selected() as usize) {
+                set_cpu(
+                    &view,
+                    Cpu {
+                        topology: *topology,
+                        ..cpu.clone()
+                    },
+                );
+            }
+        }
+    ));
+    Some(row)
+}
+
+/// The host processors the machine's run on, one each; none where they are pinned some
+/// other way.
+fn pins_row(view: &MachineView, config: &MachineConfig) -> Option<adw::EntryRow> {
+    let pins = config.cpu.pins.as_ref()?;
+    let row = adw::EntryRow::builder()
+        .title(gettext("Pinned Host Processors, Like “2-5”"))
+        .text(cpu_list(pins))
+        .show_apply_button(true)
+        .build();
+    let cpu = config.cpu.clone();
+    row.connect_apply(glib::clone!(
+        #[weak]
+        view,
+        move |row| match parse_cpu_list(&row.text()) {
+            Some(pins) => set_cpu(
+                &view,
+                Cpu {
+                    pins: Some(pins),
+                    ..cpu.clone()
+                },
+            ),
+            None => {
+                if let Some(win) = window(&view) {
+                    win.toast(
+                        &gettext("“{text}” is not a list of processors, like “2-5,8”")
+                            .replace("{text}", &row.text()),
+                    );
+                }
+            }
+        }
+    ));
+    Some(row)
 }
 
 /// Call `f` once the row's value has stopped changing for [`SETTLE`], so dragging or
@@ -741,7 +953,7 @@ fn display(
         )));
     }
     let current = config.display();
-    let options = &info.display_options;
+    let options = &info.capabilities;
     let set = move |view: &MachineView, display: Display| {
         view.run(move |hv, uuid| hv.set_display(uuid, &display));
     };
