@@ -1,4 +1,4 @@
-//! Renaming and cloning a machine, and the order it boots from its devices in.
+//! Renaming and cloning a machine, its snapshots, and the order it boots from its devices in.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -10,7 +10,7 @@ use crate::domain_xml::{BootDevice, DiskDevice, MachineConfig};
 use crate::host_xml::HostDeviceId;
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
-use crate::{adw, glib, gtk};
+use crate::{adw, dialogs, glib, gtk};
 
 /// Every device the firmware could boot from, in order, and whether it does.
 type BootList = Vec<(BootDevice, bool)>;
@@ -19,13 +19,15 @@ fn window(view: &MachineView) -> Option<MachinesWindow> {
     view.root().and_downcast()
 }
 
-/// Ask for a machine name none of `taken` has; resolves to it, or None if cancelled.
+/// Ask for a name that `allowed` takes and none of `taken` has; resolves to it, or None if
+/// cancelled.
 async fn ask_name(
     view: &MachineView,
     dialog: adw::AlertDialog,
     action: &str,
     initial: &str,
     taken: Vec<String>,
+    allowed: impl Fn(&str) -> bool + 'static,
     extra: Option<gtk::Widget>,
 ) -> Option<String> {
     dialog.add_responses(&[("cancel", &gettext("_Cancel")), ("confirm", action)]);
@@ -39,7 +41,7 @@ async fn ask_name(
         .build();
     let valid = move |name: &str| {
         let name = name.trim();
-        !name.is_empty() && !name.contains('/') && !taken.iter().any(|t| t == name)
+        !name.is_empty() && allowed(name) && !taken.iter().any(|t| t == name)
     };
     dialog.set_response_enabled("confirm", valid(initial));
     entry.connect_changed(glib::clone!(
@@ -65,6 +67,18 @@ async fn ask_name(
     (dialog.choose_future(Some(view)).await == "confirm").then(|| entry.text().trim().to_owned())
 }
 
+fn machine_name(name: &str) -> bool {
+    !name.contains('/')
+}
+
+/// What QEMU takes as the ID of the job that saves a running machine's snapshot.
+fn snapshot_name(name: &str) -> bool {
+    name.starts_with(|c: char| c.is_ascii_alphabetic())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-._".contains(c))
+}
+
 pub fn rename(view: &MachineView) {
     let (Some(win), Some(info)) = (window(view), view.info()) else {
         return;
@@ -77,8 +91,16 @@ pub fn rename(view: &MachineView) {
         view,
         async move {
             let taken = win.machine_names();
-            if let Some(name) =
-                ask_name(&view, dialog, &gettext("_Rename"), &info.name, taken, None).await
+            if let Some(name) = ask_name(
+                &view,
+                dialog,
+                &gettext("_Rename"),
+                &info.name,
+                taken,
+                machine_name,
+                None,
+            )
+            .await
             {
                 view.run(move |hv, uuid| hv.rename(uuid, &name));
             }
@@ -157,6 +179,7 @@ pub fn clone(view: &MachineView) {
                 &gettext("_Clone"),
                 &initial,
                 taken,
+                machine_name,
                 Some(details.upcast()),
             )
             .await
@@ -173,6 +196,110 @@ pub fn clone(view: &MachineView) {
                 None => {}
             }
             win.refresh();
+        }
+    ));
+}
+
+pub fn take_snapshot(view: &MachineView) {
+    let (Some(win), Some(info)) = (window(view), view.info()) else {
+        return;
+    };
+    let taken: Vec<String> = info.snapshots.iter().map(|s| s.name.clone()).collect();
+    let initial = (1..)
+        .map(|i| format!("snapshot-{i}"))
+        .find(|n| !taken.contains(n))
+        .expect("an unused name");
+    let dialog = adw::AlertDialog::builder()
+        .heading(gettext("Take Snapshot"))
+        .body(if info.state.is_active() {
+            gettext(
+                "The snapshot keeps the memory of the running machine as well as its disks, \
+                 so reverting to it resumes the machine where it was. The machine pauses \
+                 while its memory is saved.\n\nNames take letters, digits, “-”, “.” and “_”.",
+            )
+        } else {
+            gettext(
+                "The snapshot keeps the machine’s disks and settings as they are now.\n\n\
+                 Names take letters, digits, “-”, “.” and “_”.",
+            )
+        })
+        .build();
+    let description = adw::EntryRow::builder()
+        .title(gettext("Description"))
+        .activates_default(true)
+        .build();
+    let list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .css_classes(["boxed-list"])
+        .build();
+    list.append(&description);
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        view,
+        async move {
+            let Some(name) = ask_name(
+                &view,
+                dialog,
+                &gettext("_Take"),
+                &initial,
+                taken,
+                snapshot_name,
+                Some(list.upcast()),
+            )
+            .await
+            else {
+                return;
+            };
+            let description = description.text().trim().to_owned();
+            win.toast(&gettext("Taking “{name}”…").replace("{name}", &name));
+            view.run(move |hv, uuid| hv.take_snapshot(uuid, &name, &description));
+        }
+    ));
+}
+
+pub fn revert_snapshot(view: &MachineView, name: &str) {
+    let name = name.to_owned();
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        view,
+        async move {
+            let confirmed = dialogs::confirm(
+                &view,
+                &gettext("Revert to “{name}”?").replace("{name}", &name),
+                &gettext(
+                    "The virtual machine goes back to how it was when the snapshot was taken. \
+                     What changed on its disks since then is lost, unless another snapshot \
+                     has it.",
+                ),
+                &gettext("_Revert"),
+            )
+            .await;
+            if confirmed {
+                view.run(move |hv, uuid| hv.revert_snapshot(uuid, &name));
+            }
+        }
+    ));
+}
+
+pub fn delete_snapshot(view: &MachineView, name: &str) {
+    let name = name.to_owned();
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        view,
+        async move {
+            let confirmed = dialogs::confirm(
+                &view,
+                &gettext("Delete “{name}”?").replace("{name}", &name),
+                &gettext(
+                    "The virtual machine stays as it is; only the way back to this snapshot \
+                     goes.",
+                ),
+                &gettext("_Delete"),
+            )
+            .await;
+            if confirmed {
+                view.run(move |hv, uuid| hv.delete_snapshot(uuid, &name));
+            }
         }
     ));
 }

@@ -1070,6 +1070,54 @@ pub fn set_display(xml: &str, display: &Display) -> Result<String, String> {
     Ok(apply_edits(xml, edits))
 }
 
+/// A saved state of a machine's disks, and of its memory if it was running.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Snapshot {
+    pub name: String,
+    pub description: Option<String>,
+    /// Seconds since the epoch.
+    pub created: i64,
+    /// Whether it has the machine's memory, so that reverting to it resumes the machine.
+    pub running: bool,
+    /// Whether the machine's disks go on from this snapshot.
+    pub current: bool,
+}
+
+impl Snapshot {
+    /// From a `<domainsnapshot>`; `current` is left for libvirt to tell.
+    pub fn parse(xml: &str) -> Result<Self, String> {
+        let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+        let root = doc.root_element();
+        let text = |name: &str| child(root, name).and_then(|n| n.text()).map(str::trim);
+        let memory = child(root, "memory").and_then(|m| m.attribute("snapshot"));
+        Ok(Self {
+            name: text("name").ok_or("the snapshot has no name")?.to_owned(),
+            description: text("description")
+                .filter(|d| !d.is_empty())
+                .map(str::to_owned),
+            created: text("creationTime")
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(0),
+            running: matches!(text("state"), Some("running" | "paused"))
+                && memory.is_none_or(|m| m != "no"),
+            current: false,
+        })
+    }
+}
+
+/// The XML that takes a snapshot named `name`.
+pub fn snapshot_xml(name: &str, description: &str) -> String {
+    let description = if description.is_empty() {
+        String::new()
+    } else {
+        format!("<description>{}</description>", escape(description))
+    };
+    format!(
+        "<domainsnapshot><name>{}</name>{description}</domainsnapshot>",
+        escape(name)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1487,5 +1535,30 @@ mod tests {
 
         let without = clone_xml(VIRT_MANAGER, "copy", &[(c.disks[0].xml.clone(), None)]).unwrap();
         assert_eq!(MachineConfig::parse(&without).unwrap().disks.len(), 1);
+    }
+
+    #[test]
+    fn snapshots_read_back() {
+        let taken = snapshot_xml("Before <update>", "a & b");
+        let s = Snapshot::parse(&taken).unwrap();
+        assert_eq!(s.name, "Before <update>");
+        assert_eq!(s.description.as_deref(), Some("a & b"));
+        assert!(snapshot_xml("x", "").contains("<name>x</name></domainsnapshot>"));
+
+        let libvirt = format!(
+            "<domainsnapshot><name>s1</name><state>running</state>\
+             <creationTime>1790231332</creationTime><memory snapshot='internal'/>\
+             <disks><disk name='vda' snapshot='internal'/></disks>{VIRT_MANAGER}</domainsnapshot>"
+        );
+        let s = Snapshot::parse(&libvirt).unwrap();
+        assert_eq!(
+            (s.name.as_str(), s.created, s.running),
+            ("s1", 1790231332, true)
+        );
+        assert_eq!(s.description, None);
+        let disks_only = libvirt.replace("'internal'/><disks>", "'no'/><disks>");
+        assert!(!Snapshot::parse(&disks_only).unwrap().running);
+        let off = libvirt.replace("running", "shutoff");
+        assert!(!Snapshot::parse(&off).unwrap().running);
     }
 }

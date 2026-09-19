@@ -3,6 +3,7 @@
 
 mod devices;
 mod networks;
+mod snapshots;
 mod storage;
 
 pub use devices::{Change, NewGadget, NewStorage};
@@ -25,7 +26,7 @@ use virt::sys;
 
 use crate::domain_xml::{
     self, BootDevice, Disk, DiskDevice, Display, DisplayOptions, GuestOs, MachineConfig,
-    NetworkSource, NewMachine,
+    NetworkSource, NewMachine, Snapshot,
 };
 use crate::{glib, host_xml};
 
@@ -91,6 +92,7 @@ pub struct MachineInfo {
     pub live: Option<MachineConfig>,
     /// What QEMU can give this kind of machine for its display.
     pub display_options: DisplayOptions,
+    pub snapshots: Vec<Snapshot>,
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +219,7 @@ impl Hypervisor {
             config,
             live,
             display_options,
+            snapshots: snapshots::snapshots(dom),
         })
     }
 

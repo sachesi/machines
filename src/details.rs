@@ -11,7 +11,7 @@ use crate::adw::prelude::*;
 use crate::dialogs::{self, add_button, hardware, remove_button};
 use crate::domain_xml::{
     Disk, DiskDevice, Display, Firmware, Gadget, GadgetDevice, HostDev, MachineConfig, Nic,
-    Protocol,
+    Protocol, Snapshot,
 };
 use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
@@ -42,6 +42,7 @@ pub fn fill(view: &MachineView, info: &MachineInfo, start: &gtk::Box, end: &gtk:
     end.append(&network(view, info, config, live));
     end.append(&host_devices(view, config, live));
     end.append(&gadgets(view, config, live));
+    end.append(&snapshots(view, info));
 }
 
 /// Where a device stands between the running machine and the definition it starts from.
@@ -648,6 +649,82 @@ fn gadgets(
         group.add(&row);
     }
     group
+}
+
+fn snapshots(view: &MachineView, info: &MachineInfo) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Snapshots"))
+        .build();
+    let add = add_button(&gettext("Take Snapshot"));
+    add.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        move |_| dialogs::machine::take_snapshot(&view)
+    ));
+    group.set_header_suffix(Some(&add));
+    if info.snapshots.is_empty() {
+        group.set_description(Some(&gettext(
+            "Saved states of the disks, and of the memory while it runs, to go back to",
+        )));
+    }
+    // Newest first.
+    for snapshot in info.snapshots.iter().rev() {
+        group.add(&snapshot_row(view, snapshot));
+    }
+    group
+}
+
+fn snapshot_row(view: &MachineView, snapshot: &Snapshot) -> adw::ActionRow {
+    let when = glib::DateTime::from_unix_local(snapshot.created)
+        .and_then(|t| t.format("%x %R"))
+        .map(|t| t.to_string())
+        .unwrap_or_default();
+    let kind = if snapshot.running {
+        gettext("With memory")
+    } else {
+        gettext("Disks only")
+    };
+    let mut subtitle = format!("{when} · {kind}");
+    if let Some(description) = &snapshot.description {
+        subtitle = format!("{subtitle}\n{description}");
+    }
+    let row = adw::ActionRow::builder()
+        .title(&snapshot.name)
+        .subtitle(subtitle)
+        .subtitle_selectable(true)
+        .build();
+    if snapshot.current {
+        row.add_suffix(
+            &gtk::Label::builder()
+                .label(gettext("Current"))
+                .valign(gtk::Align::Center)
+                .css_classes(["caption", "dim-label"])
+                .build(),
+        );
+    }
+    let revert = gtk::Button::builder()
+        .icon_name("edit-undo-symbolic")
+        .tooltip_text(gettext("Revert to Snapshot"))
+        .valign(gtk::Align::Center)
+        .css_classes(["flat"])
+        .build();
+    let name = snapshot.name.clone();
+    revert.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        name,
+        move |_| dialogs::machine::revert_snapshot(&view, &name)
+    ));
+    row.add_suffix(&revert);
+    let delete = remove_button(&gettext("Delete Snapshot"));
+    delete.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        move |_| dialogs::machine::delete_snapshot(&view, &name)
+    ));
+    row.add_suffix(&delete);
+    row
 }
 
 fn display(

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 09:23+0300\n"
+"POT-Creation-Date: 2026-09-24 09:34+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -91,19 +91,24 @@ msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:16
 msgid ""
+"Snapshots of a machine's disks, and of its memory while it runs, to revert to"
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:17
+msgid ""
 "Disks, CD/DVD drives, network interfaces, display and video card, and USB "
 "and PCI devices of the host added and changed from the details page"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:17
+#: data/io.github.sachesi.machines.metainfo.xml:18
 msgid "Storage pools, disks of the host and virtual networks"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:18
+#: data/io.github.sachesi.machines.metainfo.xml:19
 msgid "Machines made with virt-manager"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:25
+#: data/io.github.sachesi.machines.metainfo.xml:26
 msgid "sachesi"
 msgstr ""
 
@@ -122,323 +127,364 @@ msgstr ""
 msgid "The definition of this virtual machine cannot be read."
 msgstr ""
 
-#: src/details.rs:62
+#: src/details.rs:63
 #, no-c-format
 msgid "Comes with the next start"
 msgstr ""
 
-#: src/details.rs:63
+#: src/details.rs:64
 #, no-c-format
 msgid "Being removed; the running machine still has it"
 msgstr ""
 
-#: src/details.rs:119
+#: src/details.rs:120
 #, no-c-format
 msgid "Overview"
 msgstr ""
 
-#: src/details.rs:122
+#: src/details.rs:123
 #, no-c-format
 msgid "Operating System"
 msgstr ""
 
-#: src/details.rs:128
+#: src/details.rs:129
 #, no-c-format
 msgid "Firmware"
 msgstr ""
 
-#: src/details.rs:131
+#: src/details.rs:132
 #, no-c-format
 msgid "QEMU (emulated)"
 msgstr ""
 
-#: src/details.rs:135
+#: src/details.rs:136
 #, no-c-format
 msgid "Machine"
 msgstr ""
 
-#: src/details.rs:140 src/dialogs/networks.rs:223 src/dialogs/storage.rs:303
+#: src/details.rs:141 src/dialogs/networks.rs:223 src/dialogs/storage.rs:303
 #, no-c-format
 msgid "Start With the Host"
 msgstr ""
 
-#: src/details.rs:142
+#: src/details.rs:143
 #, no-c-format
 msgid "Start when libvirt starts, at boot for the system connection"
 msgstr ""
 
-#: src/details.rs:156 src/dialogs/machine.rs:259
+#: src/details.rs:157 src/dialogs/machine.rs:386
 #, no-c-format
 msgid "Boot Order"
 msgstr ""
 
-#: src/details.rs:176
+#: src/details.rs:177
 #, no-c-format
 msgid "Nothing to boot from"
 msgstr ""
 
-#: src/details.rs:199
+#: src/details.rs:200
 #, no-c-format
 msgid "Processor and Memory"
 msgstr ""
 
-#: src/details.rs:203 src/details.rs:663
+#: src/details.rs:204 src/details.rs:740
 #, no-c-format
 msgid "Changes take effect the next time the virtual machine starts."
 msgstr ""
 
-#: src/details.rs:207
+#: src/details.rs:208
 #, no-c-format
 msgid "Processors"
 msgstr ""
 
-#: src/details.rs:232
+#: src/details.rs:233
 #, no-c-format
 msgid "Memory"
 msgstr ""
 
-#: src/details.rs:233 src/dialogs/new_machine.rs:139 src/dialogs/storage.rs:731
+#: src/details.rs:234 src/dialogs/new_machine.rs:139 src/dialogs/storage.rs:731
 #: src/dialogs/storage.rs:808
 #, no-c-format
 msgid "GiB"
 msgstr ""
 
-#: src/details.rs:293 src/dialogs/storage.rs:74
+#: src/details.rs:294 src/dialogs/storage.rs:74
 #, no-c-format
 msgid "Storage"
 msgstr ""
 
-#: src/details.rs:295 src/dialogs/hardware.rs:312
+#: src/details.rs:296 src/dialogs/hardware.rs:312
 #, no-c-format
 msgid "Add Storage"
 msgstr ""
 
-#: src/details.rs:307
+#: src/details.rs:308
 #, no-c-format
 msgid "No disks"
 msgstr ""
 
-#: src/details.rs:314 src/dialogs/hardware.rs:250 src/dialogs/machine.rs:188
+#: src/details.rs:315 src/dialogs/hardware.rs:250 src/dialogs/machine.rs:315
 #, no-c-format
 msgid "CD/DVD Drive"
 msgstr ""
 
-#: src/details.rs:315 src/dialogs/machine.rs:189
+#: src/details.rs:316 src/dialogs/machine.rs:316
 #, no-c-format
 msgid "Floppy Drive"
 msgstr ""
 
-#: src/details.rs:316 src/dialogs/hardware.rs:247 src/dialogs/machine.rs:190
+#: src/details.rs:317 src/dialogs/hardware.rs:247 src/dialogs/machine.rs:317
 #, no-c-format
 msgid "Host Disk"
 msgstr ""
 
-#: src/details.rs:317 src/dialogs/machine.rs:191 src/dialogs/storage.rs:99
+#: src/details.rs:318 src/dialogs/machine.rs:318 src/dialogs/storage.rs:99
 #, no-c-format
 msgid "Disk"
 msgstr ""
 
-#: src/details.rs:319
+#: src/details.rs:320
 #, no-c-format
 msgid "Empty"
 msgstr ""
 
-#: src/details.rs:339 src/details.rs:517
+#: src/details.rs:340 src/details.rs:518
 #, no-c-format
 msgid "Remove"
 msgstr ""
 
-#: src/details.rs:369 src/details.rs:423
+#: src/details.rs:370 src/details.rs:424
 #, no-c-format
 msgid "Insert Disc Image"
 msgstr ""
 
-#: src/details.rs:395
+#: src/details.rs:396
 #, no-c-format
 msgid "Eject"
 msgstr ""
 
-#: src/details.rs:417 src/dialogs/new_machine.rs:342
+#: src/details.rs:418 src/dialogs/new_machine.rs:342
 #, no-c-format
 msgid "Disc Images"
 msgstr ""
 
-#: src/details.rs:438
+#: src/details.rs:439
 #, no-c-format
 msgid "Network"
 msgstr ""
 
-#: src/details.rs:440 src/dialogs/hardware.rs:462
+#: src/details.rs:441 src/dialogs/hardware.rs:462
 #, no-c-format
 msgid "Add Network Interface"
 msgstr ""
 
-#: src/details.rs:457
+#: src/details.rs:458
 #, no-c-format
 msgid "No network interfaces"
 msgstr ""
 
-#: src/details.rs:492 src/dialogs/hardware.rs:421
+#: src/details.rs:493 src/dialogs/hardware.rs:421
 #, no-c-format
 msgid "Virtual Network “{name}”"
 msgstr ""
 
-#: src/details.rs:493
+#: src/details.rs:494
 #, no-c-format
 msgid "Bridge {name}"
 msgstr ""
 
-#: src/details.rs:494
+#: src/details.rs:495
 #, no-c-format
 msgid "Host Device {name}"
 msgstr ""
 
-#: src/details.rs:495 src/dialogs/hardware.rs:424
+#: src/details.rs:496 src/dialogs/hardware.rs:424
 #, no-c-format
 msgid "User Networking"
 msgstr ""
 
-#: src/details.rs:536
+#: src/details.rs:537
 #, no-c-format
 msgid "Host Devices"
 msgstr ""
 
-#: src/details.rs:538 src/dialogs/hardware.rs:565
+#: src/details.rs:539 src/dialogs/hardware.rs:565
 #, no-c-format
 msgid "Add Host Device"
 msgstr ""
 
-#: src/details.rs:551
+#: src/details.rs:552
 #, no-c-format
 msgid "USB and PCI devices of the host passed through to the virtual machine"
 msgstr ""
 
-#: src/details.rs:559 src/dialogs/hardware.rs:530 src/dialogs/machine.rs:217
+#: src/details.rs:560 src/dialogs/hardware.rs:530 src/dialogs/machine.rs:344
 #, no-c-format
 msgid "USB Device"
 msgstr ""
 
-#: src/details.rs:560 src/dialogs/hardware.rs:531 src/dialogs/machine.rs:218
+#: src/details.rs:561 src/dialogs/hardware.rs:531 src/dialogs/machine.rs:345
 #, no-c-format
 msgid "PCI Device"
 msgstr ""
 
-#: src/details.rs:597
+#: src/details.rs:598
 #, no-c-format
 msgid "Devices"
 msgstr ""
 
-#: src/details.rs:599 src/dialogs/hardware.rs:971
+#: src/details.rs:600 src/dialogs/hardware.rs:971
 #, no-c-format
 msgid "Add Device"
 msgstr ""
 
-#: src/details.rs:612
+#: src/details.rs:613
 #, no-c-format
 msgid ""
 "A TPM, random number generator, sound card, or folders shared with the guest"
 msgstr ""
 
-#: src/details.rs:617
+#: src/details.rs:618
 #, no-c-format
 msgid "Emulated, version 2.0"
 msgstr ""
 
-#: src/details.rs:617 src/details.rs:618 src/dialogs/hardware.rs:983
+#: src/details.rs:618 src/details.rs:619 src/dialogs/hardware.rs:983
 #, no-c-format
 msgid "TPM"
 msgstr ""
 
-#: src/details.rs:618
+#: src/details.rs:619
 #, no-c-format
 msgid "The host’s own"
 msgstr ""
 
-#: src/details.rs:620 src/dialogs/hardware.rs:989
+#: src/details.rs:621 src/dialogs/hardware.rs:989
 #, no-c-format
 msgid "Random Number Generator"
 msgstr ""
 
-#: src/details.rs:624 src/dialogs/hardware.rs:995
+#: src/details.rs:625 src/dialogs/hardware.rs:995
 #, no-c-format
 msgid "Sound Card"
 msgstr ""
 
-#: src/details.rs:626
+#: src/details.rs:627
 #, no-c-format
 msgid "Intel HD Audio"
 msgstr ""
 
-#: src/details.rs:628
+#: src/details.rs:629
 #, no-c-format
 msgid "USB Audio"
 msgstr ""
 
-#: src/details.rs:633 src/dialogs/hardware.rs:977
+#: src/details.rs:634 src/dialogs/hardware.rs:977
 #, no-c-format
 msgid "Shared Folder"
 msgstr ""
 
-#: src/details.rs:634
+#: src/details.rs:635
 #, no-c-format
 msgid ""
 "{path}\n"
 "In the guest: mount -t virtiofs {tag} /mnt"
 msgstr ""
 
-#: src/details.rs:659
+#: src/details.rs:656
 #, no-c-format
-msgid "Display"
+msgid "Snapshots"
+msgstr ""
+
+#: src/details.rs:658 src/dialogs/machine.rs:213
+#, no-c-format
+msgid "Take Snapshot"
+msgstr ""
+
+#: src/details.rs:667
+#, no-c-format
+msgid ""
+"Saved states of the disks, and of the memory while it runs, to go back to"
 msgstr ""
 
 #: src/details.rs:683
 #, no-c-format
+msgid "With memory"
+msgstr ""
+
+#: src/details.rs:685
+#, no-c-format
+msgid "Disks only"
+msgstr ""
+
+#: src/details.rs:699
+#, no-c-format
+msgid "Current"
+msgstr ""
+
+#: src/details.rs:707
+#, no-c-format
+msgid "Revert to Snapshot"
+msgstr ""
+
+#: src/details.rs:720
+#, no-c-format
+msgid "Delete Snapshot"
+msgstr ""
+
+#: src/details.rs:736
+#, no-c-format
+msgid "Display"
+msgstr ""
+
+#: src/details.rs:760
+#, no-c-format
 msgid "Protocol"
 msgstr ""
 
-#: src/details.rs:694
+#: src/details.rs:771
 #, no-c-format
 msgid ""
 "With sound, and the screen sized to the window where the guest runs its agent"
 msgstr ""
 
-#: src/details.rs:696
+#: src/details.rs:773
 #, no-c-format
 msgid "The screen alone, without sound"
 msgstr ""
 
-#: src/details.rs:733
+#: src/details.rs:810
 #, no-c-format
 msgid "Video Card"
 msgstr ""
 
-#: src/details.rs:757
+#: src/details.rs:834
 #, no-c-format
 msgid "3D Acceleration"
 msgstr ""
 
-#: src/details.rs:759
+#: src/details.rs:836
 #, no-c-format
 msgid "Renders on the host’s graphics card; needs a virtio video card"
 msgstr ""
 
-#: src/details.rs:786
+#: src/details.rs:863
 #, no-c-format
 msgid "Virtio (Linux guests)"
 msgstr ""
 
-#: src/details.rs:787
+#: src/details.rs:864
 #, no-c-format
 msgid "QXL (older SPICE guests)"
 msgstr ""
 
-#: src/details.rs:788
+#: src/details.rs:865
 #, no-c-format
 msgid "VGA (any guest)"
 msgstr ""
 
-#: src/dialogs/delete.rs:11 src/dialogs/networks.rs:255
-#: src/dialogs/storage.rs:476
+#: src/dialogs/delete.rs:11 src/dialogs/machine.rs:292
+#: src/dialogs/networks.rs:255 src/dialogs/storage.rs:476
 #, no-c-format
 msgid "Delete “{name}”?"
 msgstr ""
@@ -449,14 +495,14 @@ msgid ""
 "The virtual machine is removed, with its firmware variables and snapshots."
 msgstr ""
 
-#: src/dialogs/delete.rs:19 src/dialogs/machine.rs:31 src/dialogs/mod.rs:28
+#: src/dialogs/delete.rs:19 src/dialogs/machine.rs:33 src/dialogs/mod.rs:28
 #: src/dialogs/mod.rs:69 src/dialogs/new_machine.rs:184
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
 
-#: src/dialogs/delete.rs:20 src/dialogs/networks.rs:265
-#: src/dialogs/storage.rs:486
+#: src/dialogs/delete.rs:20 src/dialogs/machine.rs:297
+#: src/dialogs/networks.rs:265 src/dialogs/storage.rs:486
 #, no-c-format
 msgid "_Delete"
 msgstr ""
@@ -700,82 +746,140 @@ msgstr ""
 msgid "Choose a Folder to Share"
 msgstr ""
 
-#: src/dialogs/machine.rs:36
+#: src/dialogs/machine.rs:38
 #, no-c-format
 msgid "Name"
 msgstr ""
 
-#: src/dialogs/machine.rs:73
+#: src/dialogs/machine.rs:87
 #, no-c-format
 msgid "Rename “{name}”"
 msgstr ""
 
-#: src/dialogs/machine.rs:81
+#: src/dialogs/machine.rs:97
 #, no-c-format
 msgid "_Rename"
 msgstr ""
 
-#: src/dialogs/machine.rs:109
+#: src/dialogs/machine.rs:131
 #, no-c-format
 msgid "{name} (Copy)"
 msgstr ""
 
-#: src/dialogs/machine.rs:110
+#: src/dialogs/machine.rs:132
 #, no-c-format
 msgid "{name} (Copy {n})"
 msgstr ""
 
-#: src/dialogs/machine.rs:117
+#: src/dialogs/machine.rs:139
 #, no-c-format
 msgid "Clone “{name}”"
 msgstr ""
 
-#: src/dialogs/machine.rs:119
+#: src/dialogs/machine.rs:141
 #, no-c-format
 msgid "The copy gets network addresses and firmware variables of its own."
 msgstr ""
 
-#: src/dialogs/machine.rs:127
+#: src/dialogs/machine.rs:149
 #, no-c-format
 msgid "Disks copied"
 msgstr ""
 
-#: src/dialogs/machine.rs:129
+#: src/dialogs/machine.rs:151
 #, no-c-format
 msgid "Left out, as they are in no storage pool"
 msgstr ""
 
-#: src/dialogs/machine.rs:157
+#: src/dialogs/machine.rs:179
 #, no-c-format
 msgid "_Clone"
 msgstr ""
 
-#: src/dialogs/machine.rs:167
+#: src/dialogs/machine.rs:190
 #, no-c-format
 msgid "Copying the disks of “{name}”…"
 msgstr ""
 
-#: src/dialogs/machine.rs:210
+#: src/dialogs/machine.rs:216
 #, no-c-format
-msgid "Network (PXE)"
+msgid ""
+"The snapshot keeps the memory of the running machine as well as its "
+"disks,                  so reverting to it resumes the machine where it was. "
+"The machine pauses                  while its memory is saved.\n"
+"\n"
+"Names take letters, digits, “-”, “.” and “_”."
+msgstr ""
+
+#: src/dialogs/machine.rs:222
+#, no-c-format
+msgid ""
+"The snapshot keeps the machine’s disks and settings as they are now.\n"
+"\n"
+"                 Names take letters, digits, “-”, “.” and “_”."
+msgstr ""
+
+#: src/dialogs/machine.rs:228
+#, no-c-format
+msgid "Description"
 msgstr ""
 
 #: src/dialogs/machine.rs:243
 #, no-c-format
+msgid "_Take"
+msgstr ""
+
+#: src/dialogs/machine.rs:254
+#, no-c-format
+msgid "Taking “{name}”…"
+msgstr ""
+
+#: src/dialogs/machine.rs:268
+#, no-c-format
+msgid "Revert to “{name}”?"
+msgstr ""
+
+#: src/dialogs/machine.rs:270
+#, no-c-format
+msgid ""
+"The virtual machine goes back to how it was when the snapshot was "
+"taken.                      What changed on its disks since then is lost, "
+"unless another snapshot                      has it."
+msgstr ""
+
+#: src/dialogs/machine.rs:274
+#, no-c-format
+msgid "_Revert"
+msgstr ""
+
+#: src/dialogs/machine.rs:294
+#, no-c-format
+msgid ""
+"The virtual machine stays as it is; only the way back to this "
+"snapshot                      goes."
+msgstr ""
+
+#: src/dialogs/machine.rs:337
+#, no-c-format
+msgid "Network (PXE)"
+msgstr ""
+
+#: src/dialogs/machine.rs:370
+#, no-c-format
 msgid "The machine boots in this order the next time it starts."
 msgstr ""
 
-#: src/dialogs/machine.rs:245
+#: src/dialogs/machine.rs:372
 #, no-c-format
 msgid "The machine tries the devices ticked here, top to bottom."
 msgstr ""
 
-#: src/dialogs/machine.rs:326
+#: src/dialogs/machine.rs:453
 #, no-c-format
 msgid "Move Up"
 msgstr ""
 
-#: src/dialogs/machine.rs:330
+#: src/dialogs/machine.rs:457
 #, no-c-format
 msgid "Move Down"
 msgstr ""
@@ -1269,37 +1373,37 @@ msgstr ""
 msgid "{sent} of {total}"
 msgstr ""
 
-#: src/hypervisor.rs:64
+#: src/hypervisor.rs:65
 #, no-c-format
 msgid "Shut Off"
 msgstr ""
 
-#: src/hypervisor.rs:65
+#: src/hypervisor.rs:66
 #, no-c-format
 msgid "Running"
 msgstr ""
 
-#: src/hypervisor.rs:66
+#: src/hypervisor.rs:67
 #, no-c-format
 msgid "Paused"
 msgstr ""
 
-#: src/hypervisor.rs:67
+#: src/hypervisor.rs:68
 #, no-c-format
 msgid "Shutting Down"
 msgstr ""
 
-#: src/hypervisor.rs:68
+#: src/hypervisor.rs:69
 #, no-c-format
 msgid "Crashed"
 msgstr ""
 
-#: src/hypervisor.rs:69
+#: src/hypervisor.rs:70
 #, no-c-format
 msgid "Suspended"
 msgstr ""
 
-#: src/hypervisor.rs:264
+#: src/hypervisor.rs:267
 #, no-c-format
 msgid ""
 "The host’s devices cannot be listed, as libvirt’s node device service "
@@ -1307,7 +1411,7 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:408
+#: src/hypervisor.rs:411
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""
