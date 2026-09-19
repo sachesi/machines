@@ -2,3 +2,10 @@
 machines-console {
   background-color: black;
 }
+
+/* In fullscreen the display runs under the header bar, which would otherwise be see-through
+   over it. */
+toolbarview.console > .top-bar {
+  background-color: var(--headerbar-bg-color);
+  color: var(--headerbar-fg-color);
+}
