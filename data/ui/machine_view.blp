@@ -51,6 +51,12 @@ template $MachinesMachineView: Adw.BreakpointBin {
         }
 
         Adw.Toggle {
+          name: "serial";
+          icon-name: "utilities-terminal-symbolic";
+          tooltip: _("Serial Console");
+        }
+
+        Adw.Toggle {
           name: "details";
           icon-name: "document-properties-symbolic";
           tooltip: _("Details");
@@ -162,6 +168,35 @@ template $MachinesMachineView: Adw.BreakpointBin {
 
                 styles [
                   "pill",
+                ]
+              };
+            };
+          }
+        };
+      }
+
+      Adw.ViewStackPage {
+        name: "serial";
+        title: _("Serial");
+        icon-name: "utilities-terminal-symbolic";
+
+        child: Stack serial_stack {
+          StackPage {
+            name: "terminal";
+            child: Adw.Bin serial_bin {};
+          }
+
+          StackPage {
+            name: "message";
+
+            child: Adw.StatusPage serial_message {
+              child: Button serial_button {
+                use-underline: true;
+                halign: center;
+
+                styles [
+                  "pill",
+                  "suggested-action",
                 ]
               };
             };

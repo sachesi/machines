@@ -33,15 +33,18 @@ remote connections and the user session too. With 3D acceleration, SPICE hands t
 the GPU's frames as they are, while VNC has QEMU read them back. The display can also move to a
 window of its own, to put it on another screen.
 
-You need libvirt with its QEMU driver, gvnc (from gtk-vnc), spice-glib, GTK 4.22 and
-libadwaita 1.9.
+A third page shows the machine's serial console as text, for machines without a display
+and for watching a guest boot; new machines have a serial port for it.
+
+You need libvirt with its QEMU driver, gvnc (from gtk-vnc), spice-glib, VTE for GTK 4,
+GTK 4.22 and libadwaita 1.9.
 
 ## Building and installing
 
 On Fedora the build needs:
 
     sudo dnf install cargo blueprint-compiler gtk4-devel libadwaita-devel libvirt-devel \
-        gvnc-devel spice-glib-devel libusb1-devel
+        gvnc-devel spice-glib-devel libusb1-devel vte291-gtk4-devel
 
 Then:
 

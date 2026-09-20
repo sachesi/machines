@@ -30,5 +30,8 @@ fn main() -> glib::ExitCode {
     glib::set_application_name("Machines");
     // libvirt prints every error to stderr by default; they reach the user as toasts.
     virt::error::clear_error_callback();
+    if let Err(e) = hypervisor::start_event_loop() {
+        eprintln!("libvirt's events are not watched, so serial consoles stay silent: {e}");
+    }
     MachinesApplication::new().run()
 }

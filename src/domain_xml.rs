@@ -221,6 +221,8 @@ pub struct MachineConfig {
     pub accel3d: bool,
     /// What the firmware tries to boot from, first to last.
     pub boot: Vec<BootDevice>,
+    /// Whether it has a serial port or console to show as text.
+    pub serial: bool,
 }
 
 const LIBOSINFO_NS: &str = "http://libosinfo.org/xmlns/libvirt/domain/1.0";
@@ -288,6 +290,7 @@ impl MachineConfig {
         let mut video = None;
         let mut accel3d = false;
         let mut boot = Vec::new();
+        let mut serial = false;
         for dev in devices {
             let xml = xml[dev.range()].to_owned();
             let sub = |name: &str| dev.children().find(|n| n.has_tag_name(name));
@@ -362,6 +365,7 @@ impl MachineConfig {
                 "graphics" => {
                     graphics.push(dev.attribute("type").unwrap_or_default().to_owned());
                 }
+                "serial" | "console" => serial = true,
                 "tpm" => gadgets.push(GadgetDevice {
                     gadget: Gadget::Tpm {
                         emulated: sub("backend").and_then(|b| b.attribute("type"))
@@ -436,6 +440,7 @@ impl MachineConfig {
             video,
             accel3d,
             boot,
+            serial,
         })
     }
 
@@ -673,6 +678,9 @@ pub fn without_device(xml: &str, device: &str) -> Result<String, String> {
 pub fn tpm_xml() -> &'static str {
     "<tpm model='tpm-crb'><backend type='emulator' version='2.0'/></tpm>"
 }
+
+/// A serial port the console shows as text, which libvirt also makes the guest's console.
+pub const SERIAL_XML: &str = "<serial type='pty'><target port='0'/></serial>";
 
 /// A slot for a USB device a SPICE client redirects to the guest.
 pub const REDIRDEV_XML: &str = "<redirdev bus='usb' type='spicevmc'/>";
@@ -1199,7 +1207,9 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
     let _ = writeln!(x, "    {}", interface_xml(&m.network, nic_model));
     x.push_str(
         "    <controller type='usb' model='qemu-xhci' ports='15'/>\n    \
-         <input type='tablet' bus='usb'/>\n",
+         <input type='tablet' bus='usb'/>\n    \
+         <serial type='pty'>\n      <target port='0'/>\n    </serial>\n    \
+         <console type='pty'>\n      <target type='serial' port='0'/>\n    </console>\n",
     );
     x.push_str(if m.spice {
         "    <graphics type='spice'>\n      <listen type='none'/>\n    </graphics>\n    \
@@ -1722,6 +1732,8 @@ mod tests {
         assert_eq!(c.disks[1].source.as_deref(), Some("/isos/install.iso"));
         assert_eq!(c.graphics, ["vnc"]);
         assert_eq!(c.nics[0].model.as_deref(), Some("virtio"));
+        assert!(c.serial);
+        assert!(!MachineConfig::parse(VIRT_MANAGER).unwrap().serial);
 
         let spice = NewMachine {
             spice: true,

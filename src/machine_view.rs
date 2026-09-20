@@ -1,16 +1,18 @@
 //! `MachinesMachineView`: the selected machine, its console or its details, and the
 //! `machine.*` actions that drive it.
 
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::rc::Rc;
 
 use gettextrs::gettext;
+use vte4::prelude::*;
 
 use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
 use crate::console::{Console, FdSource};
-use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result};
+use crate::domain_xml::SERIAL_XML;
+use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result, SerialStream};
 use crate::machine::Machine;
 use crate::window::MachinesWindow;
 use crate::{adw, details, dialogs, glib, gtk, keymap, usage};
@@ -50,6 +52,14 @@ mod imp {
         #[template_child]
         pub console_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub serial_stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub serial_bin: TemplateChild<adw::Bin>,
+        #[template_child]
+        pub serial_message: TemplateChild<adw::StatusPage>,
+        #[template_child]
+        pub serial_button: TemplateChild<gtk::Button>,
+        #[template_child]
         pub details_scroller: TemplateChild<gtk::ScrolledWindow>,
         #[template_child]
         pub details_start: TemplateChild<gtk::Box>,
@@ -72,6 +82,13 @@ mod imp {
         /// The window the display is in while it is out of this view, and its title.
         pub(super) detached: RefCell<Option<(adw::Window, adw::WindowTitle)>>,
         pub(super) usage: Rc<RefCell<usage::History>>,
+        pub(super) terminal: OnceCell<vte4::Terminal>,
+        pub(super) serial: RefCell<Option<SerialStream>>,
+        pub(super) serial_connecting: Cell<bool>,
+        /// Bumped whenever the serial console closes, so what arrives from the one before
+        /// is dropped.
+        pub(super) serial_generation: Cell<u64>,
+        pub(super) serial_error: RefCell<Option<String>>,
     }
 
     #[glib::object_subclass]
@@ -120,6 +137,23 @@ mod imp {
                     }
                 }
             ));
+
+            let terminal = vte4::Terminal::builder()
+                .hexpand(true)
+                .vexpand(true)
+                .scrollback_lines(10_000)
+                .build();
+            terminal.connect_commit(glib::clone!(
+                #[weak(rename_to = view)]
+                obj,
+                move |_, text, _| {
+                    if let Some(serial) = &*view.imp().serial.borrow() {
+                        serial.send(text.as_bytes());
+                    }
+                }
+            ));
+            self.serial_bin.set_child(Some(&terminal));
+            let _ = self.terminal.set(terminal);
 
             let view = obj.downgrade();
             reveal_at_top_edge(&self.toolbar, move || {
@@ -260,6 +294,13 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     klass.install_action("machine.attach-console", None, |view, _, _| {
         view.attach_console();
     });
+    klass.install_action("machine.reconnect-serial", None, |view, _, _| {
+        view.imp().serial_error.take();
+        view.update();
+    });
+    klass.install_action("machine.add-serial", None, |view, _, _| {
+        view.change(|hv, uuid| hv.attach(uuid, SERIAL_XML));
+    });
     klass.install_action("machine.delete", None, |view, _, _| view.delete());
     klass.install_action("machine.rename", None, |view, _, _| {
         dialogs::machine::rename(view);
@@ -334,6 +375,11 @@ impl MachineView {
             old.disconnect(handler);
         }
         self.put_back_console();
+        self.close_serial();
+        imp.serial_error.take();
+        if let Some(terminal) = imp.terminal.get() {
+            terminal.reset(true, true);
+        }
         imp.generation.set(imp.generation.get() + 1);
         imp.connecting.set(false);
         imp.console_error.take();
@@ -399,6 +445,7 @@ impl MachineView {
         }
         self.update_actions();
         self.update_console(&info);
+        self.update_serial(&info);
         if imp.shown.borrow().as_ref() != Some(&info) {
             // Focus left in a group that goes would move to the first row of the new
             // page, which the page would scroll to; without it, the page stays put.
@@ -699,6 +746,155 @@ impl MachineView {
                 }
             }
         ));
+    }
+
+    fn serial_message(
+        &self,
+        icon: &str,
+        title: &str,
+        text: Option<&str>,
+        button: Option<(&str, &str)>,
+    ) {
+        let imp = self.imp();
+        imp.serial_message.set_icon_name(Some(icon));
+        imp.serial_message.set_title(title);
+        imp.serial_message.set_description(text);
+        imp.serial_button.set_visible(button.is_some());
+        if let Some((label, action)) = button {
+            imp.serial_button.set_label(label);
+            imp.serial_button.set_action_name(Some(action));
+        }
+        imp.serial_stack.set_visible_child_name("message");
+    }
+
+    /// Open the serial console while its page shows, and close it otherwise.
+    fn update_serial(&self, info: &MachineInfo) {
+        let imp = self.imp();
+        if !info.state.is_active() {
+            self.close_serial();
+            imp.serial_error.take();
+            self.serial_message(
+                "system-shutdown-symbolic",
+                &info.state.label(),
+                None,
+                Some((&gettext("_Start"), "machine.start")),
+            );
+            return;
+        }
+        if !info
+            .live
+            .as_ref()
+            .or(info.config.as_ref())
+            .is_some_and(|c| c.serial)
+        {
+            self.close_serial();
+            let coming = info.config.as_ref().is_some_and(|c| c.serial);
+            let add = gettext("_Add Serial Port");
+            self.serial_message(
+                "utilities-terminal-symbolic",
+                &gettext("No Serial Console"),
+                Some(&if coming {
+                    gettext("The serial port comes with the next start.")
+                } else {
+                    gettext("The virtual machine has no serial port to show here.")
+                }),
+                (info.persistent && !coming).then_some((add.as_str(), "machine.add-serial")),
+            );
+            return;
+        }
+        let wanted =
+            self.is_mapped() && imp.view_stack.visible_child_name().as_deref() == Some("serial");
+        if !wanted {
+            self.close_serial();
+            return;
+        }
+        if imp.serial.borrow().is_some() || imp.serial_connecting.get() {
+            return;
+        }
+        if let Some(error) = imp.serial_error.borrow().as_deref() {
+            self.serial_message(
+                "utilities-terminal-symbolic",
+                &gettext("Serial Console Closed"),
+                Some(error),
+                Some((&gettext("_Reconnect"), "machine.reconnect-serial")),
+            );
+            return;
+        }
+        self.open_serial();
+    }
+
+    fn open_serial(&self) {
+        let imp = self.imp();
+        let (Some(win), Some(machine)) = (self.window(), self.machine()) else {
+            return;
+        };
+        imp.serial_connecting.set(true);
+        let generation = imp.serial_generation.get();
+        let weak = glib::SendWeakRef::from(self.downgrade());
+        let sink = move |bytes: Option<Vec<u8>>| {
+            let weak = weak.clone();
+            glib::MainContext::default().invoke(move || {
+                if let Some(view) = weak.upgrade() {
+                    view.serial_received(generation, bytes);
+                }
+            });
+        };
+        let uuid = machine.uuid();
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            async move {
+                let opened = win.call(move |hv| hv.open_serial(&uuid, sink)).await;
+                let imp = view.imp();
+                if imp.serial_generation.get() != generation {
+                    return;
+                }
+                imp.serial_connecting.set(false);
+                match opened {
+                    Some(Ok(serial)) => {
+                        imp.serial.replace(Some(serial));
+                        imp.serial_stack.set_visible_child_name("terminal");
+                        if let Some(terminal) = imp.terminal.get() {
+                            terminal.grab_focus();
+                        }
+                    }
+                    Some(Err(e)) => {
+                        imp.serial_error.replace(Some(e));
+                        view.update();
+                    }
+                    None => {}
+                }
+            }
+        ));
+    }
+
+    fn serial_received(&self, generation: u64, bytes: Option<Vec<u8>>) {
+        let imp = self.imp();
+        if imp.serial_generation.get() != generation {
+            return;
+        }
+        match bytes {
+            Some(bytes) => {
+                if let Some(terminal) = imp.terminal.get() {
+                    terminal.feed(&bytes);
+                }
+            }
+            None => {
+                self.close_serial();
+                imp.serial_error
+                    .replace(Some(gettext("The serial console closed.")));
+                self.update();
+            }
+        }
+    }
+
+    /// Let go of the serial console, or of the one on its way.
+    fn close_serial(&self) {
+        let imp = self.imp();
+        let connecting = imp.serial_connecting.replace(false);
+        if imp.serial.take().is_some() || connecting {
+            imp.serial_generation.set(imp.serial_generation.get() + 1);
+        }
     }
 
     /// Sockets to the display for the channels of a SPICE session past its first.

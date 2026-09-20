@@ -3,12 +3,14 @@
 
 mod devices;
 mod networks;
+mod serial;
 mod snapshots;
 mod storage;
 mod usage;
 
 pub use devices::{Change, NewGadget, NewStorage};
 pub use networks::VirtualNetwork;
+pub use serial::{SerialStream, start_event_loop};
 pub use storage::{HostUse, Pool, Volume};
 pub use usage::Usage;
 

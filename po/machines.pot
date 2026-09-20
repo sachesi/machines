@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 09:53+0300\n"
+"POT-Creation-Date: 2026-09-24 10:02+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -75,53 +75,57 @@ msgid ""
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:13
+msgid "A serial console shown as text"
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:14
 msgid ""
 "New machines from an installation ISO or an existing disk image, with a disk "
 "in libvirt's default storage pool"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:14
+#: data/io.github.sachesi.machines.metainfo.xml:15
 msgid ""
 "Processors, memory, autostart, boot order and the CD-ROM drive changed from "
 "the details page"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:15
+#: data/io.github.sachesi.machines.metainfo.xml:16
 msgid ""
 "Graphs of what a running machine uses of the host's processors, memory, "
 "disks and network"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:16
+#: data/io.github.sachesi.machines.metainfo.xml:17
 msgid ""
 "Processor model, topology and pinning, huge pages, and BIOS or UEFI firmware "
 "with Secure Boot"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:17
+#: data/io.github.sachesi.machines.metainfo.xml:18
 msgid "Machines renamed, and cloned with copies of their disks"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:18
+#: data/io.github.sachesi.machines.metainfo.xml:19
 msgid ""
 "Snapshots of a machine's disks, and of its memory while it runs, to revert to"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:19
+#: data/io.github.sachesi.machines.metainfo.xml:20
 msgid ""
 "Disks, CD/DVD drives, network interfaces, display and video card, and USB "
 "and PCI devices of the host added and changed from the details page"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:20
+#: data/io.github.sachesi.machines.metainfo.xml:21
 msgid "Storage pools, disks of the host and virtual networks"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:21
+#: data/io.github.sachesi.machines.metainfo.xml:22
 msgid "Machines made with virt-manager"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:28
+#: data/io.github.sachesi.machines.metainfo.xml:29
 msgid "sachesi"
 msgstr ""
 
@@ -1483,37 +1487,37 @@ msgstr ""
 msgid "{sent} of {total}"
 msgstr ""
 
-#: src/hypervisor.rs:72
+#: src/hypervisor.rs:74
 #, no-c-format
 msgid "Shut Off"
 msgstr ""
 
-#: src/hypervisor.rs:73
+#: src/hypervisor.rs:75
 #, no-c-format
 msgid "Running"
 msgstr ""
 
-#: src/hypervisor.rs:74
+#: src/hypervisor.rs:76
 #, no-c-format
 msgid "Paused"
 msgstr ""
 
-#: src/hypervisor.rs:75
+#: src/hypervisor.rs:77
 #, no-c-format
 msgid "Shutting Down"
 msgstr ""
 
-#: src/hypervisor.rs:76
+#: src/hypervisor.rs:78
 #, no-c-format
 msgid "Crashed"
 msgstr ""
 
-#: src/hypervisor.rs:77
+#: src/hypervisor.rs:79
 #, no-c-format
 msgid "Suspended"
 msgstr ""
 
-#: src/hypervisor.rs:271
+#: src/hypervisor.rs:273
 #, no-c-format
 msgid ""
 "The host’s devices cannot be listed, as libvirt’s node device service "
@@ -1521,7 +1525,7 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:470
+#: src/hypervisor.rs:472
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""
@@ -1536,106 +1540,136 @@ msgstr ""
 msgid "libvirt stopped taking the file"
 msgstr ""
 
-#: src/machine_view.rs:111
+#: src/machine_view.rs:128
 #, no-c-format
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:205
+#: src/machine_view.rs:239
 #, no-c-format
 msgid "Force Reset?"
 msgstr ""
 
-#: src/machine_view.rs:207
+#: src/machine_view.rs:241
 #, no-c-format
 msgid ""
 "The virtual machine restarts at once, as if its reset button were "
 "pressed.                  Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:210
+#: src/machine_view.rs:244
 #, no-c-format
 msgid "Force _Reset"
 msgstr ""
 
-#: src/machine_view.rs:220
+#: src/machine_view.rs:254
 #, no-c-format
 msgid "Force Off?"
 msgstr ""
 
-#: src/machine_view.rs:222
+#: src/machine_view.rs:256
 #, no-c-format
 msgid ""
 "The virtual machine stops at once, as if its power were cut. Work not "
 "saved                  in it is lost, and its disks may be left inconsistent."
 msgstr ""
 
-#: src/machine_view.rs:225
+#: src/machine_view.rs:259
 #, no-c-format
 msgid "Force _Off"
 msgstr ""
 
-#: src/machine_view.rs:319
+#: src/machine_view.rs:360
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
 
-#: src/machine_view.rs:392
+#: src/machine_view.rs:438
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:394 ui/machine_view.ui:78
+#: src/machine_view.rs:440 ui/machine_view.ui:85
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:495
+#: src/machine_view.rs:542 src/machine_view.rs:780
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:512
+#: src/machine_view.rs:559
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:514
+#: src/machine_view.rs:561 src/machine_view.rs:819
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:522
+#: src/machine_view.rs:569
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:524
+#: src/machine_view.rs:571
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:531
+#: src/machine_view.rs:578
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:532
+#: src/machine_view.rs:579
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:559 src/machine_view.rs:597
+#: src/machine_view.rs:606 src/machine_view.rs:644
 #, no-c-format
 msgid "Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:595 ui/machine_view.ui:85
+#: src/machine_view.rs:642 ui/machine_view.ui:92
 #, no-c-format
 msgid "Leave Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:746
+#: src/machine_view.rs:792
+#, no-c-format
+msgid "_Add Serial Port"
+msgstr ""
+
+#: src/machine_view.rs:795
+#, no-c-format
+msgid "No Serial Console"
+msgstr ""
+
+#: src/machine_view.rs:797
+#, no-c-format
+msgid "The serial port comes with the next start."
+msgstr ""
+
+#: src/machine_view.rs:799
+#, no-c-format
+msgid "The virtual machine has no serial port to show here."
+msgstr ""
+
+#: src/machine_view.rs:817
+#, no-c-format
+msgid "Serial Console Closed"
+msgstr ""
+
+#: src/machine_view.rs:885
+#, no-c-format
+msgid "The serial console closed."
+msgstr ""
+
+#: src/machine_view.rs:942
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -1690,83 +1724,91 @@ msgstr ""
 msgid "User Session"
 msgstr ""
 
-#: ui/machine_view.ui:49 ui/machine_view.ui:103
+#: ui/machine_view.ui:49 ui/machine_view.ui:110
 msgid "Console"
 msgstr ""
 
-#: ui/machine_view.ui:56 ui/machine_view.ui:193
+#: ui/machine_view.ui:56
+msgid "Serial Console"
+msgstr ""
+
+#: ui/machine_view.ui:63 ui/machine_view.ui:238
 msgid "Details"
 msgstr ""
 
-#: ui/machine_view.ui:65
+#: ui/machine_view.ui:72
 msgid "Machine Menu"
 msgstr ""
 
-#: ui/machine_view.ui:72
+#: ui/machine_view.ui:79
 msgid "Power"
 msgstr ""
 
-#: ui/machine_view.ui:170
+#: ui/machine_view.ui:177
 msgid "Display in Its Own Window"
 msgstr ""
 
-#: ui/machine_view.ui:173
+#: ui/machine_view.ui:180
 msgid "_Bring Back"
 msgstr ""
 
-#: ui/machine_view.ui:240
+#: ui/machine_view.ui:200
+msgid "Serial"
+msgstr ""
+
+#: ui/machine_view.ui:285
 msgid "_Resume"
 msgstr ""
 
-#: ui/machine_view.ui:245
+#: ui/machine_view.ui:290
 msgid "_Pause"
 msgstr ""
 
-#: ui/machine_view.ui:252
+#: ui/machine_view.ui:297
 msgid "_Shut Down"
 msgstr ""
 
-#: ui/machine_view.ui:256
+#: ui/machine_view.ui:301
 msgid "_Reboot"
 msgstr ""
 
-#: ui/machine_view.ui:262
+#: ui/machine_view.ui:307
 msgid "Force _Reset…"
 msgstr ""
 
-#: ui/machine_view.ui:266
+#: ui/machine_view.ui:311
 msgid "Force _Off…"
 msgstr ""
 
-#: ui/machine_view.ui:274
+#: ui/machine_view.ui:319
 msgid "_Fullscreen"
 msgstr ""
 
-#: ui/machine_view.ui:278
+#: ui/machine_view.ui:323
 msgid "Open Display in New _Window"
 msgstr ""
 
-#: ui/machine_view.ui:284
+#: ui/machine_view.ui:329
 msgid "_USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:288
+#: ui/machine_view.ui:333
 msgid "_Redirect USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:292
+#: ui/machine_view.ui:337
 msgid "Send _Key"
 msgstr ""
 
-#: ui/machine_view.ui:322
+#: ui/machine_view.ui:367
 msgid "Re_name…"
 msgstr ""
 
-#: ui/machine_view.ui:326
+#: ui/machine_view.ui:371
 msgid "_Clone…"
 msgstr ""
 
-#: ui/machine_view.ui:330
+#: ui/machine_view.ui:375
 msgid "_Delete…"
 msgstr ""
 

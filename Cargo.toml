@@ -16,6 +16,7 @@ gvnc = "0.7"
 roxmltree = "0.21"
 virt = "0.4.3"
 spice-client-glib = "0.8"
+vte4 = "0.10"
 
 [build-dependencies]
 glib-build-tools = "0.22"
