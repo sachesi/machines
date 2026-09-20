@@ -13,7 +13,7 @@ use crate::console::{Console, FdSource};
 use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result};
 use crate::machine::Machine;
 use crate::window::MachinesWindow;
-use crate::{adw, details, dialogs, glib, gtk, keymap};
+use crate::{adw, details, dialogs, glib, gtk, keymap, usage};
 
 /// How close to the top edge the pointer has to come, in fullscreen, to bring back the
 /// header bar.
@@ -71,6 +71,7 @@ mod imp {
         pub(super) console_action: RefCell<String>,
         /// The window the display is in while it is out of this view, and its title.
         pub(super) detached: RefCell<Option<(adw::Window, adw::WindowTitle)>>,
+        pub(super) usage: Rc<RefCell<usage::History>>,
     }
 
     #[glib::object_subclass]
@@ -285,6 +286,10 @@ impl MachineView {
 
     pub fn info(&self) -> Option<MachineInfo> {
         self.machine().and_then(|m| m.info())
+    }
+
+    pub fn usage_history(&self) -> Rc<RefCell<usage::History>> {
+        self.imp().usage.clone()
     }
 
     /// Run `f` on the selected machine's UUID, off the main loop.

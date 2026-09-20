@@ -7,7 +7,8 @@ creates new ones from an installation ISO or an existing disk image, renames and
 them, copying their disks, takes snapshots of them to revert to, and deletes them with
 their disks.
 
-A machine's details page adds and removes its disks, CD/DVD drives and network interfaces,
+A machine's details page graphs what it uses of the host's processors, memory, disks and
+network while it runs, and adds and removes its disks, CD/DVD drives and network interfaces,
 gives it whole disks of the host, a TPM, sound card, random number generator and folders
 shared over virtiofs, and passes USB and PCI devices of the host through to it, or plugs
 USB devices into it while it runs. It sets the processor model (the host's own, for the

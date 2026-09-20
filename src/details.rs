@@ -17,7 +17,7 @@ use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
-use crate::{adw, gio, glib, gtk};
+use crate::{adw, gio, glib, gtk, usage};
 
 /// How long a spin row has to rest before its value is saved.
 const SETTLE: Duration = Duration::from_millis(700);
@@ -36,6 +36,9 @@ pub fn fill(view: &MachineView, info: &MachineInfo, start: &gtk::Box, end: &gtk:
     };
     let live = info.live.as_ref();
     start.append(&overview(view, info, config));
+    if info.state.is_active() {
+        start.append(&usage::group(view, &info.uuid, &view.usage_history()));
+    }
     start.append(&resources(view, info, config));
     start.append(&display(view, info, config));
     end.append(&storage(view, config, live));

@@ -10,6 +10,7 @@ mod keymap;
 mod machine;
 mod machine_view;
 mod prefs;
+mod usage;
 mod window;
 
 pub use adw::{gdk, gio, glib, gtk};
