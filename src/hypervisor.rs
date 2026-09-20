@@ -2,6 +2,7 @@
 //! up, so the window makes them from `gio::spawn_blocking`.
 
 mod devices;
+mod events;
 mod networks;
 mod serial;
 mod snapshots;
@@ -9,6 +10,7 @@ mod storage;
 mod usage;
 
 pub use devices::{Change, NewGadget, NewStorage};
+pub use events::Event;
 pub use networks::VirtualNetwork;
 pub use serial::{SerialStream, start_event_loop};
 pub use storage::{HostUse, Pool, Volume};
@@ -159,6 +161,14 @@ pub struct Hypervisor {
     /// Domain capabilities by virtualization type, architecture and machine type, which
     /// only change with QEMU.
     capabilities: Mutex<HashMap<(String, String, String), Capabilities>>,
+    watch: Mutex<events::Watch>,
+}
+
+impl Drop for Hypervisor {
+    fn drop(&mut self) {
+        self.unwatch();
+        let _ = self.conn.close();
+    }
 }
 
 impl Hypervisor {
@@ -168,6 +178,7 @@ impl Hypervisor {
             conn,
             uri: uri.to_owned(),
             capabilities: Mutex::default(),
+            watch: Mutex::default(),
         })
     }
 

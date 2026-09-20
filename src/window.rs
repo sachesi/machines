@@ -12,12 +12,16 @@ use gettextrs::gettext;
 
 use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
-use crate::hypervisor::{Host, Hypervisor, MachineInfo, Result};
+use crate::hypervisor::{Event, Host, Hypervisor, MachineInfo, Result};
 use crate::machine::Machine;
 use crate::machine_view::MachineView;
 use crate::{adw, dialogs, gio, glib, gtk, prefs};
 
+/// How often the machines are listed again when libvirt does not tell of their changes.
 const POLL_SECONDS: u32 = 2;
+/// How often they are when it does, for what it has no event for, such as a snapshot taken
+/// elsewhere.
+const RESCAN_SECONDS: u32 = 30;
 
 mod imp {
     use super::*;
@@ -54,6 +58,8 @@ mod imp {
         /// Bumped on every (re)connection, so answers from an older one are dropped.
         pub(super) connection: Cell<u64>,
         pub(super) listing: Cell<bool>,
+        /// Whether something changed while a listing was under way, so it is out of date.
+        pub(super) stale: Cell<bool>,
         /// A machine to select once a listing brings it, after it was just created.
         pub(super) pending_select: RefCell<Option<String>>,
         pub(super) poll: RefCell<Option<glib::SourceId>>,
@@ -88,6 +94,7 @@ mod imp {
                 host: Default::default(),
                 connection: Default::default(),
                 listing: Default::default(),
+                stale: Default::default(),
                 pending_select: Default::default(),
                 poll: Default::default(),
                 collapsed_before_fullscreen: Default::default(),
@@ -150,21 +157,6 @@ mod imp {
                 ),
             );
             obj.connect_fullscreened_notify(|win| win.follow_fullscreen());
-
-            let poll = glib::timeout_add_seconds_local(
-                POLL_SECONDS,
-                glib::clone!(
-                    #[weak(rename_to = win)]
-                    obj,
-                    #[upgrade_or]
-                    glib::ControlFlow::Break,
-                    move || {
-                        win.refresh();
-                        glib::ControlFlow::Continue
-                    }
-                ),
-            );
-            self.poll.replace(Some(poll));
             obj.connect();
         }
 
@@ -336,6 +328,40 @@ impl MachinesWindow {
         ));
     }
 
+    /// List the machines again every `seconds`.
+    fn poll_every(&self, seconds: u32) {
+        let poll = glib::timeout_add_seconds_local(
+            seconds,
+            glib::clone!(
+                #[weak(rename_to = win)]
+                self,
+                #[upgrade_or]
+                glib::ControlFlow::Break,
+                move || {
+                    win.refresh();
+                    glib::ControlFlow::Continue
+                }
+            ),
+        );
+        if let Some(old) = self.imp().poll.replace(Some(poll)) {
+            old.remove();
+        }
+    }
+
+    fn follow_event(&self, connection: u64, event: Event) {
+        if self.imp().connection.get() != connection {
+            return;
+        }
+        match event {
+            Event::Changed => self.refresh(),
+            Event::Closed => {
+                self.imp().hypervisor.replace(None);
+                self.set_connected(false);
+                self.show_error(&gettext("The connection to libvirt was lost"));
+            }
+        }
+    }
+
     /// (Re)open the connection the settings name.
     pub fn connect(&self) {
         let imp = self.imp();
@@ -347,6 +373,17 @@ impl MachinesWindow {
         imp.connection_title.set_subtitle(&connection_label(&uri));
         imp.sidebar_stack.set_visible_child_name("loading");
         self.set_connected(false);
+        let weak = glib::SendWeakRef::from(self.downgrade());
+        let notify = move |event| {
+            let weak = weak.clone();
+            // Not right away: libvirt calls this holding the connection's locks, which
+            // dropping the connection, as a closed one is, would take again.
+            glib::idle_add_once(move || {
+                if let Some(win) = weak.upgrade() {
+                    win.follow_event(connection, event);
+                }
+            });
+        };
         glib::spawn_future_local(glib::clone!(
             #[weak(rename_to = win)]
             self,
@@ -354,7 +391,8 @@ impl MachinesWindow {
                 let opened = gio::spawn_blocking(move || {
                     Hypervisor::open(&uri).map(|hv| {
                         let host = hv.host();
-                        (hv, host)
+                        let watched = hv.watch(notify).is_ok();
+                        (hv, host, watched)
                     })
                 })
                 .await;
@@ -363,9 +401,14 @@ impl MachinesWindow {
                     return;
                 }
                 match opened {
-                    Ok(Ok((hv, host))) => {
+                    Ok(Ok((hv, host, watched))) => {
                         imp.hypervisor.replace(Some(Arc::new(hv)));
                         imp.host.set(host);
+                        win.poll_every(if watched {
+                            RESCAN_SECONDS
+                        } else {
+                            POLL_SECONDS
+                        });
                         win.set_connected(true);
                         win.refresh();
                     }
@@ -389,7 +432,11 @@ impl MachinesWindow {
     /// List the machines again, unless a listing is already under way.
     pub fn refresh(&self) {
         let imp = self.imp();
-        if imp.listing.get() || imp.hypervisor.borrow().is_none() {
+        if imp.hypervisor.borrow().is_none() {
+            return;
+        }
+        if imp.listing.get() {
+            imp.stale.set(true);
             return;
         }
         imp.listing.set(true);
@@ -398,14 +445,18 @@ impl MachinesWindow {
             self,
             async move {
                 let listed = win.call(|hv| hv.machines()).await;
-                win.imp().listing.set(false);
+                let imp = win.imp();
+                imp.listing.set(false);
                 match listed {
                     Some(Ok(machines)) => win.apply_listing(machines),
                     Some(Err(e)) => {
-                        win.imp().hypervisor.replace(None);
+                        imp.hypervisor.replace(None);
                         win.show_error(&e);
                     }
                     None => {}
+                }
+                if imp.stale.take() {
+                    win.refresh();
                 }
             }
         ));
