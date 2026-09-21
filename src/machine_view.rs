@@ -224,6 +224,24 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     klass.install_action("machine.shut-down", None, |view, _, _| {
         view.run(|hv, uuid| hv.shut_down(uuid));
     });
+    klass.install_action("machine.save", None, |view, _, _| {
+        view.run(|hv, uuid| hv.save(uuid));
+    });
+    klass.install_action_async("machine.discard-saved", None, |view, _, _| async move {
+        let confirmed = dialogs::confirm(
+            &view,
+            &gettext("Discard Saved State?"),
+            &gettext(
+                "The virtual machine starts afresh next time instead of resuming where it \
+                 was saved. Work not saved in it is lost.",
+            ),
+            &gettext("_Discard"),
+        )
+        .await;
+        if confirmed {
+            view.run(|hv, uuid| hv.discard_saved(uuid));
+        }
+    });
     klass.install_action("machine.pause", None, |view, _, _| {
         view.run(|hv, uuid| hv.pause(uuid));
     });
@@ -314,6 +332,19 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     klass.install_action("machine.redirect-usb", None, |view, _, _| {
         dialogs::hardware::redirect_usb(view);
     });
+}
+
+/// What the page of a machine that is not running says under its state, and the label of
+/// its button that starts it.
+fn stopped(info: &MachineInfo) -> (Option<String>, String) {
+    if info.saved {
+        (
+            Some(gettext("It resumes where it was saved.")),
+            gettext("_Resume"),
+        )
+    } else {
+        (None, gettext("_Start"))
+    }
 }
 
 impl MachineView {
@@ -425,13 +456,14 @@ impl MachineView {
             return;
         };
         imp.title.set_title(&info.name);
-        imp.title.set_subtitle(&info.state.label());
+        imp.title.set_subtitle(&info.status());
         if let Some((window, title)) = &*imp.detached.borrow() {
             window.set_title(Some(&info.name));
             title.set_title(&info.name);
-            title.set_subtitle(&info.state.label());
+            title.set_subtitle(&info.status());
         }
-        let resumable = matches!(info.state, MachineState::Paused | MachineState::Suspended);
+        let resumable =
+            matches!(info.state, MachineState::Paused | MachineState::Suspended) || info.saved;
         imp.start_button
             .set_visible(!info.state.is_active() || resumable);
         imp.start_button.set_tooltip_text(Some(&if resumable {
@@ -482,6 +514,13 @@ impl MachineView {
         );
         self.action_set_enabled("machine.shut-down", running);
         self.action_set_enabled("machine.pause", running);
+        let persistent = info.as_ref().is_some_and(|i| i.persistent);
+        self.action_set_enabled(
+            "machine.save",
+            persistent && matches!(state, Some(MachineState::Running | MachineState::Paused)),
+        );
+        let saved = info.as_ref().is_some_and(|i| i.saved);
+        self.action_set_enabled("machine.discard-saved", saved && !active);
         self.action_set_enabled(
             "machine.resume",
             matches!(state, Some(MachineState::Paused | MachineState::Suspended)),
@@ -496,8 +535,9 @@ impl MachineView {
             running && self.usb_redirection().is_some(),
         );
         self.action_set_enabled("machine.delete", state.is_some());
-        let editable = info.as_ref().is_some_and(|i| i.persistent) && !active;
-        self.action_set_enabled("machine.rename", editable);
+        let editable = persistent && !active;
+        // libvirt keeps a saved state under the machine's name.
+        self.action_set_enabled("machine.rename", editable && !saved);
         self.action_set_enabled("machine.clone", editable);
         let imp = self.imp();
         let detached = imp.detached.borrow().is_some();
@@ -535,11 +575,12 @@ impl MachineView {
         let imp = self.imp();
         if !info.state.is_active() {
             imp.console.close();
+            let (text, start) = stopped(info);
             self.console_message(
                 "system-shutdown-symbolic",
-                &info.state.label(),
-                None,
-                Some((&gettext("_Start"), "machine.start")),
+                &info.status(),
+                text.as_deref(),
+                Some((&start, "machine.start")),
             );
             return;
         }
@@ -600,7 +641,7 @@ impl MachineView {
         if imp.detached.borrow().is_some() {
             return;
         }
-        let title = adw::WindowTitle::new(&info.name, &info.state.label());
+        let title = adw::WindowTitle::new(&info.name, &info.status());
         let fullscreen = gtk::Button::builder()
             .icon_name("view-fullscreen-symbolic")
             .tooltip_text(gettext("Fullscreen"))
@@ -773,11 +814,12 @@ impl MachineView {
         if !info.state.is_active() {
             self.close_serial();
             imp.serial_error.take();
+            let (text, start) = stopped(info);
             self.serial_message(
                 "system-shutdown-symbolic",
-                &info.state.label(),
-                None,
-                Some((&gettext("_Start"), "machine.start")),
+                &info.status(),
+                text.as_deref(),
+                Some((&start, "machine.start")),
             );
             return;
         }

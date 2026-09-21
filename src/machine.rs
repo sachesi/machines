@@ -68,11 +68,12 @@ impl Machine {
         }
         if imp.state.get() != info.state {
             imp.state.set(info.state);
-            imp.status.replace(info.state.label());
             self.notify_state();
+        }
+        let status = info.status();
+        if *imp.status.borrow() != status {
+            imp.status.replace(status);
             self.notify_status();
-        } else if imp.status.borrow().is_empty() {
-            imp.status.replace(info.state.label());
         }
         imp.info.replace(Some(info));
         self.emit_by_name::<()>("changed", &[]);

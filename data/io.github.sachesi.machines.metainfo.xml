@@ -8,7 +8,7 @@
   <description>
     <p>Machines manages the QEMU/KVM virtual machines of a libvirt connection, the system one or your user session, built with GTK 4 and libadwaita.</p>
     <ul>
-      <li>Start, shut down, pause, reboot and force off machines, and follow their state as it changes</li>
+      <li>Start, shut down, pause, save to disk, reboot and force off machines, and follow their state as it changes</li>
       <li>A built-in VNC and SPICE console that scales the guest's display to the window and passes the keyboard and pointer through, with sound, clipboard sharing, USB redirection and 3D acceleration over SPICE</li>
       <li>A serial console shown as text</li>
       <li>New machines from an installation ISO or an existing disk image, with a disk in libvirt's default storage pool</li>

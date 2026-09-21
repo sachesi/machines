@@ -96,6 +96,8 @@ pub struct MachineInfo {
     pub state: MachineState,
     pub persistent: bool,
     pub autostart: bool,
+    /// Whether it was saved to disk, to resume from at its next start.
+    pub saved: bool,
     /// What the machine boots with next: the inactive definition where there is one.
     pub config: Option<MachineConfig>,
     /// What QEMU is running with, while it runs, which differs from `config` after an edit
@@ -104,6 +106,17 @@ pub struct MachineInfo {
     /// What QEMU can give this kind of machine.
     pub capabilities: Capabilities,
     pub snapshots: Vec<Snapshot>,
+}
+
+impl MachineInfo {
+    /// The state as the user reads it.
+    pub fn status(&self) -> String {
+        if self.saved && !self.state.is_active() {
+            gettext("Saved")
+        } else {
+            self.state.label()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -236,6 +249,7 @@ impl Hypervisor {
             state,
             persistent,
             autostart: persistent && dom.get_autostart().unwrap_or(false),
+            saved: persistent && dom.has_managed_save(0).unwrap_or(false),
             config,
             live,
             capabilities,
@@ -352,6 +366,22 @@ impl Hypervisor {
 
     pub fn force_off(&self, uuid: &str) -> Result<()> {
         self.domain(uuid)?.destroy().map_err(message)
+    }
+
+    /// Save the machine's memory to disk and stop it; its next start resumes from there.
+    pub fn save(&self, uuid: &str) -> Result<()> {
+        self.domain(uuid)?
+            .managed_save(0)
+            .map(drop)
+            .map_err(message)
+    }
+
+    /// Throw away what `save` kept, so the next start boots afresh.
+    pub fn discard_saved(&self, uuid: &str) -> Result<()> {
+        self.domain(uuid)?
+            .managed_save_remove(0)
+            .map(drop)
+            .map_err(message)
     }
 
     pub fn pause(&self, uuid: &str) -> Result<()> {

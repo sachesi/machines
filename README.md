@@ -2,10 +2,10 @@
 
 Machines manages QEMU/KVM virtual machines through libvirt, written in Rust with GTK 4 and
 libadwaita. It lists the machines of the system connection or of your user session,
-starts, stops and pauses them, shows their display in a built-in VNC or SPICE console,
-creates new ones from an installation ISO or an existing disk image, renames and clones
-them, copying their disks, takes snapshots of them to revert to, and deletes them with
-their disks.
+starts, stops and pauses them, saves them to disk to resume later, shows their display in
+a built-in VNC or SPICE console, creates new ones from an installation ISO or an existing
+disk image, renames and clones them, copying their disks, takes snapshots of them to
+revert to, and deletes them with their disks.
 
 A machine's details page graphs what it uses of the host's processors, memory, disks and
 network while it runs, and adds and removes its disks, CD/DVD drives and network interfaces,

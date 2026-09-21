@@ -256,6 +256,11 @@ menu power_menu {
       action: "machine.pause";
       hidden-when: "action-disabled";
     }
+
+    item {
+      label: _("Sa_ve");
+      action: "machine.save";
+    }
   }
 
   section {
@@ -351,6 +356,12 @@ menu machine_menu {
     item {
       label: _("_Clone…");
       action: "machine.clone";
+    }
+
+    item {
+      label: _("Discard _Saved State…");
+      action: "machine.discard-saved";
+      hidden-when: "action-disabled";
     }
 
     item {

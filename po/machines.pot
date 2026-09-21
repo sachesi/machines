@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 10:02+0300\n"
+"POT-Creation-Date: 2026-09-24 10:37+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -63,8 +63,8 @@ msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:11
 msgid ""
-"Start, shut down, pause, reboot and force off machines, and follow their "
-"state as it changes"
+"Start, shut down, pause, save to disk, reboot and force off machines, and "
+"follow their state as it changes"
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:12
@@ -1198,7 +1198,7 @@ msgstr ""
 msgid "_Disk Size"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:208 src/window.rs:520
+#: src/dialogs/new_machine.rs:208 src/window.rs:571
 #, no-c-format
 msgid "System"
 msgstr ""
@@ -1487,37 +1487,42 @@ msgstr ""
 msgid "{sent} of {total}"
 msgstr ""
 
-#: src/hypervisor.rs:74
+#: src/hypervisor.rs:76
 #, no-c-format
 msgid "Shut Off"
 msgstr ""
 
-#: src/hypervisor.rs:75
+#: src/hypervisor.rs:77
 #, no-c-format
 msgid "Running"
 msgstr ""
 
-#: src/hypervisor.rs:76
+#: src/hypervisor.rs:78
 #, no-c-format
 msgid "Paused"
 msgstr ""
 
-#: src/hypervisor.rs:77
+#: src/hypervisor.rs:79
 #, no-c-format
 msgid "Shutting Down"
 msgstr ""
 
-#: src/hypervisor.rs:78
+#: src/hypervisor.rs:80
 #, no-c-format
 msgid "Crashed"
 msgstr ""
 
-#: src/hypervisor.rs:79
+#: src/hypervisor.rs:81
 #, no-c-format
 msgid "Suspended"
 msgstr ""
 
-#: src/hypervisor.rs:273
+#: src/hypervisor.rs:115
+#, no-c-format
+msgid "Saved"
+msgstr ""
+
+#: src/hypervisor.rs:298
 #, no-c-format
 msgid ""
 "The host’s devices cannot be listed, as libvirt’s node device service "
@@ -1525,7 +1530,7 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:472
+#: src/hypervisor.rs:510
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""
@@ -1545,131 +1550,158 @@ msgstr ""
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:239
+#: src/machine_view.rs:233
+#, no-c-format
+msgid "Discard Saved State?"
+msgstr ""
+
+#: src/machine_view.rs:235
+#, no-c-format
+msgid ""
+"The virtual machine starts afresh next time instead of resuming where "
+"it                  was saved. Work not saved in it is lost."
+msgstr ""
+
+#: src/machine_view.rs:238
+#, no-c-format
+msgid "_Discard"
+msgstr ""
+
+#: src/machine_view.rs:257
 #, no-c-format
 msgid "Force Reset?"
 msgstr ""
 
-#: src/machine_view.rs:241
+#: src/machine_view.rs:259
 #, no-c-format
 msgid ""
 "The virtual machine restarts at once, as if its reset button were "
 "pressed.                  Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:244
+#: src/machine_view.rs:262
 #, no-c-format
 msgid "Force _Reset"
 msgstr ""
 
-#: src/machine_view.rs:254
+#: src/machine_view.rs:272
 #, no-c-format
 msgid "Force Off?"
 msgstr ""
 
-#: src/machine_view.rs:256
+#: src/machine_view.rs:274
 #, no-c-format
 msgid ""
 "The virtual machine stops at once, as if its power were cut. Work not "
 "saved                  in it is lost, and its disks may be left inconsistent."
 msgstr ""
 
-#: src/machine_view.rs:259
+#: src/machine_view.rs:277
 #, no-c-format
 msgid "Force _Off"
 msgstr ""
 
-#: src/machine_view.rs:360
+#: src/machine_view.rs:342
 #, no-c-format
-msgid "The change takes effect the next time the virtual machine starts"
+msgid "It resumes where it was saved."
 msgstr ""
 
-#: src/machine_view.rs:438
+#: src/machine_view.rs:343 ui/machine_view.ui:285
 #, no-c-format
-msgid "Resume"
+msgid "_Resume"
 msgstr ""
 
-#: src/machine_view.rs:440 ui/machine_view.ui:85
-#, no-c-format
-msgid "Start"
-msgstr ""
-
-#: src/machine_view.rs:542 src/machine_view.rs:780
+#: src/machine_view.rs:346
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:559
+#: src/machine_view.rs:391
+#, no-c-format
+msgid "The change takes effect the next time the virtual machine starts"
+msgstr ""
+
+#: src/machine_view.rs:470
+#, no-c-format
+msgid "Resume"
+msgstr ""
+
+#: src/machine_view.rs:472 ui/machine_view.ui:85
+#, no-c-format
+msgid "Start"
+msgstr ""
+
+#: src/machine_view.rs:600
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:561 src/machine_view.rs:819
+#: src/machine_view.rs:602 src/machine_view.rs:861
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:569
+#: src/machine_view.rs:610
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:571
+#: src/machine_view.rs:612
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:578
+#: src/machine_view.rs:619
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:579
+#: src/machine_view.rs:620
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:606 src/machine_view.rs:644
+#: src/machine_view.rs:647 src/machine_view.rs:685
 #, no-c-format
 msgid "Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:642 ui/machine_view.ui:92
+#: src/machine_view.rs:683 ui/machine_view.ui:92
 #, no-c-format
 msgid "Leave Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:792
+#: src/machine_view.rs:834
 #, no-c-format
 msgid "_Add Serial Port"
 msgstr ""
 
-#: src/machine_view.rs:795
+#: src/machine_view.rs:837
 #, no-c-format
 msgid "No Serial Console"
 msgstr ""
 
-#: src/machine_view.rs:797
+#: src/machine_view.rs:839
 #, no-c-format
 msgid "The serial port comes with the next start."
 msgstr ""
 
-#: src/machine_view.rs:799
+#: src/machine_view.rs:841
 #, no-c-format
 msgid "The virtual machine has no serial port to show here."
 msgstr ""
 
-#: src/machine_view.rs:817
+#: src/machine_view.rs:859
 #, no-c-format
 msgid "Serial Console Closed"
 msgstr ""
 
-#: src/machine_view.rs:885
+#: src/machine_view.rs:927
 #, no-c-format
 msgid "The serial console closed."
 msgstr ""
 
-#: src/machine_view.rs:942
+#: src/machine_view.rs:984
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -1704,22 +1736,27 @@ msgstr ""
 msgid "Received {received} · Sent {sent}"
 msgstr ""
 
-#: src/window.rs:373
+#: src/window.rs:360
+#, no-c-format
+msgid "The connection to libvirt was lost"
+msgstr ""
+
+#: src/window.rs:416
 #, no-c-format
 msgid "The connection attempt failed"
 msgstr ""
 
-#: src/window.rs:471 ui/window.ui:165
+#: src/window.rs:522 ui/window.ui:165
 #, no-c-format
 msgid "Virtual Machine"
 msgstr ""
 
-#: src/window.rs:479
+#: src/window.rs:530
 #, no-c-format
 msgid "Creating “{name}”…"
 msgstr ""
 
-#: src/window.rs:521
+#: src/window.rs:572
 #, no-c-format
 msgid "User Session"
 msgstr ""
@@ -1756,59 +1793,63 @@ msgstr ""
 msgid "Serial"
 msgstr ""
 
-#: ui/machine_view.ui:285
-msgid "_Resume"
-msgstr ""
-
 #: ui/machine_view.ui:290
 msgid "_Pause"
 msgstr ""
 
-#: ui/machine_view.ui:297
-msgid "_Shut Down"
+#: ui/machine_view.ui:295
+msgid "Sa_ve"
 msgstr ""
 
 #: ui/machine_view.ui:301
+msgid "_Shut Down"
+msgstr ""
+
+#: ui/machine_view.ui:305
 msgid "_Reboot"
 msgstr ""
 
-#: ui/machine_view.ui:307
+#: ui/machine_view.ui:311
 msgid "Force _Reset…"
 msgstr ""
 
-#: ui/machine_view.ui:311
+#: ui/machine_view.ui:315
 msgid "Force _Off…"
 msgstr ""
 
-#: ui/machine_view.ui:319
+#: ui/machine_view.ui:323
 msgid "_Fullscreen"
 msgstr ""
 
-#: ui/machine_view.ui:323
+#: ui/machine_view.ui:327
 msgid "Open Display in New _Window"
 msgstr ""
 
-#: ui/machine_view.ui:329
+#: ui/machine_view.ui:333
 msgid "_USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:333
+#: ui/machine_view.ui:337
 msgid "_Redirect USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:337
+#: ui/machine_view.ui:341
 msgid "Send _Key"
 msgstr ""
 
-#: ui/machine_view.ui:367
+#: ui/machine_view.ui:371
 msgid "Re_name…"
 msgstr ""
 
-#: ui/machine_view.ui:371
+#: ui/machine_view.ui:375
 msgid "_Clone…"
 msgstr ""
 
-#: ui/machine_view.ui:375
+#: ui/machine_view.ui:379
+msgid "Discard _Saved State…"
+msgstr ""
+
+#: ui/machine_view.ui:384
 msgid "_Delete…"
 msgstr ""
 
