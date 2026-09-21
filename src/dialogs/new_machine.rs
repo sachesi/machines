@@ -1,5 +1,6 @@
 //! "New Virtual Machine": what to boot, a name, the guest's family, and how much of the
-//! host it gets.
+//! host it gets. An installation ISO the osinfo database knows sets the rest to what its
+//! system recommends.
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -10,16 +11,20 @@ use gettextrs::gettext;
 use crate::adw::prelude::*;
 use crate::domain_xml::GuestOs;
 use crate::hypervisor::{CreateRequest, InstallSource};
+use crate::osinfo::{self, FirmwareNeed, Os};
 use crate::window::MachinesWindow;
 use crate::{adw, gio, glib, gtk};
 
 const DEFAULT_DISK_GIB: f64 = 32.0;
 const WINDOWS_DISK_GIB: f64 = 64.0;
+const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 
 struct Form {
     source: adw::ComboRow,
     file_row: adw::ActionRow,
     file: RefCell<Option<PathBuf>>,
+    /// The system on the chosen ISO.
+    detected: RefCell<Option<Os>>,
     name: adw::EntryRow,
     /// Whether the name is still the one taken from the file, and may follow it.
     name_is_derived: Cell<bool>,
@@ -44,6 +49,42 @@ impl Form {
             1 => GuestOs::Windows,
             _ => GuestOs::Other,
         }
+    }
+
+    /// Take in the system found on the ISO: its family, firmware and what it recommends.
+    fn detect(&self, os: Option<Os>) {
+        self.os
+            .set_subtitle(os.as_ref().map_or("", |os| os.name.as_str()));
+        if let Some(os) = &os {
+            self.os.set_selected(match os.family.as_str() {
+                "linux" => 0,
+                family if family.starts_with("win") => 1,
+                _ => 2,
+            });
+            match os.firmware {
+                FirmwareNeed::Uefi => self.uefi.set_active(true),
+                FirmwareNeed::Bios => self.uefi.set_active(false),
+                FirmwareNeed::Either => {}
+            }
+            let r = os.resources;
+            if let Some(ram) = r.ram {
+                let gib = (ram as f64 / GIB / 0.5).ceil() * 0.5;
+                self.memory
+                    .set_value(gib.min(self.memory.adjustment().upper()));
+            }
+            if let Some(cpus) = r.cpus {
+                self.vcpus
+                    .set_value(self.vcpus.value().max(f64::from(cpus)));
+            }
+            if let Some(storage) = r.storage
+                && !self.disk_touched.get()
+            {
+                let gib = (storage as f64 / GIB).ceil();
+                self.disk.set_value(gib.max(self.disk.value()));
+                self.disk_touched.set(false);
+            }
+        }
+        self.detected.replace(os);
     }
 
     fn valid_name(&self) -> bool {
@@ -77,6 +118,7 @@ impl Form {
         Some(CreateRequest {
             name: self.name.text().trim().to_owned(),
             os: self.os(),
+            osinfo: self.detected.borrow().as_ref().map(|os| os.id.clone()),
             uefi: self.uefi.is_active(),
             memory_mib: (self.memory.value() * 1024.0).round() as u64,
             vcpus: self.vcpus.value() as u32,
@@ -189,6 +231,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         source,
         file_row,
         file: RefCell::default(),
+        detected: RefCell::default(),
         name,
         name_is_derived: Cell::new(true),
         os,
@@ -243,6 +286,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         form,
         move |_| {
             form.file.take();
+            form.detect(None);
             form.sync();
         }
     ));
@@ -300,8 +344,20 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
                     if form.name_is_derived.get() {
                         form.name.set_text(&unique_name(&path, &form.taken));
                     }
-                    form.file.replace(Some(path));
+                    form.file.replace(Some(path.clone()));
+                    form.detect(None);
                     form.sync();
+                    if form.importing() {
+                        return;
+                    }
+                    let iso = path.clone();
+                    let os = gio::spawn_blocking(move || osinfo::identify(&iso))
+                        .await
+                        .ok()
+                        .flatten();
+                    if form.file.borrow().as_ref() == Some(&path) {
+                        form.detect(os);
+                    }
                 }
             ));
         }

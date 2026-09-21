@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 10:37+0300\n"
+"POT-Creation-Date: 2026-09-24 10:43+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -81,7 +81,7 @@ msgstr ""
 #: data/io.github.sachesi.machines.metainfo.xml:14
 msgid ""
 "New machines from an installation ISO or an existing disk image, with a disk "
-"in libvirt's default storage pool"
+"in libvirt's default storage pool, set up for the system on the ISO"
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:15
@@ -229,7 +229,7 @@ msgstr ""
 msgid "Memory"
 msgstr ""
 
-#: src/details.rs:273 src/dialogs/new_machine.rs:139 src/dialogs/storage.rs:731
+#: src/details.rs:273 src/dialogs/new_machine.rs:181 src/dialogs/storage.rs:731
 #: src/dialogs/storage.rs:808
 #, no-c-format
 msgid "GiB"
@@ -367,7 +367,7 @@ msgstr ""
 msgid "Eject"
 msgstr ""
 
-#: src/details.rs:633 src/dialogs/new_machine.rs:342
+#: src/details.rs:633 src/dialogs/new_machine.rs:398
 #, no-c-format
 msgid "Disc Images"
 msgstr ""
@@ -610,7 +610,7 @@ msgid ""
 msgstr ""
 
 #: src/dialogs/delete.rs:19 src/dialogs/machine.rs:33 src/dialogs/mod.rs:28
-#: src/dialogs/mod.rs:69 src/dialogs/new_machine.rs:184
+#: src/dialogs/mod.rs:69 src/dialogs/new_machine.rs:226
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
@@ -646,7 +646,7 @@ msgstr ""
 msgid "_Remove"
 msgstr ""
 
-#: src/dialogs/hardware.rs:122 src/dialogs/new_machine.rs:58
+#: src/dialogs/hardware.rs:122 src/dialogs/new_machine.rs:99
 #, no-c-format
 msgid "Disk Image"
 msgstr ""
@@ -661,7 +661,7 @@ msgstr ""
 msgid "None, the drive starts empty"
 msgstr ""
 
-#: src/dialogs/hardware.rs:130 src/dialogs/new_machine.rs:65
+#: src/dialogs/hardware.rs:130 src/dialogs/new_machine.rs:106
 #: src/dialogs/storage.rs:538
 #, no-c-format
 msgid "None chosen"
@@ -693,7 +693,7 @@ msgstr ""
 msgid "Existing Volume"
 msgstr ""
 
-#: src/dialogs/hardware.rs:244 src/dialogs/new_machine.rs:102
+#: src/dialogs/hardware.rs:244 src/dialogs/new_machine.rs:144
 #, no-c-format
 msgid "Existing Disk Image"
 msgstr ""
@@ -714,7 +714,7 @@ msgstr ""
 msgid "_Size"
 msgstr ""
 
-#: src/dialogs/hardware.rs:268 src/dialogs/new_machine.rs:165
+#: src/dialogs/hardware.rs:268 src/dialogs/new_machine.rs:207
 #, no-c-format
 msgid "GiB, allocated as the guest writes"
 msgstr ""
@@ -729,7 +729,7 @@ msgstr ""
 msgid "_Disk"
 msgstr ""
 
-#: src/dialogs/hardware.rs:293 src/dialogs/new_machine.rs:106
+#: src/dialogs/hardware.rs:293 src/dialogs/new_machine.rs:148
 #: src/dialogs/storage.rs:532
 #, no-c-format
 msgid "_Choose…"
@@ -1091,7 +1091,7 @@ msgid ""
 "on it is removed."
 msgstr ""
 
-#: src/dialogs/networks.rs:293 src/dialogs/new_machine.rs:117
+#: src/dialogs/networks.rs:293 src/dialogs/new_machine.rs:159
 #: src/dialogs/storage.rs:520 src/dialogs/storage.rs:719
 #, no-c-format
 msgid "_Name"
@@ -1122,7 +1122,7 @@ msgstr ""
 msgid "Give guests their addresses"
 msgstr ""
 
-#: src/dialogs/networks.rs:335 src/dialogs/new_machine.rs:178
+#: src/dialogs/networks.rs:335 src/dialogs/new_machine.rs:220
 #: src/dialogs/storage.rs:556 src/dialogs/storage.rs:741
 #, no-c-format
 msgid "C_reate"
@@ -1148,82 +1148,82 @@ msgstr ""
 msgid "Guests reach only the host and each other"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:60
+#: src/dialogs/new_machine.rs:101
 #, no-c-format
 msgid "Installation Media"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:98
+#: src/dialogs/new_machine.rs:140
 #, no-c-format
 msgid "_Install From"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:101
+#: src/dialogs/new_machine.rs:143
 #, no-c-format
 msgid "Installation Media (ISO)"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:121
+#: src/dialogs/new_machine.rs:163
 #, no-c-format
 msgid "_Operating System"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:126
+#: src/dialogs/new_machine.rs:168
 #, no-c-format
 msgid "Other"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:130
+#: src/dialogs/new_machine.rs:172
 #, no-c-format
 msgid "_UEFI Firmware"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:131
+#: src/dialogs/new_machine.rs:173
 #, no-c-format
 msgid "Off, the machine boots with a BIOS"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:138
+#: src/dialogs/new_machine.rs:180
 #, no-c-format
 msgid "_Memory"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:152
+#: src/dialogs/new_machine.rs:194
 #, no-c-format
 msgid "_Processors"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:164
+#: src/dialogs/new_machine.rs:206
 #, no-c-format
 msgid "_Disk Size"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:208 src/window.rs:571
+#: src/dialogs/new_machine.rs:251 src/window.rs:571
 #, no-c-format
 msgid "System"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:214
+#: src/dialogs/new_machine.rs:257
 #, no-c-format
 msgid "Resources"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:234 ui/window.ui:41
+#: src/dialogs/new_machine.rs:277 ui/window.ui:41
 #, no-c-format
 msgid "New Virtual Machine"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:337
+#: src/dialogs/new_machine.rs:393
 #, no-c-format
 msgid "Disk Images"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:350
+#: src/dialogs/new_machine.rs:406
 #, no-c-format
 msgid "Choose a Disk Image"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:352
+#: src/dialogs/new_machine.rs:408
 #, no-c-format
 msgid "Choose Installation Media"
 msgstr ""
@@ -1522,7 +1522,7 @@ msgstr ""
 msgid "Saved"
 msgstr ""
 
-#: src/hypervisor.rs:298
+#: src/hypervisor.rs:299
 #, no-c-format
 msgid ""
 "The host’s devices cannot be listed, as libvirt’s node device service "
@@ -1530,7 +1530,7 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:510
+#: src/hypervisor.rs:514
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""

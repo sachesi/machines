@@ -1104,6 +1104,8 @@ pub struct NewMachine {
     /// `kvm`, or `qemu` where the host has no KVM.
     pub virt_type: String,
     pub os: GuestOs,
+    /// The osinfo id of the system, such as `http://fedoraproject.org/fedora/42`.
+    pub osinfo: Option<String>,
     pub uefi: bool,
     pub tpm: bool,
     pub memory_mib: u64,
@@ -1128,6 +1130,16 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
     let mut x = String::new();
     let _ = writeln!(x, "<domain type='{}'>", escape(&m.virt_type));
     let _ = writeln!(x, "  <name>{}</name>", escape(&m.name));
+    // Where virt-manager and GNOME Boxes look for what the machine runs.
+    if let Some(id) = &m.osinfo {
+        let _ = writeln!(
+            x,
+            "  <metadata>\n    <libosinfo:libosinfo \
+             xmlns:libosinfo='http://libosinfo.org/xmlns/libvirt/domain/1.0'>\n      \
+             <libosinfo:os id='{}'/>\n    </libosinfo:libosinfo>\n  </metadata>",
+            escape(id)
+        );
+    }
     let _ = writeln!(x, "  <memory unit='MiB'>{}</memory>", m.memory_mib);
     let _ = writeln!(
         x,
@@ -1705,6 +1717,7 @@ mod tests {
             name: "Tom & Jerry's <box>".into(),
             virt_type: "kvm".into(),
             os,
+            osinfo: Some("http://fedoraproject.org/fedora/42".into()),
             uefi: true,
             tpm: false,
             memory_mib: 4096,
@@ -1723,6 +1736,14 @@ mod tests {
         let doc = roxmltree::Document::parse(&xml).unwrap();
         let name = doc.descendants().find(|n| n.has_tag_name("name")).unwrap();
         assert_eq!(name.text(), Some("Tom & Jerry's <box>"));
+        let os = doc
+            .descendants()
+            .find(|n| n.has_tag_name(("http://libosinfo.org/xmlns/libvirt/domain/1.0", "os")))
+            .unwrap();
+        assert_eq!(
+            os.attribute("id"),
+            Some("http://fedoraproject.org/fedora/42")
+        );
         let c = MachineConfig::parse(&xml).unwrap();
         assert_eq!(c.firmware, Firmware::Uefi);
         assert_eq!(c.memory_mib, 4096);

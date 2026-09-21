@@ -37,7 +37,9 @@ A third page shows the machine's serial console as text, for machines without a 
 and for watching a guest boot; new machines have a serial port for it.
 
 You need libvirt with its QEMU driver, gvnc (from gtk-vnc), spice-glib, VTE for GTK 4,
-GTK 4.22 and libadwaita 1.9.
+GTK 4.22 and libadwaita 1.9. With osinfo-db installed, as it is alongside virt-manager or
+GNOME Boxes, Machines recognizes the system on an installation ISO and gives the new machine
+the memory, disk and firmware that system recommends.
 
 ## Building and installing
 

@@ -137,6 +137,7 @@ pub enum InstallSource {
 pub struct CreateRequest {
     pub name: String,
     pub os: GuestOs,
+    pub osinfo: Option<String>,
     pub uefi: bool,
     pub memory_mib: u64,
     pub vcpus: u32,
@@ -711,6 +712,7 @@ impl Hypervisor {
             name: req.name.clone(),
             virt_type: virt_type.to_owned(),
             os: req.os,
+            osinfo: req.osinfo.clone(),
             uefi: req.uefi,
             tpm: req.os == GuestOs::Windows && on_path("swtpm"),
             memory_mib: req.memory_mib,
