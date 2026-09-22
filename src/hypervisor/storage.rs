@@ -153,6 +153,14 @@ impl Hypervisor {
             .map_err(message)
     }
 
+    /// How big the disk `target` of the machine `uuid` is to its guest, in bytes.
+    pub fn disk_capacity(&self, uuid: &str, target: &str) -> Result<u64> {
+        self.domain(uuid)?
+            .get_block_info(target, 0)
+            .map(|info| info.capacity)
+            .map_err(message)
+    }
+
     /// Grow the volume at `path` to `bytes`. A running machine that has it as a disk
     /// grows it itself, so that the guest sees the new size at once and QEMU's lock on
     /// the image is no obstacle.

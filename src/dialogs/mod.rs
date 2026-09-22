@@ -53,6 +53,70 @@ pub fn form(title: &str, confirm: &str, page: &adw::PreferencesPage) -> (adw::Di
     (dialog, confirm)
 }
 
+/// Ask how far to grow the disk `name`, now `capacity` bytes, and hand the new size in
+/// bytes to `grow`. `running` is whether a running guest has the disk.
+pub fn resize(
+    parent: &impl IsA<gtk::Widget>,
+    name: &str,
+    capacity: u64,
+    running: bool,
+    grow: impl Fn(u64) + 'static,
+) {
+    const GIB: f64 = (1u64 << 30) as f64;
+    let current = capacity as f64 / GIB;
+    let gib = adw::SpinRow::builder()
+        .title(gettext("_Size"))
+        .subtitle(gettext("GiB"))
+        .use_underline(true)
+        .digits(1)
+        .adjustment(&gtk::Adjustment::new(
+            current.ceil(),
+            current.ceil(),
+            16384.0,
+            1.0,
+            16.0,
+            0.0,
+        ))
+        .build();
+    let group = adw::PreferencesGroup::builder()
+        .description(if running {
+            gettext(
+                "The running guest sees the disk grow at once. Its partitions and file \
+                 systems stay the size they are until they are grown in the guest.",
+            )
+        } else {
+            gettext(
+                "The disk only grows. Its partitions and file systems stay the size they \
+                 are until they are grown in the guest.",
+            )
+        })
+        .build();
+    group.add(&gib);
+    let page = adw::PreferencesPage::new();
+    page.add(&group);
+    let heading = gettext("Resize “{name}”").replace("{name}", name);
+    let (dialog, resize) = form(&heading, &gettext("_Resize"), &page);
+    let sync = move |row: &adw::SpinRow, button: &gtk::Button| {
+        button.set_sensitive((row.value() * GIB) as u64 > capacity);
+    };
+    gib.connect_value_notify(glib::clone!(
+        #[weak]
+        resize,
+        move |row| sync(row, &resize)
+    ));
+    resize.connect_clicked(glib::clone!(
+        #[weak]
+        dialog,
+        #[weak]
+        gib,
+        move |_| {
+            dialog.close();
+            grow((gib.value() * GIB) as u64);
+        }
+    ));
+    dialog.present(Some(parent));
+}
+
 /// Ask before something that cannot be undone; resolves to whether to go ahead.
 pub async fn confirm(
     parent: &impl IsA<gtk::Widget>,

@@ -2,6 +2,7 @@
 //! without editing its XML.
 
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -577,6 +578,9 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending) -> adw::ActionRow
         return row;
     }
     if disk.device != DiskDevice::Cdrom || pending == Pending::Added {
+        if disk.device == DiskDevice::Disk && disk.kind == "file" && pending == Pending::No {
+            row.add_suffix(&resize_button(view, disk));
+        }
         row.add_suffix(&remove);
         return row;
     }
@@ -626,6 +630,49 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending) -> adw::ActionRow
     }
     row.add_suffix(&remove);
     row
+}
+
+/// Grows the image of `disk`, which has to be a volume of a storage pool.
+fn resize_button(view: &MachineView, disk: &Disk) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .label(gettext("Resize…"))
+        .valign(gtk::Align::Center)
+        .css_classes(["flat"])
+        .build();
+    button.connect_clicked(glib::clone!(
+        #[weak]
+        view,
+        #[strong]
+        disk,
+        move |_| {
+            let (Some(win), Some(info), Some(path)) = (
+                view.root().and_downcast::<MachinesWindow>(),
+                view.info(),
+                disk.source.clone(),
+            ) else {
+                return;
+            };
+            let disk = disk.clone();
+            glib::spawn_future_local(async move {
+                let (uuid, target) = (info.uuid.clone(), disk.target.clone());
+                let capacity = match win.call(move |hv| hv.disk_capacity(&uuid, &target)).await {
+                    Some(Ok(capacity)) => capacity,
+                    Some(Err(e)) => return win.toast(&e),
+                    None => return,
+                };
+                let name = Path::new(&path)
+                    .file_name()
+                    .map_or(path.clone(), |n| n.to_string_lossy().into_owned());
+                let running = info.state.is_active();
+                let target = view.clone();
+                dialogs::resize(&view, &name, capacity, running, move |bytes| {
+                    let path = path.clone();
+                    target.run(move |hv, _| hv.resize_volume(&path, bytes));
+                });
+            });
+        }
+    ));
+    button
 }
 
 pub async fn choose_iso(parent: &impl IsA<gtk::Widget>) -> Option<String> {

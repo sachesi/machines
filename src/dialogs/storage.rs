@@ -801,64 +801,12 @@ impl Storage {
         let Some(parent) = self.dialog.upgrade() else {
             return;
         };
-        const GIB: f64 = (1u64 << 30) as f64;
-        let current = vol.capacity as f64 / GIB;
-        let gib = adw::SpinRow::builder()
-            .title(gettext("_Size"))
-            .subtitle(gettext("GiB"))
-            .use_underline(true)
-            .digits(1)
-            .adjustment(&gtk::Adjustment::new(
-                current.ceil(),
-                current.ceil(),
-                16384.0,
-                1.0,
-                16.0,
-                0.0,
-            ))
-            .build();
-        let group = adw::PreferencesGroup::builder()
-            .description(if running {
-                gettext(
-                    "The running guest sees the disk grow at once. Its partitions and file \
-                     systems stay the size they are until they are grown in the guest.",
-                )
-            } else {
-                gettext(
-                    "The disk only grows. Its partitions and file systems stay the size they \
-                     are until they are grown in the guest.",
-                )
-            })
-            .build();
-        group.add(&gib);
-        let page = adw::PreferencesPage::new();
-        page.add(&group);
-        let heading = gettext("Resize “{name}”").replace("{name}", &vol.name);
-        let (dialog, resize) = dialogs::form(&heading, &gettext("_Resize"), &page);
-        let capacity = vol.capacity;
-        let sync = move |row: &adw::SpinRow, button: &gtk::Button| {
-            button.set_sensitive((row.value() * GIB) as u64 > capacity);
-        };
-        gib.connect_value_notify(glib::clone!(
-            #[weak]
-            resize,
-            move |row| sync(row, &resize)
-        ));
+        let this = self.clone();
         let path = vol.path.clone();
-        resize.connect_clicked(glib::clone!(
-            #[strong(rename_to = this)]
-            self,
-            #[weak]
-            dialog,
-            #[weak]
-            gib,
-            move |_| {
-                dialog.close();
-                let (path, bytes) = (path.clone(), (gib.value() * GIB) as u64);
-                this.act(move |hv| hv.resize_volume(&path, bytes));
-            }
-        ));
-        dialog.present(Some(&parent));
+        dialogs::resize(&parent, &vol.name, vol.capacity, running, move |bytes| {
+            let path = path.clone();
+            this.act(move |hv| hv.resize_volume(&path, bytes));
+        });
     }
 
     /// Copy a file of the user's into the pool, with the progress in the pool's page.
