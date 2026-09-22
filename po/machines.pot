@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 10:43+0300\n"
+"POT-Creation-Date: 2026-09-24 10:45+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -122,10 +122,14 @@ msgid "Storage pools, disks of the host and virtual networks"
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:22
+msgid "A machine's XML definition, edited by hand"
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:23
 msgid "Machines made with virt-manager"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:29
+#: data/io.github.sachesi.machines.metainfo.xml:30
 msgid "sachesi"
 msgstr ""
 
@@ -184,7 +188,7 @@ msgstr ""
 msgid "Start when libvirt starts, at boot for the system connection"
 msgstr ""
 
-#: src/details.rs:156 src/dialogs/machine.rs:386
+#: src/details.rs:156 src/dialogs/machine.rs:387
 #, no-c-format
 msgid "Boot Order"
 msgstr ""
@@ -327,22 +331,22 @@ msgstr ""
 msgid "No disks"
 msgstr ""
 
-#: src/details.rs:530 src/dialogs/hardware.rs:250 src/dialogs/machine.rs:315
+#: src/details.rs:530 src/dialogs/hardware.rs:250 src/dialogs/machine.rs:316
 #, no-c-format
 msgid "CD/DVD Drive"
 msgstr ""
 
-#: src/details.rs:531 src/dialogs/machine.rs:316
+#: src/details.rs:531 src/dialogs/machine.rs:317
 #, no-c-format
 msgid "Floppy Drive"
 msgstr ""
 
-#: src/details.rs:532 src/dialogs/hardware.rs:247 src/dialogs/machine.rs:317
+#: src/details.rs:532 src/dialogs/hardware.rs:247 src/dialogs/machine.rs:318
 #, no-c-format
 msgid "Host Disk"
 msgstr ""
 
-#: src/details.rs:533 src/dialogs/machine.rs:318 src/dialogs/storage.rs:99
+#: src/details.rs:533 src/dialogs/machine.rs:319 src/dialogs/storage.rs:99
 #, no-c-format
 msgid "Disk"
 msgstr ""
@@ -422,12 +426,12 @@ msgstr ""
 msgid "USB and PCI devices of the host passed through to the virtual machine"
 msgstr ""
 
-#: src/details.rs:775 src/dialogs/hardware.rs:530 src/dialogs/machine.rs:344
+#: src/details.rs:775 src/dialogs/hardware.rs:530 src/dialogs/machine.rs:345
 #, no-c-format
 msgid "USB Device"
 msgstr ""
 
-#: src/details.rs:776 src/dialogs/hardware.rs:531 src/dialogs/machine.rs:345
+#: src/details.rs:776 src/dialogs/hardware.rs:531 src/dialogs/machine.rs:346
 #, no-c-format
 msgid "PCI Device"
 msgstr ""
@@ -500,7 +504,7 @@ msgstr ""
 msgid "Snapshots"
 msgstr ""
 
-#: src/details.rs:873 src/dialogs/machine.rs:213
+#: src/details.rs:873 src/dialogs/machine.rs:214
 #, no-c-format
 msgid "Take Snapshot"
 msgstr ""
@@ -597,7 +601,7 @@ msgstr ""
 msgid "VGA (any guest)"
 msgstr ""
 
-#: src/dialogs/delete.rs:11 src/dialogs/machine.rs:292
+#: src/dialogs/delete.rs:11 src/dialogs/machine.rs:293
 #: src/dialogs/networks.rs:255 src/dialogs/storage.rs:476
 #, no-c-format
 msgid "Delete “{name}”?"
@@ -609,13 +613,14 @@ msgid ""
 "The virtual machine is removed, with its firmware variables and snapshots."
 msgstr ""
 
-#: src/dialogs/delete.rs:19 src/dialogs/machine.rs:33 src/dialogs/mod.rs:28
-#: src/dialogs/mod.rs:69 src/dialogs/new_machine.rs:226
+#: src/dialogs/delete.rs:19 src/dialogs/machine.rs:34
+#: src/dialogs/machine.rs:514 src/dialogs/mod.rs:28 src/dialogs/mod.rs:69
+#: src/dialogs/new_machine.rs:226
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
 
-#: src/dialogs/delete.rs:20 src/dialogs/machine.rs:297
+#: src/dialogs/delete.rs:20 src/dialogs/machine.rs:298
 #: src/dialogs/networks.rs:265 src/dialogs/storage.rs:486
 #, no-c-format
 msgid "_Delete"
@@ -860,62 +865,62 @@ msgstr ""
 msgid "Choose a Folder to Share"
 msgstr ""
 
-#: src/dialogs/machine.rs:38
+#: src/dialogs/machine.rs:39
 #, no-c-format
 msgid "Name"
 msgstr ""
 
-#: src/dialogs/machine.rs:87
+#: src/dialogs/machine.rs:88
 #, no-c-format
 msgid "Rename “{name}”"
 msgstr ""
 
-#: src/dialogs/machine.rs:97
+#: src/dialogs/machine.rs:98
 #, no-c-format
 msgid "_Rename"
 msgstr ""
 
-#: src/dialogs/machine.rs:131
+#: src/dialogs/machine.rs:132
 #, no-c-format
 msgid "{name} (Copy)"
 msgstr ""
 
-#: src/dialogs/machine.rs:132
+#: src/dialogs/machine.rs:133
 #, no-c-format
 msgid "{name} (Copy {n})"
 msgstr ""
 
-#: src/dialogs/machine.rs:139
+#: src/dialogs/machine.rs:140
 #, no-c-format
 msgid "Clone “{name}”"
 msgstr ""
 
-#: src/dialogs/machine.rs:141
+#: src/dialogs/machine.rs:142
 #, no-c-format
 msgid "The copy gets network addresses and firmware variables of its own."
 msgstr ""
 
-#: src/dialogs/machine.rs:149
+#: src/dialogs/machine.rs:150
 #, no-c-format
 msgid "Disks copied"
 msgstr ""
 
-#: src/dialogs/machine.rs:151
+#: src/dialogs/machine.rs:152
 #, no-c-format
 msgid "Left out, as they are in no storage pool"
 msgstr ""
 
-#: src/dialogs/machine.rs:179
+#: src/dialogs/machine.rs:180
 #, no-c-format
 msgid "_Clone"
 msgstr ""
 
-#: src/dialogs/machine.rs:190
+#: src/dialogs/machine.rs:191
 #, no-c-format
 msgid "Copying the disks of “{name}”…"
 msgstr ""
 
-#: src/dialogs/machine.rs:216
+#: src/dialogs/machine.rs:217
 #, no-c-format
 msgid ""
 "The snapshot keeps the memory of the running machine as well as its "
@@ -925,7 +930,7 @@ msgid ""
 "Names take letters, digits, “-”, “.” and “_”."
 msgstr ""
 
-#: src/dialogs/machine.rs:222
+#: src/dialogs/machine.rs:223
 #, no-c-format
 msgid ""
 "The snapshot keeps the machine’s disks and settings as they are now.\n"
@@ -933,27 +938,27 @@ msgid ""
 "                 Names take letters, digits, “-”, “.” and “_”."
 msgstr ""
 
-#: src/dialogs/machine.rs:228
+#: src/dialogs/machine.rs:229
 #, no-c-format
 msgid "Description"
 msgstr ""
 
-#: src/dialogs/machine.rs:243
+#: src/dialogs/machine.rs:244
 #, no-c-format
 msgid "_Take"
 msgstr ""
 
-#: src/dialogs/machine.rs:254
+#: src/dialogs/machine.rs:255
 #, no-c-format
 msgid "Taking “{name}”…"
 msgstr ""
 
-#: src/dialogs/machine.rs:268
+#: src/dialogs/machine.rs:269
 #, no-c-format
 msgid "Revert to “{name}”?"
 msgstr ""
 
-#: src/dialogs/machine.rs:270
+#: src/dialogs/machine.rs:271
 #, no-c-format
 msgid ""
 "The virtual machine goes back to how it was when the snapshot was "
@@ -961,41 +966,58 @@ msgid ""
 "unless another snapshot                      has it."
 msgstr ""
 
-#: src/dialogs/machine.rs:274
+#: src/dialogs/machine.rs:275
 #, no-c-format
 msgid "_Revert"
 msgstr ""
 
-#: src/dialogs/machine.rs:294
+#: src/dialogs/machine.rs:295
 #, no-c-format
 msgid ""
 "The virtual machine stays as it is; only the way back to this "
 "snapshot                      goes."
 msgstr ""
 
-#: src/dialogs/machine.rs:337
+#: src/dialogs/machine.rs:338
 #, no-c-format
 msgid "Network (PXE)"
 msgstr ""
 
-#: src/dialogs/machine.rs:370
+#: src/dialogs/machine.rs:371
 #, no-c-format
 msgid "The machine boots in this order the next time it starts."
 msgstr ""
 
-#: src/dialogs/machine.rs:372
+#: src/dialogs/machine.rs:373
 #, no-c-format
 msgid "The machine tries the devices ticked here, top to bottom."
 msgstr ""
 
-#: src/dialogs/machine.rs:453
+#: src/dialogs/machine.rs:454
 #, no-c-format
 msgid "Move Up"
 msgstr ""
 
-#: src/dialogs/machine.rs:457
+#: src/dialogs/machine.rs:458
 #, no-c-format
 msgid "Move Down"
+msgstr ""
+
+#: src/dialogs/machine.rs:509
+#, no-c-format
+msgid "_Save"
+msgstr ""
+
+#: src/dialogs/machine.rs:530
+#, no-c-format
+msgid "Definition of “{name}”"
+msgstr ""
+
+#: src/dialogs/machine.rs:566
+#, no-c-format
+msgid ""
+"The change takes effect the next time the "
+"virtual                                              machine starts"
 msgstr ""
 
 #: src/dialogs/networks.rs:29 src/dialogs/networks.rs:93
@@ -1530,7 +1552,17 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:514
+#: src/hypervisor.rs:484
+#, no-c-format
+msgid "The definition has a NUL character in it"
+msgstr ""
+
+#: src/hypervisor.rs:494
+#, no-c-format
+msgid "The definition has to keep the UUID {uuid}"
+msgstr ""
+
+#: src/hypervisor.rs:546
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""
@@ -1601,107 +1633,107 @@ msgstr ""
 msgid "Force _Off"
 msgstr ""
 
-#: src/machine_view.rs:342
+#: src/machine_view.rs:345
 #, no-c-format
 msgid "It resumes where it was saved."
 msgstr ""
 
-#: src/machine_view.rs:343 ui/machine_view.ui:285
+#: src/machine_view.rs:346 ui/machine_view.ui:285
 #, no-c-format
 msgid "_Resume"
 msgstr ""
 
-#: src/machine_view.rs:346
+#: src/machine_view.rs:349
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:391
+#: src/machine_view.rs:394
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
 
-#: src/machine_view.rs:470
+#: src/machine_view.rs:473
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:472 ui/machine_view.ui:85
+#: src/machine_view.rs:475 ui/machine_view.ui:85
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:600
+#: src/machine_view.rs:604
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:602 src/machine_view.rs:861
+#: src/machine_view.rs:606 src/machine_view.rs:865
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:610
+#: src/machine_view.rs:614
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:612
+#: src/machine_view.rs:616
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:619
+#: src/machine_view.rs:623
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:620
+#: src/machine_view.rs:624
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:647 src/machine_view.rs:685
+#: src/machine_view.rs:651 src/machine_view.rs:689
 #, no-c-format
 msgid "Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:683 ui/machine_view.ui:92
+#: src/machine_view.rs:687 ui/machine_view.ui:92
 #, no-c-format
 msgid "Leave Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:834
+#: src/machine_view.rs:838
 #, no-c-format
 msgid "_Add Serial Port"
 msgstr ""
 
-#: src/machine_view.rs:837
+#: src/machine_view.rs:841
 #, no-c-format
 msgid "No Serial Console"
 msgstr ""
 
-#: src/machine_view.rs:839
+#: src/machine_view.rs:843
 #, no-c-format
 msgid "The serial port comes with the next start."
 msgstr ""
 
-#: src/machine_view.rs:841
+#: src/machine_view.rs:845
 #, no-c-format
 msgid "The virtual machine has no serial port to show here."
 msgstr ""
 
-#: src/machine_view.rs:859
+#: src/machine_view.rs:863
 #, no-c-format
 msgid "Serial Console Closed"
 msgstr ""
 
-#: src/machine_view.rs:927
+#: src/machine_view.rs:931
 #, no-c-format
 msgid "The serial console closed."
 msgstr ""
 
-#: src/machine_view.rs:984
+#: src/machine_view.rs:988
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -1846,10 +1878,14 @@ msgid "_Clone…"
 msgstr ""
 
 #: ui/machine_view.ui:379
+msgid "Edit _XML…"
+msgstr ""
+
+#: ui/machine_view.ui:383
 msgid "Discard _Saved State…"
 msgstr ""
 
-#: ui/machine_view.ui:384
+#: ui/machine_view.ui:388
 msgid "_Delete…"
 msgstr ""
 

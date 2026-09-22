@@ -359,6 +359,11 @@ menu machine_menu {
     }
 
     item {
+      label: _("Edit _XML…");
+      action: "machine.edit-xml";
+    }
+
+    item {
       label: _("Discard _Saved State…");
       action: "machine.discard-saved";
       hidden-when: "action-disabled";

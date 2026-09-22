@@ -8,6 +8,7 @@ use gettextrs::gettext;
 use crate::adw::prelude::*;
 use crate::domain_xml::{BootDevice, DiskDevice, MachineConfig};
 use crate::host_xml::HostDeviceId;
+use crate::hypervisor::Change;
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
 use crate::{adw, dialogs, glib, gtk};
@@ -472,4 +473,113 @@ fn fill_boot_list(
         }
         list.append(&row);
     }
+}
+
+/// The machine's definition as XML, to change what the details page has no row for.
+pub fn edit_xml(view: &MachineView) {
+    let (Some(win), Some(info)) = (window(view), view.info()) else {
+        return;
+    };
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        view,
+        async move {
+            let uuid = info.uuid.clone();
+            let xml = match win.call(move |hv| hv.xml(&uuid)).await {
+                Some(Ok(xml)) => xml,
+                Some(Err(e)) => return win.toast(&e),
+                None => return,
+            };
+            let buffer = gtk::TextBuffer::new(None);
+            buffer.set_text(&xml);
+            let text = gtk::TextView::builder()
+                .buffer(&buffer)
+                .monospace(true)
+                .top_margin(12)
+                .bottom_margin(12)
+                .left_margin(12)
+                .right_margin(12)
+                .build();
+            let scroller = gtk::ScrolledWindow::builder()
+                .child(&text)
+                .vexpand(true)
+                .build();
+            let error = adw::Banner::builder().use_markup(false).build();
+            let save = gtk::Button::builder()
+                .label(gettext("_Save"))
+                .use_underline(true)
+                .css_classes(["suggested-action"])
+                .build();
+            let cancel = gtk::Button::builder()
+                .label(gettext("_Cancel"))
+                .use_underline(true)
+                .build();
+            let header = adw::HeaderBar::builder()
+                .show_start_title_buttons(false)
+                .show_end_title_buttons(false)
+                .build();
+            header.pack_start(&cancel);
+            header.pack_end(&save);
+            let toolbar = adw::ToolbarView::builder()
+                .top_bar_style(adw::ToolbarStyle::Raised)
+                .content(&scroller)
+                .build();
+            toolbar.add_top_bar(&header);
+            toolbar.add_top_bar(&error);
+            let dialog = adw::Dialog::builder()
+                .title(gettext("Definition of “{name}”").replace("{name}", &info.name))
+                .content_width(720)
+                .content_height(640)
+                .child(&toolbar)
+                .build();
+            cancel.connect_clicked(glib::clone!(
+                #[weak]
+                dialog,
+                move |_| {
+                    dialog.close();
+                }
+            ));
+            save.connect_clicked(glib::clone!(
+                #[weak]
+                dialog,
+                #[weak]
+                win,
+                #[weak]
+                error,
+                move |save| {
+                    let xml = buffer
+                        .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                        .to_string();
+                    let uuid = info.uuid.clone();
+                    save.set_sensitive(false);
+                    glib::spawn_future_local(glib::clone!(
+                        #[weak]
+                        save,
+                        async move {
+                            let defined = win.call(move |hv| hv.define(&uuid, &xml)).await;
+                            save.set_sensitive(true);
+                            match defined {
+                                Some(Ok(change)) => {
+                                    dialog.close();
+                                    if change == Change::AtNextStart {
+                                        win.toast(&gettext(
+                                            "The change takes effect the next time the virtual \
+                                             machine starts",
+                                        ));
+                                    }
+                                    win.refresh();
+                                }
+                                Some(Err(e)) => {
+                                    error.set_title(&e);
+                                    error.set_revealed(true);
+                                }
+                                None => {}
+                            }
+                        }
+                    ));
+                }
+            ));
+            dialog.present(Some(&view));
+        }
+    ));
 }

@@ -323,6 +323,9 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     klass.install_action("machine.rename", None, |view, _, _| {
         dialogs::machine::rename(view);
     });
+    klass.install_action("machine.edit-xml", None, |view, _, _| {
+        dialogs::machine::edit_xml(view);
+    });
     klass.install_action("machine.clone", None, |view, _, _| {
         dialogs::machine::clone(view);
     });
@@ -539,6 +542,7 @@ impl MachineView {
         // libvirt keeps a saved state under the machine's name.
         self.action_set_enabled("machine.rename", editable && !saved);
         self.action_set_enabled("machine.clone", editable);
+        self.action_set_enabled("machine.edit-xml", persistent);
         let imp = self.imp();
         let detached = imp.detached.borrow().is_some();
         self.action_set_enabled(

@@ -471,6 +471,38 @@ impl Hypervisor {
             .map_err(message)
     }
 
+    /// The machine's definition as libvirt keeps it, to edit by hand.
+    pub fn xml(&self, uuid: &str) -> Result<String> {
+        self.definition(uuid)
+    }
+
+    /// Replace the machine's definition with `xml`, which libvirt checks against its schema.
+    pub fn define(&self, uuid: &str, xml: &str) -> Result<Change> {
+        let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+        // libvirt takes it as a C string.
+        if xml.contains('\0') {
+            return Err(gettext("The definition has a NUL character in it"));
+        }
+        let same = doc
+            .root_element()
+            .children()
+            .find(|n| n.has_tag_name("uuid"))
+            .and_then(|n| n.text())
+            .is_some_and(|u| u.trim().eq_ignore_ascii_case(uuid));
+        if !same {
+            return Err(
+                gettext("The definition has to keep the UUID {uuid}").replace("{uuid}", uuid)
+            );
+        }
+        let dom = Domain::define_xml_flags(&self.conn, xml, sys::VIR_DOMAIN_DEFINE_VALIDATE)
+            .map_err(message)?;
+        Ok(if dom.is_active().map_err(message)? {
+            Change::AtNextStart
+        } else {
+            Change::Done
+        })
+    }
+
     pub fn rename(&self, uuid: &str, name: &str) -> Result<()> {
         self.domain(uuid)?
             .rename(name, 0)
