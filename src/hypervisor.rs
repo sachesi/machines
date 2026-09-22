@@ -28,6 +28,7 @@ use virt::network::Network;
 use virt::nodedev::NodeDevice;
 use virt::storage_pool::StoragePool;
 use virt::storage_vol::StorageVol;
+use virt::stream::Stream;
 use virt::sys;
 
 use crate::domain_xml::{
@@ -383,6 +384,28 @@ impl Hypervisor {
             .managed_save_remove(0)
             .map(drop)
             .map_err(message)
+    }
+
+    /// What the machine's first screen shows, as an image file QEMU chose the format of
+    /// (PNG or PPM).
+    pub fn screenshot(&self, uuid: &str) -> Result<Vec<u8>> {
+        let dom = self.domain(uuid)?;
+        let stream = Stream::new(&self.conn, 0).map_err(message)?;
+        dom.screenshot(&stream, 0, 0).map_err(message)?;
+        let mut image = Vec::new();
+        let mut buf = vec![0u8; 256 * 1024];
+        loop {
+            match stream.recv(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => image.extend_from_slice(&buf[..n]),
+                Err(e) => {
+                    let _ = stream.abort();
+                    return Err(message(e));
+                }
+            }
+        }
+        stream.finish().map_err(message)?;
+        Ok(image)
     }
 
     pub fn pause(&self, uuid: &str) -> Result<()> {

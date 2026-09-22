@@ -323,6 +323,9 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
     klass.install_action("machine.rename", None, |view, _, _| {
         dialogs::machine::rename(view);
     });
+    klass.install_action("machine.screenshot", None, |view, _, _| {
+        dialogs::machine::screenshot(view);
+    });
     klass.install_action("machine.edit-xml", None, |view, _, _| {
         dialogs::machine::edit_xml(view);
     });
@@ -532,6 +535,7 @@ impl MachineView {
         self.action_set_enabled("machine.reset", active);
         self.action_set_enabled("machine.force-off", active);
         self.action_set_enabled("machine.send-keys", running);
+        self.action_set_enabled("machine.screenshot", running);
         self.action_set_enabled("machine.usb-devices", running);
         self.action_set_enabled(
             "machine.redirect-usb",

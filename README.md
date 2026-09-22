@@ -31,8 +31,8 @@ QEMU has it, which carries sound and, with the SPICE agent in the guest, sizes t
 screen to the window and shares the clipboard's text with it; VNC otherwise. SPICE also
 lends USB devices of the computer the console runs on to the machine, which works on
 remote connections and the user session too. With 3D acceleration, SPICE hands the console
-the GPU's frames as they are, while VNC has QEMU read them back. The display can also move to a
-window of its own, to put it on another screen.
+the GPU's frames as they are, while VNC has QEMU read them back. The display can also move
+to a window of its own, to put it on another screen, and be saved as a screenshot.
 
 A third page shows the machine's serial console as text, for machines without a display
 and for watching a guest boot; new machines have a serial port for it.

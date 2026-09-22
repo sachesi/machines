@@ -11,7 +11,7 @@ use crate::host_xml::HostDeviceId;
 use crate::hypervisor::Change;
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
-use crate::{adw, dialogs, glib, gtk};
+use crate::{adw, dialogs, gdk, gio, glib, gtk};
 
 /// Every device the firmware could boot from, in order, and whether it does.
 type BootList = Vec<(BootDevice, bool)>;
@@ -582,4 +582,43 @@ pub fn edit_xml(view: &MachineView) {
             dialog.present(Some(&view));
         }
     ));
+}
+
+/// Save what the machine's screen shows as a PNG file the user picks.
+pub fn screenshot(view: &MachineView) {
+    let (Some(win), Some(info)) = (window(view), view.info()) else {
+        return;
+    };
+    glib::spawn_future_local(async move {
+        let uuid = info.uuid.clone();
+        let image = match win.call(move |hv| hv.screenshot(&uuid)).await {
+            Some(Ok(image)) => image,
+            Some(Err(e)) => return win.toast(&e),
+            None => return,
+        };
+        let png = match gdk::Texture::from_bytes(&glib::Bytes::from_owned(image)) {
+            Ok(texture) => texture.save_to_png_bytes(),
+            Err(e) => return win.toast(&e.to_string()),
+        };
+        let time = glib::DateTime::now_local()
+            .and_then(|t| t.format("%Y-%m-%d %H-%M-%S"))
+            .map(|t| t.to_string())
+            .unwrap_or_default();
+        let dialog = gtk::FileDialog::builder()
+            .title(gettext("Save Screenshot"))
+            .initial_name(format!("{} {time}.png", info.name).replace('/', "-"))
+            .build();
+        if let Some(pictures) = glib::user_special_dir(glib::UserDirectory::Pictures) {
+            dialog.set_initial_folder(Some(&gio::File::for_path(pictures)));
+        }
+        let Ok(file) = dialog.save_future(Some(&win)).await else {
+            return;
+        };
+        if let Err((_, e)) = file
+            .replace_contents_future(png, None, false, gio::FileCreateFlags::REPLACE_DESTINATION)
+            .await
+        {
+            win.toast(&e.to_string());
+        }
+    });
 }
