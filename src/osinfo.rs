@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 
 use crate::glib;
 
@@ -73,7 +74,7 @@ struct Media {
 /// The system on the ISO at `iso`, if it is one the database knows.
 pub fn identify(iso: &Path) -> Option<Os> {
     let volume = read_volume(iso)?;
-    let entries = load();
+    let entries = load(None);
     // Where several entries match, the one whose media name the most fields is the surest.
     let entry = entries
         .values()
@@ -89,6 +90,27 @@ pub fn identify(iso: &Path) -> Option<Os> {
         .max_by(|(a, x), (b, y)| a.cmp(b).then_with(|| x.id.cmp(&y.id)))?
         .1;
     Some(resolve(entry, &entries))
+}
+
+/// The name of the system the osinfo id `id` names, such as "Fedora Linux 41", where the
+/// database has it.
+pub fn name(id: &str) -> Option<String> {
+    static NAMES: LazyLock<Mutex<HashMap<String, Option<String>>>> = LazyLock::new(Mutex::default);
+    let mut names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    names
+        .entry(id.to_owned())
+        .or_insert_with(|| {
+            // Each vendor's systems are in a directory named for the host part of their ids.
+            let vendor = id.split_once("://")?.1.split('/').next()?;
+            if vendor.is_empty() || vendor.starts_with('.') {
+                return None;
+            }
+            load(Some(vendor))
+                .remove(id)
+                .map(|e| e.name)
+                .filter(|n| !n.is_empty())
+        })
+        .clone()
 }
 
 fn read_volume(iso: &Path) -> Option<Volume> {
@@ -162,16 +184,23 @@ fn directories() -> Vec<PathBuf> {
     ]
 }
 
-/// Every entry of the database, by id.
-fn load() -> HashMap<String, Entry> {
+/// The entries of the database, by id: `vendor`'s, or every vendor's.
+fn load(vendor: Option<&str>) -> HashMap<String, Entry> {
     let mut entries = HashMap::new();
     for dir in directories() {
-        let Ok(vendors) = std::fs::read_dir(dir.join("os")) else {
-            continue;
+        let os = dir.join("os");
+        let vendors: Vec<PathBuf> = match vendor {
+            Some(vendor) => vec![os.join(vendor)],
+            None => std::fs::read_dir(&os)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|v| v.path())
+                .collect(),
         };
         for file in vendors
-            .flatten()
-            .filter_map(|v| std::fs::read_dir(v.path()).ok())
+            .iter()
+            .filter_map(|v| std::fs::read_dir(v).ok())
             .flatten()
             .flatten()
         {

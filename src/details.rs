@@ -124,7 +124,11 @@ fn overview(
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Overview"))
         .build();
-    if let Some(os) = config.os_id.as_deref().and_then(os_name) {
+    let os = info
+        .os_name
+        .clone()
+        .or_else(|| config.os_id.as_deref().and_then(os_name));
+    if let Some(os) = os {
         group.add(&info_row(&gettext("Operating System"), &os));
     }
     group.add(&firmware_row(view, info, config));
@@ -218,7 +222,8 @@ fn boot_summary(config: &MachineConfig) -> String {
         .join(", ")
 }
 
-/// "http://fedoraproject.org/fedora/41" as "fedora 41".
+/// "http://fedoraproject.org/fedora/41" as "fedora 41", for an id the osinfo database on
+/// this computer does not have.
 fn os_name(id: &str) -> Option<String> {
     let path = id.split("://").nth(1)?.split_once('/')?.1;
     Some(path.replace('/', " "))

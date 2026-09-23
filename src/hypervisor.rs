@@ -35,7 +35,7 @@ use crate::domain_xml::{
     self, BootDevice, Capabilities, Cpu, Disk, Display, Firmware, GuestOs, MachineConfig,
     NetworkSource, NewMachine, Snapshot,
 };
-use crate::{glib, host_xml};
+use crate::{glib, host_xml, osinfo};
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -99,6 +99,8 @@ pub struct MachineInfo {
     pub autostart: bool,
     /// Whether it was saved to disk, to resume from at its next start.
     pub saved: bool,
+    /// The name of the system it runs, as the osinfo database has it.
+    pub os_name: Option<String>,
     /// What the machine boots with next: the inactive definition where there is one.
     pub config: Option<MachineConfig>,
     /// What QEMU is running with, while it runs, which differs from `config` after an edit
@@ -278,6 +280,10 @@ impl Hypervisor {
             persistent,
             autostart: persistent && dom.get_autostart().unwrap_or(false),
             saved: persistent && dom.has_managed_save(0).unwrap_or(false),
+            os_name: config
+                .as_ref()
+                .and_then(|c| c.os_id.as_deref())
+                .and_then(osinfo::name),
             config,
             live,
             capabilities,
