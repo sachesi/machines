@@ -404,6 +404,7 @@ fn fill_boot_list(
     for (i, (device, on)) in entries.into_iter().enumerate() {
         let (title, subtitle) = boot_label(config, device);
         let row = adw::ActionRow::builder()
+            .use_markup(false)
             .title(title)
             .subtitle(subtitle)
             .build();

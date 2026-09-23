@@ -15,6 +15,12 @@ pub fn size(bytes: u64) -> String {
     glib::format_size_full(bytes, glib::FormatSizeFlags::IEC_UNITS).to_string()
 }
 
+/// A toast of `text` as it is; a toast would otherwise read it as markup, and show nothing
+/// of an error with a `<` or `&` in it.
+pub fn toast(text: &str) -> adw::Toast {
+    adw::Toast::builder().title(text).use_markup(false).build()
+}
+
 /// A dialog of `page` with Cancel and a suggested `confirm` button in its header bar; the
 /// button starts insensitive.
 pub fn form(title: &str, confirm: &str, page: &adw::PreferencesPage) -> (adw::Dialog, gtk::Button) {

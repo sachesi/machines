@@ -108,6 +108,7 @@ fn window(view: &MachineView) -> Option<MachinesWindow> {
 
 pub fn info_row(title: &str, subtitle: &str) -> adw::ActionRow {
     adw::ActionRow::builder()
+        .use_markup(false)
         .title(title)
         .subtitle(subtitle)
         .subtitle_selectable(true)
@@ -548,6 +549,7 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending) -> adw::ActionRow
         subtitle = format!("{subtitle}\n{bus}");
     }
     let row = adw::ActionRow::builder()
+        .use_markup(false)
         .title(title)
         .subtitle(noted(subtitle, pending))
         .subtitle_selectable(true)
@@ -764,6 +766,7 @@ fn nic_row(view: &MachineView, nic: &Nic, pending: Pending) -> adw::ActionRow {
         .collect::<Vec<_>>()
         .join(" · ");
     let row = adw::ActionRow::builder()
+        .use_markup(false)
         .title(title)
         .subtitle(noted(subtitle, pending))
         .subtitle_selectable(true)
@@ -823,6 +826,7 @@ fn host_devices(
                 HostDeviceId::Pci(_) => gettext("PCI Device"),
             };
             let row = adw::ActionRow::builder()
+                .use_markup(false)
                 .title(title)
                 .subtitle(noted(dev.id.to_string(), pending))
                 .subtitle_selectable(true)
@@ -900,6 +904,7 @@ fn gadgets(
             ),
         };
         let row = adw::ActionRow::builder()
+            .use_markup(false)
             .title(title)
             .subtitle(noted(subtitle, pending))
             .subtitle_selectable(true)
@@ -951,6 +956,7 @@ fn snapshot_row(view: &MachineView, snapshot: &Snapshot) -> adw::ActionRow {
         subtitle = format!("{subtitle}\n{description}");
     }
     let row = adw::ActionRow::builder()
+        .use_markup(false)
         .title(&snapshot.name)
         .subtitle(subtitle)
         .subtitle_selectable(true)

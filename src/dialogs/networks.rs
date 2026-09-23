@@ -76,7 +76,7 @@ impl Networks {
             if let Some(Err(e)) = this.win.call(f).await
                 && let Some(dialog) = this.dialog.upgrade()
             {
-                dialog.add_toast(adw::Toast::new(&e));
+                dialog.add_toast(dialogs::toast(&e));
             }
             this.reload();
         });
@@ -102,7 +102,7 @@ impl Networks {
         let networks = match networks {
             Ok(networks) => networks,
             Err(e) => {
-                group.set_description(Some(&e));
+                group.set_description(Some(&glib::markup_escape_text(&e)));
                 Vec::new()
             }
         };
@@ -118,6 +118,7 @@ impl Networks {
                 subtitle = format!("{subtitle} · {}", gettext("Inactive"));
             }
             let row = adw::ActionRow::builder()
+                .use_markup(false)
                 .title(&net.name)
                 .subtitle(subtitle)
                 .activatable(true)

@@ -250,7 +250,7 @@ impl MachinesWindow {
     }
 
     pub fn toast(&self, text: &str) {
-        self.imp().toasts.add_toast(adw::Toast::new(text));
+        self.imp().toasts.add_toast(dialogs::toast(text));
     }
 
     pub fn host(&self) -> Host {
@@ -421,7 +421,8 @@ impl MachinesWindow {
 
     fn show_error(&self, message: &str) {
         let imp = self.imp();
-        imp.error_page.set_description(Some(message));
+        imp.error_page
+            .set_description(Some(&glib::markup_escape_text(message)));
         imp.session_button
             .set_visible(imp.settings.string("connection-uri") != prefs::SESSION_URI);
         imp.sidebar_stack.set_visible_child_name("error");

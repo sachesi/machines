@@ -126,7 +126,7 @@ impl Storage {
             if let Some(Err(e)) = this.win.call(f).await
                 && let Some(dialog) = this.dialog.upgrade()
             {
-                dialog.add_toast(adw::Toast::new(&e));
+                dialog.add_toast(dialogs::toast(&e));
             }
             this.reload();
         });
@@ -152,7 +152,7 @@ impl Storage {
         let pools = match pools {
             Ok(pools) => pools,
             Err(e) => {
-                group.set_description(Some(&e));
+                group.set_description(Some(&glib::markup_escape_text(&e)));
                 Vec::new()
             }
         };
@@ -168,6 +168,7 @@ impl Storage {
                 None => kind(pool),
             };
             let row = adw::ActionRow::builder()
+                .use_markup(false)
                 .title(&pool.name)
                 .subtitle(subtitle)
                 .activatable(true)
@@ -233,6 +234,7 @@ impl Storage {
                         );
                     }
                     let row = adw::ActionRow::builder()
+                        .use_markup(false)
                         .title(disk.name())
                         .subtitle(subtitle)
                         .subtitle_selectable(true)
@@ -240,7 +242,7 @@ impl Storage {
                     group.add(&row);
                 }
             }
-            Err(e) => group.set_description(Some(&e)),
+            Err(e) => group.set_description(Some(&glib::markup_escape_text(&e))),
         }
         page.add(&group);
         self.disks.set(Some(&group));
@@ -407,6 +409,7 @@ impl Storage {
                 .hexpand(true)
                 .build();
             let row = adw::ActionRow::builder()
+                .use_markup(false)
                 .title(&upload.name)
                 .subtitle(gettext("Uploading"))
                 .build();
@@ -453,6 +456,7 @@ impl Storage {
             );
         }
         let row = adw::ActionRow::builder()
+            .use_markup(false)
             .title(&vol.name)
             .subtitle(subtitle)
             .build();
@@ -534,6 +538,7 @@ impl Storage {
             .valign(gtk::Align::Center)
             .build();
         let folder_row = adw::ActionRow::builder()
+            .use_markup(false)
             .title(gettext("Directory"))
             .subtitle(gettext("None chosen"))
             .activatable_widget(&choose)
@@ -863,7 +868,7 @@ impl Storage {
             if let Some(Err(e)) = result
                 && let Some(dialog) = this.dialog.upgrade()
             {
-                dialog.add_toast(adw::Toast::new(&e));
+                dialog.add_toast(dialogs::toast(&e));
             }
             this.reload();
         });

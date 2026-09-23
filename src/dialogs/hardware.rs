@@ -278,6 +278,7 @@ fn present_storage(
         .build();
     let volume_labels: Vec<&str> = volumes.iter().map(|(v, _)| v.name.as_str()).collect();
     let volume = adw::ComboRow::builder()
+        .use_markup(false)
         .title(gettext("_Volume"))
         .use_underline(true)
         .model(&gtk::StringList::new(&volume_labels))
@@ -285,6 +286,7 @@ fn present_storage(
     let disk_labels: Vec<String> = host_disks.iter().map(|c| c.disk.name()).collect();
     let disk_labels: Vec<&str> = disk_labels.iter().map(String::as_str).collect();
     let host_disk = adw::ComboRow::builder()
+        .use_markup(false)
         .title(gettext("_Disk"))
         .use_underline(true)
         .model(&gtk::StringList::new(&disk_labels))
@@ -295,6 +297,7 @@ fn present_storage(
         .valign(gtk::Align::Center)
         .build();
     let file_row = adw::ActionRow::builder()
+        .use_markup(false)
         .activatable_widget(&choose)
         .subtitle_selectable(true)
         .build();
@@ -579,7 +582,7 @@ pub fn add_host_device(view: &MachineView, config: &MachineConfig) {
                 Some(Err(e)) => adw::StatusPage::builder()
                     .icon_name("dialog-warning-symbolic")
                     .title(gettext("No Host Devices"))
-                    .description(e)
+                    .description(glib::markup_escape_text(&e))
                     .css_classes(["compact"])
                     .build()
                     .upcast(),
@@ -617,6 +620,7 @@ fn host_devices_page(
         .filter(|d| d.can_pass_through() && !attached.iter().any(|a| a.matches(&d.id)))
     {
         let row = adw::ActionRow::builder()
+            .use_markup(false)
             .title(device_title(dev))
             .subtitle(device_subtitle(dev))
             .activatable(true)
@@ -700,7 +704,7 @@ pub fn plug_usb(view: &MachineView) {
             let devices = match win.call(|hv| hv.host_devices()).await {
                 Some(Ok(devices)) => devices,
                 Some(Err(e)) => {
-                    group.set_description(Some(&e));
+                    group.set_description(Some(&glib::markup_escape_text(&e)));
                     return;
                 }
                 None => return,
@@ -719,6 +723,7 @@ pub fn plug_usb(view: &MachineView) {
             }
             for dev in usb {
                 let row = adw::SwitchRow::builder()
+                    .use_markup(false)
                     .title(device_title(dev))
                     .subtitle(device_subtitle(dev))
                     .active(plugged.iter().any(|p| p.matches(&dev.id)))
@@ -744,7 +749,7 @@ pub fn plug_usb(view: &MachineView) {
                         async move {
                             if let Some(Err(e)) = win.call(move |hv| hv.plug(&uuid, &xml, on)).await
                             {
-                                toast.add_toast(adw::Toast::new(&e));
+                                toast.add_toast(dialogs::toast(&e));
                                 reverting.set(true);
                                 row.set_active(!on);
                                 reverting.set(false);
@@ -839,6 +844,7 @@ pub fn redirect_usb(view: &MachineView) {
                 let redirected = usb.is_device_connected(&device);
                 let refused = usb.can_redirect_device(&device).err();
                 let row = adw::SwitchRow::builder()
+                    .use_markup(false)
                     .title(
                         device
                             .description(Some("%1$s %2$s"))
@@ -887,7 +893,7 @@ pub fn redirect_usb(view: &MachineView) {
                                     usb.disconnect_device_future(&device).await
                                 };
                                 if let Err(e) = done {
-                                    toast.add_toast(adw::Toast::new(e.message()));
+                                    toast.add_toast(dialogs::toast(e.message()));
                                     reverting.set(true);
                                     row.set_active(!on);
                                     reverting.set(false);

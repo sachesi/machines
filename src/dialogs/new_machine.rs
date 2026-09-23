@@ -150,6 +150,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         .valign(gtk::Align::Center)
         .build();
     let file_row = adw::ActionRow::builder()
+        .use_markup(false)
         .activatable_widget(&choose)
         .subtitle_selectable(true)
         .build();
@@ -160,6 +161,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         .use_underline(true)
         .build();
     let os = adw::ComboRow::builder()
+        .use_markup(false)
         .title(gettext("_Operating System"))
         .use_underline(true)
         .model(&gtk::StringList::new(&[

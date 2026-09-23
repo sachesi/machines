@@ -570,7 +570,8 @@ impl MachineView {
         let imp = self.imp();
         imp.console_message.set_icon_name(Some(icon));
         imp.console_message.set_title(title);
-        imp.console_message.set_description(text);
+        imp.console_message
+            .set_description(text.map(glib::markup_escape_text).as_deref());
         imp.console_button.set_visible(button.is_some());
         if let Some((label, action)) = button {
             imp.console_button.set_label(label);
@@ -807,7 +808,8 @@ impl MachineView {
         let imp = self.imp();
         imp.serial_message.set_icon_name(Some(icon));
         imp.serial_message.set_title(title);
-        imp.serial_message.set_description(text);
+        imp.serial_message
+            .set_description(text.map(glib::markup_escape_text).as_deref());
         imp.serial_button.set_visible(button.is_some());
         if let Some((label, action)) = button {
             imp.serial_button.set_label(label);
