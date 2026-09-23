@@ -60,21 +60,25 @@ impl Topology {
     }
 }
 
-/// "2-5,8" as `[2, 3, 4, 5, 8]`, in the order given; `None` if it is no such list.
+/// How many host processors libvirt's CPU masks can name, 0 to 8191.
+const HOST_CPU_LIMIT: u32 = 8192;
+
+/// "2-5,8" as `[2, 3, 4, 5, 8]`, in the order given; `None` if it is no such list, or
+/// names a processor past what libvirt can.
 pub fn parse_cpu_list(text: &str) -> Option<Vec<u32>> {
     let mut cpus = Vec::new();
     for part in text.split(',').map(str::trim).filter(|p| !p.is_empty()) {
-        match part.split_once('-') {
-            Some((first, last)) => {
-                let (first, last): (u32, u32) =
-                    (first.trim().parse().ok()?, last.trim().parse().ok()?);
-                if first > last {
-                    return None;
-                }
-                cpus.extend(first..=last);
+        let (first, last): (u32, u32) = match part.split_once('-') {
+            Some((first, last)) => (first.trim().parse().ok()?, last.trim().parse().ok()?),
+            None => {
+                let cpu = part.parse().ok()?;
+                (cpu, cpu)
             }
-            None => cpus.push(part.parse().ok()?),
+        };
+        if first > last || last >= HOST_CPU_LIMIT || cpus.len() >= HOST_CPU_LIMIT as usize {
+            return None;
         }
+        cpus.extend(first..=last);
     }
     Some(cpus)
 }
@@ -84,7 +88,7 @@ pub fn cpu_list(cpus: &[u32]) -> String {
     let mut runs: Vec<(u32, u32)> = Vec::new();
     for &cpu in cpus {
         match runs.last_mut() {
-            Some((_, last)) if cpu == *last + 1 => *last = cpu,
+            Some((_, last)) if last.checked_add(1) == Some(cpu) => *last = cpu,
             _ => runs.push((cpu, cpu)),
         }
     }
@@ -2102,6 +2106,10 @@ mod tests {
         assert_eq!(parse_cpu_list(""), Some(vec![]));
         assert_eq!(parse_cpu_list("5-2"), None);
         assert_eq!(parse_cpu_list("two"), None);
+        assert_eq!(parse_cpu_list("0-4294967295"), None);
+        assert_eq!(parse_cpu_list("8192"), None);
+        assert_eq!(parse_cpu_list("8191").map(|c| c.len()), Some(1));
+        assert_eq!(parse_cpu_list("0-8191,0-8191"), None);
         assert_eq!(cpu_list(&[2, 3, 4, 5, 8, 9, 11]), "2-5,8,9,11");
         assert_eq!(cpu_list(&[]), "");
     }
