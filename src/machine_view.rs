@@ -408,6 +408,9 @@ impl MachineView {
         if imp.machine.borrow().as_ref() == machine {
             return;
         }
+        // While the old machine is still this view's, for the details page to save what it
+        // has waiting as it goes.
+        self.clear_details();
         if let (Some(old), Some(handler)) = (imp.machine.take(), imp.changed_handler.take()) {
             old.disconnect(handler);
         }
@@ -422,7 +425,6 @@ impl MachineView {
         imp.console_error.take();
         imp.console.close();
         imp.shown.take();
-        self.clear_details();
         imp.details_scroller.vadjustment().set_value(0.0);
         if let Some(win) = self.window().filter(|w| w.is_fullscreen()) {
             win.unfullscreen();

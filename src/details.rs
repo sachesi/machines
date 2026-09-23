@@ -475,10 +475,23 @@ fn pins_row(view: &MachineView, config: &MachineConfig) -> Option<adw::EntryRow>
 }
 
 /// Call `f` once the row's value has stopped changing for [`SETTLE`], so dragging or
-/// holding a button does not redefine the machine at every step.
+/// holding a button does not redefine the machine at every step. A value still waiting
+/// when the row goes, as the page is built again for another change, is saved then.
 fn on_settled(row: &adw::SpinRow, f: impl Fn(&adw::SpinRow) + 'static) {
     let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::default();
     let f = Rc::new(f);
+    row.connect_unmap(glib::clone!(
+        #[strong]
+        pending,
+        #[strong]
+        f,
+        move |row| {
+            if let Some(source) = pending.take() {
+                source.remove();
+                f(row);
+            }
+        }
+    ));
     row.connect_value_notify(move |row| {
         if let Some(source) = pending.take() {
             source.remove();
