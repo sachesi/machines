@@ -9,6 +9,7 @@ use std::rc::Rc;
 use gettextrs::gettext;
 
 use crate::adw::prelude::*;
+use crate::dialogs;
 use crate::domain_xml::GuestOs;
 use crate::hypervisor::{CreateRequest, InstallSource};
 use crate::osinfo::{self, FirmwareNeed, Os};
@@ -36,6 +37,8 @@ struct Form {
     disk_touched: Cell<bool>,
     create: gtk::Button,
     taken: Vec<String>,
+    /// Whether QEMU runs as a user of its own, who may not reach the file.
+    qemu_is_other_user: bool,
 }
 
 impl Form {
@@ -62,9 +65,9 @@ impl Form {
                 _ => 2,
             });
             match os.firmware {
-                FirmwareNeed::Uefi => self.uefi.set_active(true),
+                FirmwareNeed::Uefi if self.uefi.is_sensitive() => self.uefi.set_active(true),
                 FirmwareNeed::Bios => self.uefi.set_active(false),
-                FirmwareNeed::Either => {}
+                _ => {}
             }
             let r = os.resources;
             if let Some(ram) = r.ram {
@@ -102,7 +105,17 @@ impl Form {
         });
         let file = self.file.borrow();
         self.file_row.set_subtitle(&match file.as_deref() {
-            Some(path) => path.to_string_lossy().into_owned(),
+            Some(path) => {
+                let shown = path.to_string_lossy().into_owned();
+                let warning = self
+                    .qemu_is_other_user
+                    .then(|| dialogs::qemu_access_warning(path))
+                    .flatten();
+                match warning {
+                    Some(warning) => format!("{shown}\n{warning}"),
+                    None => shown,
+                }
+            }
             None => gettext("None chosen"),
         });
         self.name.remove_css_class("error");
@@ -176,6 +189,11 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         .use_underline(true)
         .active(true)
         .build();
+    if !host.uefi {
+        uefi.set_active(false);
+        uefi.set_sensitive(false);
+        uefi.set_subtitle(&gettext("QEMU has no UEFI firmware on this host"));
+    }
 
     let host_gib = (host.memory_mib as f64 / 1024.0).floor().max(1.0);
     let memory = adw::SpinRow::builder()
@@ -244,6 +262,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         disk_touched: Cell::new(false),
         create: create.clone(),
         taken: win.machine_names(),
+        qemu_is_other_user: host.qemu_is_other_user,
     });
 
     let install = adw::PreferencesGroup::new();
@@ -401,18 +420,14 @@ pub(super) async fn choose_file(parent: &adw::Dialog, image: bool) -> Option<Pat
         filter.add_suffix("iso");
         filter.add_mime_type("application/x-cd-image");
     }
-    let filters = gio::ListStore::new::<gtk::FileFilter>();
-    filters.append(&filter);
-    let dialog = gtk::FileDialog::builder()
-        .title(if image {
-            gettext("Choose a Disk Image")
-        } else {
-            gettext("Choose Installation Media")
-        })
-        .filters(&filters)
-        .build();
-    let window = parent.root().and_downcast::<gtk::Window>();
-    dialog.open_future(window.as_ref()).await.ok()?.path()
+    let title = if image {
+        gettext("Choose a Disk Image")
+    } else {
+        gettext("Choose Installation Media")
+    };
+    dialogs::choose_on_host(parent, &title, Some(&filter), false)
+        .await
+        .map(PathBuf::from)
 }
 
 /// The file's name without its extension, numbered past the names already taken.

@@ -159,6 +159,13 @@ pub struct ClonePlan {
 pub struct Host {
     pub cpus: u32,
     pub memory_mib: u64,
+    /// Whether QEMU has UEFI firmware for new machines.
+    pub uefi: bool,
+    /// Whether libvirt runs on this computer, so that its files are the host's.
+    pub local: bool,
+    /// Whether QEMU runs as a user of its own, as the system connection's does, which
+    /// opens only the files that user may.
+    pub qemu_is_other_user: bool,
 }
 
 impl Default for Host {
@@ -166,6 +173,9 @@ impl Default for Host {
         Self {
             cpus: 1,
             memory_mib: 1024,
+            uefi: true,
+            local: true,
+            qemu_is_other_user: false,
         }
     }
 }
@@ -213,7 +223,23 @@ impl Hypervisor {
         Host {
             cpus: info.as_ref().map_or(1, |i| i.cpus),
             memory_mib: info.as_ref().map_or(1024, |i| i.memory / 1024),
+            uefi: self
+                .new_machine_capabilities()
+                .is_ok_and(|(_, caps)| Capabilities::parse(&caps).efi),
+            local: self.is_local(),
+            qemu_is_other_user: self.is_local() && !self.is_session(),
         }
+    }
+
+    /// The domain capabilities new machines are made with, x86-64 on q35 with KVM where
+    /// the host has it, and the virtualization type they are for.
+    fn new_machine_capabilities(&self) -> Result<(&'static str, String)> {
+        let caps = |virt_type: &'static str| {
+            self.conn
+                .get_domain_capabilities(None, Some("x86_64"), Some("q35"), Some(virt_type), 0)
+                .map(|caps| (virt_type, caps))
+        };
+        caps("kvm").or_else(|_| caps("qemu")).map_err(message)
     }
 
     pub fn machines(&self) -> Result<Vec<MachineInfo>> {
@@ -733,15 +759,7 @@ impl Hypervisor {
         req: &CreateRequest,
     ) -> std::result::Result<String, (Option<String>, String)> {
         let fail = |e: String| (None, e);
-        let caps = |virt_type| {
-            self.conn
-                .get_domain_capabilities(None, Some("x86_64"), Some("q35"), Some(virt_type), 0)
-                .map(|caps| (virt_type, caps))
-        };
-        let (virt_type, caps) = caps("kvm")
-            .or_else(|_| caps("qemu"))
-            .map_err(message)
-            .map_err(fail)?;
+        let (virt_type, caps) = self.new_machine_capabilities().map_err(fail)?;
         let (disk, cdrom, new_vol) = match &req.source {
             InstallSource::Media { iso, disk_gib } => {
                 let pool = self.default_pool().map_err(fail)?;
@@ -765,7 +783,9 @@ impl Hypervisor {
             os: req.os,
             osinfo: req.osinfo.clone(),
             uefi: req.uefi,
-            tpm: req.os == GuestOs::Windows && on_path("swtpm"),
+            // swtpm has to be on the host, which from here can only be seen when it is this
+            // computer.
+            tpm: req.os == GuestOs::Windows && (!self.is_local() || on_path("swtpm")),
             memory_mib: req.memory_mib,
             vcpus: req.vcpus,
             disk,

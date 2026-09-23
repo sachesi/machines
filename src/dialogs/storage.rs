@@ -671,17 +671,11 @@ impl Storage {
                     #[strong]
                     sync,
                     async move {
-                        let chooser = gtk::FileDialog::builder()
-                            .title(gettext("Choose a Directory"))
-                            .build();
-                        let window = dialog.root().and_downcast::<gtk::Window>();
-                        let Ok(file) = chooser.select_folder_future(window.as_ref()).await else {
+                        let title = gettext("Choose a Directory");
+                        let Some(path) = dialogs::choose_on_host(&dialog, &title, None, true).await
+                        else {
                             return;
                         };
-                        let Some(path) = file.path() else {
-                            return;
-                        };
-                        let path = path.to_string_lossy().into_owned();
                         folder_row.set_subtitle(&path);
                         folder.replace(Some(path));
                         sync();

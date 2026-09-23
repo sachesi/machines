@@ -5,10 +5,14 @@ pub mod networks;
 pub mod new_machine;
 pub mod storage;
 
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+
 use gettextrs::gettext;
 
 use crate::adw::prelude::*;
-use crate::{adw, glib, gtk};
+use crate::window::MachinesWindow;
+use crate::{adw, gio, glib, gtk};
 
 /// A size in bytes, in GiB and the like, the units sizes are asked for in.
 pub fn size(bytes: u64) -> String {
@@ -19,6 +23,101 @@ pub fn size(bytes: u64) -> String {
 /// of an error with a `<` or `&` in it.
 pub fn toast(text: &str) -> adw::Toast {
     adw::Toast::builder().title(text).use_markup(false).build()
+}
+
+/// A file, or with `folder` a folder, of the host libvirt runs on, which on this computer
+/// the file chooser picks, and on another is typed in.
+pub async fn choose_on_host(
+    parent: &impl IsA<gtk::Widget>,
+    title: &str,
+    filter: Option<&gtk::FileFilter>,
+    folder: bool,
+) -> Option<String> {
+    let window = parent.root().and_downcast::<gtk::Window>();
+    let local = window
+        .as_ref()
+        .and_then(|w| w.downcast_ref::<MachinesWindow>())
+        .is_none_or(|w| w.host().local);
+    if !local {
+        return ask_host_path(parent, title, folder).await;
+    }
+    let dialog = gtk::FileDialog::builder().title(title).build();
+    if let Some(filter) = filter {
+        let filters = gio::ListStore::new::<gtk::FileFilter>();
+        filters.append(filter);
+        dialog.set_filters(Some(&filters));
+    }
+    let file = if folder {
+        dialog.select_folder_future(window.as_ref()).await
+    } else {
+        dialog.open_future(window.as_ref()).await
+    };
+    file.ok()?.path().map(|p| p.to_string_lossy().into_owned())
+}
+
+/// A path typed in, of a file or folder on the host, which is another computer.
+async fn ask_host_path(
+    parent: &impl IsA<gtk::Widget>,
+    title: &str,
+    folder: bool,
+) -> Option<String> {
+    let dialog = adw::AlertDialog::builder()
+        .heading(title)
+        .body(if folder {
+            gettext(
+                "The virtual machines run on another computer. Type the path of the folder there.",
+            )
+        } else {
+            gettext(
+                "The virtual machines run on another computer. Type the path of the file there.",
+            )
+        })
+        .close_response("cancel")
+        .default_response("choose")
+        .build();
+    dialog.add_responses(&[
+        ("cancel", &gettext("_Cancel")),
+        ("choose", &gettext("_Choose")),
+    ]);
+    dialog.set_response_appearance("choose", adw::ResponseAppearance::Suggested);
+    dialog.set_response_enabled("choose", false);
+    let entry = adw::EntryRow::builder()
+        .title(gettext("Path"))
+        .activates_default(true)
+        .build();
+    entry.connect_changed(glib::clone!(
+        #[weak]
+        dialog,
+        move |entry| dialog.set_response_enabled("choose", entry.text().starts_with('/'))
+    ));
+    let list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .css_classes(["boxed-list"])
+        .build();
+    list.append(&entry);
+    dialog.set_extra_child(Some(&list));
+    dialog.set_focus(Some(&entry));
+    (dialog.choose_future(Some(parent)).await == "choose").then(|| entry.text().to_string())
+}
+
+/// The first folder on the way to `path` that other users cannot enter, and so neither can
+/// QEMU where it runs as a user of its own.
+fn closed_to_qemu(path: &Path) -> Option<PathBuf> {
+    path.ancestors().skip(1).find_map(|dir| {
+        let mode = std::fs::metadata(dir).ok()?.permissions().mode();
+        (mode & 0o001 == 0).then(|| dir.to_owned())
+    })
+}
+
+/// What to tell of `path` before QEMU, running as a user of its own, fails to open it.
+pub fn qemu_access_warning(path: &Path) -> Option<String> {
+    closed_to_qemu(path).map(|dir| {
+        gettext(
+            "QEMU runs as a user of its own, which cannot open files in {folder}. Move the \
+             file elsewhere, such as /var/lib/libvirt/images, or let that user into the folder.",
+        )
+        .replace("{folder}", &dir.to_string_lossy())
+    })
 }
 
 /// A dialog of `page` with Cancel and a suggested `confirm` button in its header bar; the
@@ -159,4 +258,26 @@ pub fn remove_button(tooltip: &str) -> gtk::Button {
         .valign(gtk::Align::Center)
         .css_classes(["flat"])
         .build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_private_folder_on_the_way_keeps_qemu_out() {
+        let base = std::env::temp_dir().join(format!("machines-{}", std::process::id()));
+        let (closed, open) = (base.join("closed"), base.join("open"));
+        std::fs::create_dir_all(&closed).unwrap();
+        std::fs::create_dir_all(&open).unwrap();
+        let mode = |dir: &Path, mode| {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+        mode(&base, 0o755);
+        mode(&closed, 0o700);
+        mode(&open, 0o711);
+        assert_eq!(closed_to_qemu(&closed.join("a.iso")), Some(closed.clone()));
+        assert!(closed_to_qemu(&open.join("a.iso")).is_none_or(|d| !d.starts_with(&base)));
+        std::fs::remove_dir_all(&base).unwrap();
+    }
 }

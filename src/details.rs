@@ -18,7 +18,7 @@ use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
-use crate::{adw, gio, glib, gtk, usage};
+use crate::{adw, glib, gtk, usage};
 
 /// How long a spin row has to rest before its value is saved.
 const SETTLE: Duration = Duration::from_millis(700);
@@ -617,6 +617,11 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending) -> adw::ActionRow
                 view,
                 async move {
                     if let Some(path) = choose_iso(&view).await {
+                        if let Some(win) = window(&view).filter(|w| w.host().qemu_is_other_user)
+                            && let Some(warning) = dialogs::qemu_access_warning(Path::new(&path))
+                        {
+                            win.toast(&warning);
+                        }
                         view.run(move |hv, uuid| hv.change_media(uuid, &disk, Some(&path)));
                     }
                 }
@@ -695,15 +700,7 @@ pub async fn choose_iso(parent: &impl IsA<gtk::Widget>) -> Option<String> {
     filter.set_name(Some(&gettext("Disc Images")));
     filter.add_suffix("iso");
     filter.add_mime_type("application/x-cd-image");
-    let filters = gio::ListStore::new::<gtk::FileFilter>();
-    filters.append(&filter);
-    let dialog = gtk::FileDialog::builder()
-        .title(gettext("Insert Disc Image"))
-        .filters(&filters)
-        .build();
-    let window = parent.root().and_downcast::<gtk::Window>();
-    let file = dialog.open_future(window.as_ref()).await.ok()?;
-    file.path().map(|p| p.to_string_lossy().into_owned())
+    dialogs::choose_on_host(parent, &gettext("Insert Disc Image"), Some(&filter), false).await
 }
 
 fn network(

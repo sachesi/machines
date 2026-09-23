@@ -79,6 +79,8 @@ struct StorageForm {
     file_row: adw::ActionRow,
     file: RefCell<Option<String>>,
     add: gtk::Button,
+    /// Whether QEMU runs as a user of its own, who may not reach the file.
+    qemu_is_other_user: bool,
 }
 
 impl StorageForm {
@@ -125,7 +127,16 @@ impl StorageForm {
         });
         let file = self.file.borrow();
         self.file_row.set_subtitle(&match (file.as_deref(), kind) {
-            (Some(path), _) => path.to_owned(),
+            (Some(path), _) => {
+                let warning = self
+                    .qemu_is_other_user
+                    .then(|| dialogs::qemu_access_warning(std::path::Path::new(path)))
+                    .flatten();
+                match warning {
+                    Some(warning) => format!("{path}\n{warning}"),
+                    None => path.to_owned(),
+                }
+            }
             (None, StorageKind::Cdrom) => gettext("None, the drive starts empty"),
             (None, _) => gettext("None chosen"),
         });
@@ -327,6 +338,7 @@ fn present_storage(
         file_row,
         file: RefCell::default(),
         add: add.clone(),
+        qemu_is_other_user: window(view).is_some_and(|w| w.host().qemu_is_other_user),
     });
     form.kind.connect_selected_notify(glib::clone!(
         #[strong]
@@ -1091,19 +1103,13 @@ pub fn add_gadget(view: &MachineView, config: &MachineConfig) {
                         let gadget = match gadget {
                             Some(gadget) => gadget,
                             None => {
-                                let chooser = gtk::FileDialog::builder()
-                                    .title(gettext("Choose a Folder to Share"))
-                                    .build();
-                                let window = dialog.root().and_downcast::<gtk::Window>();
-                                let Ok(folder) =
-                                    chooser.select_folder_future(window.as_ref()).await
+                                let title = gettext("Choose a Folder to Share");
+                                let Some(path) =
+                                    dialogs::choose_on_host(&dialog, &title, None, true).await
                                 else {
                                     return;
                                 };
-                                let Some(path) = folder.path() else {
-                                    return;
-                                };
-                                NewGadget::SharedFolder(path.to_string_lossy().into_owned())
+                                NewGadget::SharedFolder(path)
                             }
                         };
                         dialog.close();
