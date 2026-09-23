@@ -87,8 +87,6 @@ impl Hypervisor {
         if active {
             flags |= sys::VIR_DOMAIN_AFFECT_LIVE;
         }
-        // Where the running machine refuses, e.g. a SATA disk, which cannot be hotplugged,
-        // the definition alone still takes the change.
         let at_next_start = if active {
             Change::AtNextStart
         } else {
@@ -96,7 +94,19 @@ impl Hypervisor {
         };
         let result = match apply(flags) {
             Ok(_) => return Ok(Change::Done),
-            Err(_) if active && persistent => apply(config).map(|_| Change::AtNextStart),
+            // Where the running machine cannot take the device at all, e.g. a SATA disk,
+            // which cannot be hotplugged, the definition alone still takes the change. Any
+            // other failure, such as an image that is not there, is the user's to see.
+            Err(e)
+                if active
+                    && persistent
+                    && matches!(
+                        e.code(),
+                        ErrorNumber::OperationUnsupported | ErrorNumber::ConfigUnsupported
+                    ) =>
+            {
+                apply(config).map(|_| Change::AtNextStart)
+            }
             Err(e) => Err(e),
         };
         match result {
