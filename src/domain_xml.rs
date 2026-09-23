@@ -444,13 +444,24 @@ impl MachineConfig {
         })
     }
 
-    /// Image files this machine's disks (not its CD-ROMs) are read from.
+    /// Image files this machine's disks (not its CD-ROMs) write to, leaving out the ones it
+    /// only reads or shares with others by design.
     pub fn disk_files(&self) -> Vec<String> {
         self.disks
             .iter()
-            .filter(|d| d.device == DiskDevice::Disk && d.kind == "file")
+            .filter(|d| d.writable() && d.kind == "file")
             .filter_map(|d| d.source.clone())
             .collect()
+    }
+}
+
+impl Disk {
+    /// Whether it is a disk the machine writes to as its own: not a CD-ROM, nor marked
+    /// read-only or shareable.
+    pub fn writable(&self) -> bool {
+        self.device == DiskDevice::Disk
+            && !self.xml.contains("<readonly")
+            && !self.xml.contains("<shareable")
     }
 }
 
@@ -1599,6 +1610,20 @@ mod tests {
         assert_eq!(c.nics[0].mac.as_deref(), Some("52:54:00:12:34:56"));
         assert_eq!(c.graphics, ["spice"]);
         assert_eq!(c.video.as_deref(), Some("virtio"));
+    }
+
+    #[test]
+    fn shared_and_read_only_images_are_not_the_machines_own() {
+        let xml = VIRT_MANAGER.replace(
+            "<interface",
+            "<disk type='file' device='disk'><source file='/srv/base.img'/>\
+             <target dev='vdb' bus='virtio'/><readonly/></disk>\
+             <disk type='file' device='disk'><source file='/srv/cluster.img'/>\
+             <target dev='vdc' bus='virtio'/><shareable/></disk><interface",
+        );
+        let c = MachineConfig::parse(&xml).unwrap();
+        assert_eq!(c.disks.len(), 4);
+        assert_eq!(c.disk_files(), ["/var/lib/libvirt/images/fedora41.qcow2"]);
     }
 
     #[test]

@@ -32,8 +32,8 @@ use virt::stream::Stream;
 use virt::sys;
 
 use crate::domain_xml::{
-    self, BootDevice, Capabilities, Cpu, Disk, DiskDevice, Display, Firmware, GuestOs,
-    MachineConfig, NetworkSource, NewMachine, Snapshot,
+    self, BootDevice, Capabilities, Cpu, Disk, Display, Firmware, GuestOs, MachineConfig,
+    NetworkSource, NewMachine, Snapshot,
 };
 use crate::{glib, host_xml};
 
@@ -552,11 +552,7 @@ impl Hypervisor {
         config
             .disks
             .iter()
-            .filter(|d| {
-                d.device == DiskDevice::Disk
-                    && !d.xml.contains("<readonly")
-                    && !d.xml.contains("<shareable")
-            })
+            .filter(|d| d.writable())
             .filter_map(|d| Some((d.xml.clone(), d.source.clone()?)))
             .collect()
     }
@@ -687,22 +683,21 @@ impl Hypervisor {
         Vec::new()
     }
 
-    /// Remove the machine, with its firmware variables, saved state and snapshot records.
-    /// With `delete_disks`, its disk images go too; the ones that could not be deleted are
-    /// returned.
-    pub fn delete(&self, uuid: &str, delete_disks: bool) -> Result<Vec<String>> {
+    /// Whether each of `paths` is a volume of a storage pool.
+    pub fn in_pools(&self, paths: &[String]) -> Vec<bool> {
+        paths
+            .iter()
+            .map(|p| StorageVol::lookup_by_path(&self.conn, p).is_ok())
+            .collect()
+    }
+
+    /// Remove the machine, with its firmware variables, saved state and snapshot records,
+    /// and delete the disk images `images`; the ones that could not be deleted are returned.
+    pub fn delete(&self, uuid: &str, images: &[String]) -> Result<Vec<String>> {
         let dom = self.domain(uuid)?;
         if dom.is_active().map_err(message)? {
             dom.destroy().map_err(message)?;
         }
-        let files = if delete_disks {
-            let xml = dom
-                .get_xml_desc(sys::VIR_DOMAIN_XML_INACTIVE)
-                .map_err(message)?;
-            MachineConfig::parse(&xml)?.disk_files()
-        } else {
-            Vec::new()
-        };
         if dom.is_persistent().map_err(message)? {
             dom.undefine_flags(
                 sys::VIR_DOMAIN_UNDEFINE_NVRAM
@@ -713,9 +708,10 @@ impl Hypervisor {
             )
             .map_err(message)?;
         }
-        Ok(files
-            .into_iter()
+        Ok(images
+            .iter()
             .filter(|f| self.delete_image(f).is_err())
+            .cloned()
             .collect())
     }
 

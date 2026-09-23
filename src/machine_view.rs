@@ -11,7 +11,7 @@ use vte4::prelude::*;
 use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
 use crate::console::{Console, FdSource};
-use crate::domain_xml::SERIAL_XML;
+use crate::domain_xml::{DiskDevice, SERIAL_XML};
 use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result, SerialStream};
 use crate::machine::Machine;
 use crate::window::MachinesWindow;
@@ -975,21 +975,50 @@ impl MachineView {
         let (Some(win), Some(info)) = (self.window(), self.info()) else {
             return;
         };
-        let files = info
+        let others: Vec<String> = win
+            .machine_infos()
+            .into_iter()
+            .filter(|m| m.uuid != info.uuid)
+            .filter_map(|m| m.config)
+            .flat_map(|c| c.disks.into_iter().filter_map(|d| d.source))
+            .collect();
+        let disks = info
+            .config
+            .as_ref()
+            .map(|c| c.disks.as_slice())
+            .unwrap_or_default();
+        let images: Vec<String> = info
             .config
             .as_ref()
             .map(|c| c.disk_files())
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| !others.contains(f))
+            .collect();
+        let kept = disks
+            .iter()
+            .filter(|d| d.device == DiskDevice::Disk && d.source.is_some())
+            .count()
+            > images.len();
         glib::spawn_future_local(glib::clone!(
             #[weak(rename_to = view)]
             self,
             async move {
-                let Some(delete_disks) = dialogs::delete::confirm(&view, &info.name, &files).await
+                let paths = images.clone();
+                let Some(Ok(pooled)) = win.call(move |hv| Ok(hv.in_pools(&paths))).await else {
+                    return;
+                };
+                // An image in no storage pool is most likely one the user brought in, not
+                // one made for the machine: it is only deleted when ticked.
+                let images: Vec<(String, bool)> = images.into_iter().zip(pooled).collect();
+                let running = info.state.is_active();
+                let Some(images) =
+                    dialogs::delete::confirm(&view, &info.name, running, &images, kept).await
                 else {
                     return;
                 };
                 let uuid = info.uuid.clone();
-                match win.call(move |hv| hv.delete(&uuid, delete_disks)).await {
+                match win.call(move |hv| hv.delete(&uuid, &images)).await {
                     Some(Ok(kept)) if !kept.is_empty() => win.toast(
                         &gettext("Some disk images could not be deleted: {files}")
                             .replace("{files}", &kept.join(", ")),
