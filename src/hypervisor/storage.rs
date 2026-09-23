@@ -264,6 +264,44 @@ impl Hypervisor {
         disks.sort_by(|a, b| a.0.block.cmp(&b.0.block));
         Ok(disks)
     }
+
+    /// The PCI devices, by address, that disks the host uses hang off, such as the NVMe
+    /// or SATA controller it runs from. Empty where the host is another computer.
+    pub fn pci_devices_in_use(&self) -> Vec<String> {
+        if !self.is_local() {
+            return Vec::new();
+        }
+        let Ok(disks) = fs::read_dir("/sys/class/block") else {
+            return Vec::new();
+        };
+        disks
+            .flatten()
+            .filter(|d| !d.path().join("partition").exists())
+            .filter(|d| host_uses(&d.file_name().to_string_lossy()))
+            // e.g. /sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/nvme/nvme0/nvme0n1
+            .filter_map(|d| fs::canonicalize(d.path()).ok())
+            .flat_map(|path| {
+                path.iter()
+                    .filter_map(|c| c.to_str())
+                    .filter(|c| is_pci_address(c))
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+}
+
+/// Whether `text` is a PCI address as sysfs writes it, `0000:01:00.0`.
+fn is_pci_address(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.len() == 12
+        && bytes[4] == b':'
+        && bytes[7] == b':'
+        && bytes[10] == b'.'
+        && text
+            .chars()
+            .enumerate()
+            .all(|(i, c)| matches!(i, 4 | 7 | 10) || c.is_ascii_hexdigit())
 }
 
 /// Whether the disk `block`, or one of its partitions, is mounted, swapped to, or held by
@@ -349,4 +387,19 @@ fn volume_info(vol: &StorageVol) -> Result<Volume> {
         capacity: info.capacity,
         allocation: info.allocation,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pci_addresses_among_sysfs_path_components() {
+        assert!(is_pci_address("0000:01:00.0"));
+        assert!(is_pci_address("0000:3d:1f.7"));
+        assert!(!is_pci_address("pci0000:00"));
+        assert!(!is_pci_address("target0:0:0"));
+        assert!(!is_pci_address("0:0:0:0"));
+        assert!(!is_pci_address("nvme0n1"));
+    }
 }

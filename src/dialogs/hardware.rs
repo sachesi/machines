@@ -543,7 +543,6 @@ pub fn device_subtitle(dev: &HostDevice) -> String {
     }
 }
 
-/// "Add Host Device": pick one of the host's USB or PCI devices to pass through.
 /// "Add Host Device": opens at once, and lists the devices once the host has, which the
 /// first time after the node device daemon starts can take a while.
 pub fn add_host_device(view: &MachineView, config: &MachineConfig) {
@@ -577,9 +576,14 @@ pub fn add_host_device(view: &MachineView, config: &MachineConfig) {
         #[weak]
         dialog,
         async move {
-            let page = match win.call(|hv| hv.host_devices()).await {
-                Some(Ok(devices)) => host_devices_page(&view, &dialog, &devices, &attached),
-                Some(Err(e)) => adw::StatusPage::builder()
+            let listed = win
+                .call(|hv| Ok((hv.host_devices(), hv.pci_devices_in_use())))
+                .await;
+            let page = match listed {
+                Some(Ok((Ok(devices), busy))) => {
+                    host_devices_page(&view, &dialog, &devices, &attached, &busy)
+                }
+                Some(Ok((Err(e), _))) | Some(Err(e)) => adw::StatusPage::builder()
                     .icon_name("dialog-warning-symbolic")
                     .title(gettext("No Host Devices"))
                     .description(glib::markup_escape_text(&e))
@@ -599,7 +603,9 @@ fn host_devices_page(
     dialog: &adw::Dialog,
     devices: &[HostDevice],
     attached: &[HostDeviceId],
+    busy: &[String],
 ) -> gtk::Widget {
+    let running = view.info().is_some_and(|i| i.state.is_active());
     let usb = adw::PreferencesGroup::builder()
         .title(gettext("USB Devices"))
         .build();
@@ -619,23 +625,40 @@ fn host_devices_page(
         .iter()
         .filter(|d| d.can_pass_through() && !attached.iter().any(|a| a.matches(&d.id)))
     {
+        let in_use = matches!(dev.id, HostDeviceId::Pci(_)) && busy.contains(&dev.id.to_string());
+        let mut subtitle = device_subtitle(dev);
+        if in_use {
+            subtitle = format!("{subtitle}\n{}", gettext("The host runs from a disk on it"));
+        }
         let row = adw::ActionRow::builder()
             .use_markup(false)
             .title(device_title(dev))
-            .subtitle(device_subtitle(dev))
-            .activatable(true)
+            .subtitle(subtitle)
+            .activatable(!in_use)
+            .sensitive(!in_use)
             .build();
         row.add_suffix(&gtk::Image::from_icon_name("list-add-symbolic"));
         let xml = dev.passthrough_id(devices).hostdev_xml();
+        let chosen = dev.clone();
         row.connect_activated(glib::clone!(
             #[weak]
             dialog,
             #[weak]
             view,
             move |_| {
-                dialog.close();
-                let xml = xml.clone();
-                view.change(move |hv, uuid| hv.attach(uuid, &xml));
+                let (xml, dev) = (xml.clone(), chosen.clone());
+                glib::spawn_future_local(glib::clone!(
+                    #[weak]
+                    dialog,
+                    #[weak]
+                    view,
+                    async move {
+                        if confirm_pass_through(&dialog, &dev, running).await {
+                            dialog.close();
+                            view.change(move |hv, uuid| hv.attach(uuid, &xml));
+                        }
+                    }
+                ));
             }
         ));
         match dev.id {
@@ -660,6 +683,33 @@ fn host_devices_page(
         }
     }
     page.upcast()
+}
+
+/// Ask before the host gives up `dev`, which it may need itself. `running` is whether the
+/// machine has it at once.
+async fn confirm_pass_through(
+    parent: &impl IsA<gtk::Widget>,
+    dev: &HostDevice,
+    running: bool,
+) -> bool {
+    let heading = gettext("Pass “{device}” Through?").replace("{device}", &device_title(dev));
+    let body = match (&dev.id, running) {
+        (HostDeviceId::Usb { .. }, _) => gettext(
+            "The host loses the device while the virtual machine has it. If it is this \
+             computer’s keyboard or mouse, they stop working here.",
+        ),
+        (HostDeviceId::Pci(_), true) => gettext(
+            "The host loses the device at once, until the virtual machine stops. If the host \
+             runs from a disk on it, shows its screen with it or reaches the network through \
+             it, the host stops working.",
+        ),
+        (HostDeviceId::Pci(_), false) => gettext(
+            "The host loses the device whenever the virtual machine runs. If the host runs \
+             from a disk on it, shows its screen with it or reaches the network through it, \
+             the host stops working then.",
+        ),
+    };
+    dialogs::confirm(parent, &heading, &body, &gettext("_Pass Through")).await
 }
 
 /// "USB Devices": the host's USB devices, each with a switch that plugs it into the
@@ -729,14 +779,17 @@ pub fn plug_usb(view: &MachineView) {
                     .active(plugged.iter().any(|p| p.matches(&dev.id)))
                     .build();
                 let xml = dev.passthrough_id(&devices).hostdev_xml();
-                // Set while the switch goes back after a failure, which is no request.
+                // Set while the switch goes back after a failure or a refusal, which is no
+                // request.
                 let reverting = Rc::new(std::cell::Cell::new(false));
                 let (win, uuid, toast) = (win.clone(), uuid.clone(), toast.clone());
+                let dev = dev.clone();
                 row.connect_active_notify(move |row| {
                     if reverting.get() {
                         return;
                     }
-                    let (on, xml, uuid) = (row.is_active(), xml.clone(), uuid.clone());
+                    let (on, xml, uuid, dev) =
+                        (row.is_active(), xml.clone(), uuid.clone(), dev.clone());
                     glib::spawn_future_local(glib::clone!(
                         #[weak]
                         row,
@@ -747,6 +800,12 @@ pub fn plug_usb(view: &MachineView) {
                         #[strong]
                         reverting,
                         async move {
+                            if on && !confirm_pass_through(&row, &dev, true).await {
+                                reverting.set(true);
+                                row.set_active(false);
+                                reverting.set(false);
+                                return;
+                            }
                             if let Some(Err(e)) = win.call(move |hv| hv.plug(&uuid, &xml, on)).await
                             {
                                 toast.add_toast(dialogs::toast(&e));
