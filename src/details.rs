@@ -197,6 +197,8 @@ fn firmware_row(view: &MachineView, info: &MachineInfo, config: &MachineConfig) 
     let mut choices = vec![(Firmware::Bios, "BIOS".to_owned())];
     if info.capabilities.efi || config.firmware != Firmware::Bios {
         choices.push((Firmware::Uefi, "UEFI".to_owned()));
+    }
+    if info.capabilities.secure_boot || config.firmware == Firmware::UefiSecureBoot {
         choices.push((Firmware::UefiSecureBoot, gettext("UEFI with Secure Boot")));
     }
     let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();

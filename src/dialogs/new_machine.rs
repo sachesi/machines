@@ -67,6 +67,12 @@ impl Form {
             .unwrap_or(Firmware::Bios)
     }
 
+    /// UEFI with Secure Boot where the host has it, as Windows 11 requires and libvirt
+    /// itself picks for UEFI on most systems; otherwise the most the host has.
+    fn default_firmware(&self) -> Firmware {
+        self.firmwares.last().copied().unwrap_or(Firmware::Bios)
+    }
+
     fn set_firmware(&self, firmware: Firmware) {
         if let Some(i) = self.firmwares.iter().position(|f| *f == firmware) {
             self.firmware.set_selected(i as u32);
@@ -111,7 +117,7 @@ impl Form {
             });
             match os.firmware {
                 FirmwareNeed::Uefi if self.firmware() == Firmware::Bios => {
-                    self.set_firmware(Firmware::Uefi);
+                    self.set_firmware(self.default_firmware());
                 }
                 FirmwareNeed::Bios => self.set_firmware(Firmware::Bios),
                 _ => {}
@@ -240,8 +246,12 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
     let mut firmwares = vec![Firmware::Bios];
     let mut firmware_labels = vec!["BIOS".to_owned()];
     if host.uefi {
-        firmwares.extend([Firmware::Uefi, Firmware::UefiSecureBoot]);
-        firmware_labels.extend(["UEFI".to_owned(), gettext("UEFI with Secure Boot")]);
+        firmwares.push(Firmware::Uefi);
+        firmware_labels.push("UEFI".to_owned());
+    }
+    if host.secure_boot {
+        firmwares.push(Firmware::UefiSecureBoot);
+        firmware_labels.push(gettext("UEFI with Secure Boot"));
     }
     let firmware_labels: Vec<&str> = firmware_labels.iter().map(String::as_str).collect();
     let firmware = adw::ComboRow::builder()
@@ -473,7 +483,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
             }
         }
     ));
-    form.set_firmware(Firmware::Uefi);
+    form.set_firmware(form.default_firmware());
     form.offer_pools(&[]);
     form.pool.connect_selected_notify(glib::clone!(
         #[strong]

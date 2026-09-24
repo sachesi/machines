@@ -168,6 +168,8 @@ pub struct Host {
     pub memory_mib: u64,
     /// Whether QEMU has UEFI firmware for new machines.
     pub uefi: bool,
+    /// Whether some of it has Secure Boot.
+    pub secure_boot: bool,
     /// Whether libvirt runs on this computer, so that its files are the host's.
     pub local: bool,
     /// Whether QEMU runs as a user of its own, as the system connection's does, which
@@ -181,6 +183,7 @@ impl Default for Host {
             cpus: 1,
             memory_mib: 1024,
             uefi: true,
+            secure_boot: true,
             local: true,
             qemu_is_other_user: false,
         }
@@ -227,12 +230,15 @@ impl Hypervisor {
 
     pub fn host(&self) -> Host {
         let info = self.conn.get_node_info().ok();
+        let caps = self
+            .new_machine_capabilities()
+            .map(|(_, caps)| Capabilities::parse(&caps))
+            .unwrap_or_default();
         Host {
             cpus: info.as_ref().map_or(1, |i| i.cpus),
             memory_mib: info.as_ref().map_or(1024, |i| i.memory / 1024),
-            uefi: self
-                .new_machine_capabilities()
-                .is_ok_and(|(_, caps)| Capabilities::parse(&caps).efi),
+            uefi: caps.efi,
+            secure_boot: caps.efi && caps.secure_boot,
             local: self.is_local(),
             qemu_is_other_user: self.is_local() && !self.is_session(),
         }

@@ -1350,6 +1350,8 @@ pub struct Capabilities {
     pub video: Vec<String>,
     /// Whether there is UEFI firmware to boot with.
     pub efi: bool,
+    /// Whether some of it has Secure Boot.
+    pub secure_boot: bool,
     pub host_passthrough: bool,
     pub host_model: bool,
     /// The CPU models QEMU can give the machine on this host.
@@ -1399,6 +1401,7 @@ impl Capabilities {
             graphics: values("graphics", "type"),
             video: values("video", "modelType"),
             efi,
+            secure_boot: values("loader", "secure").iter().any(|v| v == "yes"),
             host_passthrough: supported("host-passthrough"),
             host_model: supported("host-model"),
             cpu_models,
@@ -1740,7 +1743,9 @@ mod tests {
 
     #[test]
     fn capabilities_come_from_the_capabilities() {
-        let caps = "<domainCapabilities><devices>\
+        let caps = "<domainCapabilities><os supported='yes'><enum name='firmware'>\
+            <value>efi</value></enum><loader supported='yes'><enum name='secure'>\
+            <value>no</value></enum></loader></os><devices>\
             <graphics supported='yes'><enum name='type'><value>vnc</value>\
             <value>egl-headless</value></enum></graphics>\
             <video supported='yes'><enum name='modelType'><value>vga</value>\
@@ -1750,6 +1755,12 @@ mod tests {
         assert_eq!(options.video, ["vga", "virtio"]);
         assert!(options.has_accel3d(Protocol::Vnc));
         assert!(!options.has_accel3d(Protocol::Spice));
+        assert!(options.efi && !options.secure_boot);
+        let secure = caps.replace(
+            "<value>no</value></enum></loader>",
+            "<value>yes</value><value>no</value></enum></loader>",
+        );
+        assert!(Capabilities::parse(&secure).secure_boot);
     }
 
     fn new_machine(os: GuestOs) -> NewMachine {
