@@ -42,8 +42,6 @@ template $MachinesMachineView: Adw.BreakpointBin {
 
       [start]
       Adw.ToggleGroup view_toggle {
-        active-name: bind view_stack.visible-child-name bidirectional;
-
         Adw.Toggle {
           name: "console";
           icon-name: "video-display-symbolic";
@@ -175,7 +173,7 @@ template $MachinesMachineView: Adw.BreakpointBin {
         };
       }
 
-      Adw.ViewStackPage {
+      Adw.ViewStackPage serial_page {
         name: "serial";
         title: _("Serial");
         icon-name: "utilities-terminal-symbolic";

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-24 23:19+0300\n"
+"POT-Creation-Date: 2026-09-25 00:09+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -467,154 +467,165 @@ msgstr ""
 #: src/details.rs:900
 #, no-c-format
 msgid ""
-"A TPM, random number generator, sound card, or folders shared with the guest"
-msgstr ""
-
-#: src/details.rs:905
-#, no-c-format
-msgid "Emulated, version 2.0"
-msgstr ""
-
-#: src/details.rs:905 src/details.rs:906 src/dialogs/hardware.rs:1051
-#, no-c-format
-msgid "TPM"
+"A TPM, random number generator, sound card, serial port, or folders shared "
+"with              the guest"
 msgstr ""
 
 #: src/details.rs:906
 #, no-c-format
+msgid "Emulated, version 2.0"
+msgstr ""
+
+#: src/details.rs:906 src/details.rs:907 src/dialogs/hardware.rs:1051
+#, no-c-format
+msgid "TPM"
+msgstr ""
+
+#: src/details.rs:907
+#, no-c-format
 msgid "The host’s own"
 msgstr ""
 
-#: src/details.rs:908 src/dialogs/hardware.rs:1057
+#: src/details.rs:909 src/dialogs/hardware.rs:1057
 #, no-c-format
 msgid "Random Number Generator"
 msgstr ""
 
-#: src/details.rs:912 src/dialogs/hardware.rs:1063
+#: src/details.rs:913 src/dialogs/hardware.rs:1063
 #, no-c-format
 msgid "Sound Card"
 msgstr ""
 
-#: src/details.rs:914
+#: src/details.rs:915
 #, no-c-format
 msgid "Intel HD Audio"
 msgstr ""
 
-#: src/details.rs:916
+#: src/details.rs:917
 #, no-c-format
 msgid "USB Audio"
 msgstr ""
 
-#: src/details.rs:921 src/dialogs/hardware.rs:1045
+#: src/details.rs:922 src/dialogs/hardware.rs:1069
+#, no-c-format
+msgid "Serial Port"
+msgstr ""
+
+#: src/details.rs:923
+#, no-c-format
+msgid "Shown in the serial console"
+msgstr ""
+
+#: src/details.rs:926 src/dialogs/hardware.rs:1045
 #, no-c-format
 msgid "Shared Folder"
 msgstr ""
 
-#: src/details.rs:922
+#: src/details.rs:927
 #, no-c-format
 msgid ""
 "{path}\n"
 "In the guest: mount -t virtiofs {tag} /mnt"
 msgstr ""
 
-#: src/details.rs:942
+#: src/details.rs:947
 #, no-c-format
 msgid "Snapshots"
 msgstr ""
 
-#: src/details.rs:944 src/dialogs/machine.rs:214
+#: src/details.rs:949 src/dialogs/machine.rs:214
 #, no-c-format
 msgid "Take Snapshot"
 msgstr ""
 
-#: src/details.rs:953
+#: src/details.rs:958
 #, no-c-format
 msgid ""
 "Saved states of the disks, and of the memory while it runs, to go back to"
 msgstr ""
 
-#: src/details.rs:969
+#: src/details.rs:974
 #, no-c-format
 msgid "With memory"
 msgstr ""
 
-#: src/details.rs:971
+#: src/details.rs:976
 #, no-c-format
 msgid "Disks only"
 msgstr ""
 
-#: src/details.rs:982
+#: src/details.rs:987
 #, no-c-format
 msgid "Current"
 msgstr ""
 
-#: src/details.rs:990
+#: src/details.rs:995
 #, no-c-format
 msgid "Revert to Snapshot"
 msgstr ""
 
-#: src/details.rs:1003
+#: src/details.rs:1008
 #, no-c-format
 msgid "Delete Snapshot"
 msgstr ""
 
-#: src/details.rs:1019
+#: src/details.rs:1024
 #, no-c-format
 msgid "Display"
 msgstr ""
 
-#: src/details.rs:1039 src/details.rs:1154
+#: src/details.rs:1044 src/details.rs:1159
 #, no-c-format
 msgid "None"
 msgstr ""
 
-#: src/details.rs:1042
+#: src/details.rs:1047
 #, no-c-format
 msgid "Protocol"
 msgstr ""
 
-#: src/details.rs:1053
+#: src/details.rs:1058
 #, no-c-format
 msgid ""
 "With sound, and the screen sized to the window where the guest runs its agent"
 msgstr ""
 
-#: src/details.rs:1055
+#: src/details.rs:1060
 #, no-c-format
 msgid "The screen alone, without sound"
 msgstr ""
 
-#: src/details.rs:1057
+#: src/details.rs:1062
 #, no-c-format
 msgid "No console, for a passed-through graphics card with its own screen"
 msgstr ""
 
-#: src/details.rs:1094
+#: src/details.rs:1099
 #, no-c-format
 msgid "Video Card"
 msgstr ""
 
-#: src/details.rs:1118
+#: src/details.rs:1123
 #, no-c-format
 msgid "3D Acceleration"
 msgstr ""
 
-#: src/details.rs:1120
+#: src/details.rs:1125
 #, no-c-format
 msgid "Renders on the host’s graphics card; needs a virtio video card"
 msgstr ""
 
-#: src/details.rs:1147
+#: src/details.rs:1152
 #, no-c-format
 msgid "Virtio (Linux guests)"
 msgstr ""
 
-#: src/details.rs:1148
+#: src/details.rs:1153
 #, no-c-format
 msgid "QXL (older SPICE guests)"
 msgstr ""
 
-#: src/details.rs:1149
+#: src/details.rs:1154
 #, no-c-format
 msgid "VGA (any guest)"
 msgstr ""
@@ -780,7 +791,7 @@ msgstr ""
 msgid "Host Bridge"
 msgstr ""
 
-#: src/dialogs/hardware.rs:444 ui/window.ui:209
+#: src/dialogs/hardware.rs:444 ui/window.ui:208
 #, no-c-format
 msgid "_Connection"
 msgstr ""
@@ -922,12 +933,17 @@ msgstr ""
 msgid "Heard in the console with SPICE"
 msgstr ""
 
-#: src/dialogs/hardware.rs:1073
+#: src/dialogs/hardware.rs:1070
+#, no-c-format
+msgid "A text console, for systems without a desktop"
+msgstr ""
+
+#: src/dialogs/hardware.rs:1079
 #, no-c-format
 msgid "The virtual machine has one"
 msgstr ""
 
-#: src/dialogs/hardware.rs:1097
+#: src/dialogs/hardware.rs:1103
 #, no-c-format
 msgid "Choose a Folder to Share"
 msgstr ""
@@ -1354,7 +1370,7 @@ msgstr ""
 msgid "_Disk Size"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:272 src/window.rs:592
+#: src/dialogs/new_machine.rs:272 src/window.rs:612
 #, no-c-format
 msgid "System"
 msgstr ""
@@ -1671,7 +1687,7 @@ msgstr ""
 msgid "Shut the virtual machine down to clone it"
 msgstr ""
 
-#: src/hypervisor/devices.rs:320
+#: src/hypervisor/devices.rs:322
 #, no-c-format
 msgid "{path} is neither a file nor a block device"
 msgstr ""
@@ -1681,163 +1697,153 @@ msgstr ""
 msgid "libvirt stopped taking the file"
 msgstr ""
 
-#: src/machine_view.rs:128
+#: src/machine_view.rs:142
 #, no-c-format
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:233
+#: src/machine_view.rs:247
 #, no-c-format
 msgid "Discard Saved State?"
 msgstr ""
 
-#: src/machine_view.rs:235
+#: src/machine_view.rs:249
 #, no-c-format
 msgid ""
 "The virtual machine starts afresh next time instead of resuming where "
 "it                  was saved. Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:238
+#: src/machine_view.rs:252
 #, no-c-format
 msgid "_Discard"
 msgstr ""
 
-#: src/machine_view.rs:257
+#: src/machine_view.rs:271
 #, no-c-format
 msgid "Force Reset?"
 msgstr ""
 
-#: src/machine_view.rs:259
+#: src/machine_view.rs:273
 #, no-c-format
 msgid ""
 "The virtual machine restarts at once, as if its reset button were "
 "pressed.                  Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:262
+#: src/machine_view.rs:276
 #, no-c-format
 msgid "Force _Reset"
 msgstr ""
 
-#: src/machine_view.rs:272
+#: src/machine_view.rs:286
 #, no-c-format
 msgid "Force Off?"
 msgstr ""
 
-#: src/machine_view.rs:274
+#: src/machine_view.rs:288
 #, no-c-format
 msgid ""
 "The virtual machine stops at once, as if its power were cut. Work not "
 "saved                  in it is lost, and its disks may be left inconsistent."
 msgstr ""
 
-#: src/machine_view.rs:277
+#: src/machine_view.rs:291
 #, no-c-format
 msgid "Force _Off"
 msgstr ""
 
-#: src/machine_view.rs:348
+#: src/machine_view.rs:359
 #, no-c-format
 msgid "It resumes where it was saved."
 msgstr ""
 
-#: src/machine_view.rs:349 ui/machine_view.ui:285
+#: src/machine_view.rs:360 ui/machine_view.ui:284
 #, no-c-format
 msgid "_Resume"
 msgstr ""
 
-#: src/machine_view.rs:352
+#: src/machine_view.rs:363
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:397
+#: src/machine_view.rs:408
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
 
-#: src/machine_view.rs:478
+#: src/machine_view.rs:533
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:480 ui/machine_view.ui:85
+#: src/machine_view.rs:535 ui/machine_view.ui:84
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:611
+#: src/machine_view.rs:666
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:613 src/machine_view.rs:873
+#: src/machine_view.rs:668 src/machine_view.rs:920
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:621
+#: src/machine_view.rs:676
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:623
+#: src/machine_view.rs:678
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:630
+#: src/machine_view.rs:685
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:631
+#: src/machine_view.rs:686
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:658 src/machine_view.rs:696
+#: src/machine_view.rs:713 src/machine_view.rs:751
 #, no-c-format
 msgid "Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:694 ui/machine_view.ui:92
+#: src/machine_view.rs:749 ui/machine_view.ui:91
 #, no-c-format
 msgid "Leave Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:846
-#, no-c-format
-msgid "_Add Serial Port"
-msgstr ""
-
-#: src/machine_view.rs:849
+#: src/machine_view.rs:900
 #, no-c-format
 msgid "No Serial Console"
 msgstr ""
 
-#: src/machine_view.rs:851
+#: src/machine_view.rs:901
 #, no-c-format
 msgid "The serial port comes with the next start."
 msgstr ""
 
-#: src/machine_view.rs:853
-#, no-c-format
-msgid "The virtual machine has no serial port to show here."
-msgstr ""
-
-#: src/machine_view.rs:871
+#: src/machine_view.rs:918
 #, no-c-format
 msgid "Serial Console Closed"
 msgstr ""
 
-#: src/machine_view.rs:939
+#: src/machine_view.rs:986
 #, no-c-format
 msgid "The serial console closed."
 msgstr ""
 
-#: src/machine_view.rs:1025
+#: src/machine_view.rs:1072
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -1872,133 +1878,133 @@ msgstr ""
 msgid "Received {received} · Sent {sent}"
 msgstr ""
 
-#: src/window.rs:360
+#: src/window.rs:380
 #, no-c-format
 msgid "The connection to libvirt was lost"
 msgstr ""
 
-#: src/window.rs:374
+#: src/window.rs:394
 #, no-c-format
 msgid "{device} went back to {machine}"
 msgstr ""
 
-#: src/window.rs:436
+#: src/window.rs:456
 #, no-c-format
 msgid "The connection attempt failed"
 msgstr ""
 
-#: src/window.rs:543 ui/window.ui:165
+#: src/window.rs:563 ui/window.ui:164
 #, no-c-format
 msgid "Virtual Machine"
 msgstr ""
 
-#: src/window.rs:551
+#: src/window.rs:571
 #, no-c-format
 msgid "Creating “{name}”…"
 msgstr ""
 
-#: src/window.rs:593
+#: src/window.rs:613
 #, no-c-format
 msgid "User Session"
 msgstr ""
 
-#: ui/machine_view.ui:49 ui/machine_view.ui:110
+#: ui/machine_view.ui:48 ui/machine_view.ui:109
 msgid "Console"
 msgstr ""
 
-#: ui/machine_view.ui:56
+#: ui/machine_view.ui:55
 msgid "Serial Console"
 msgstr ""
 
-#: ui/machine_view.ui:63 ui/machine_view.ui:238
+#: ui/machine_view.ui:62 ui/machine_view.ui:237
 msgid "Details"
 msgstr ""
 
-#: ui/machine_view.ui:72
+#: ui/machine_view.ui:71
 msgid "Machine Menu"
 msgstr ""
 
-#: ui/machine_view.ui:79
+#: ui/machine_view.ui:78
 msgid "Power"
 msgstr ""
 
-#: ui/machine_view.ui:177
+#: ui/machine_view.ui:176
 msgid "Display in Its Own Window"
 msgstr ""
 
-#: ui/machine_view.ui:180
+#: ui/machine_view.ui:179
 msgid "_Bring Back"
 msgstr ""
 
-#: ui/machine_view.ui:200
+#: ui/machine_view.ui:199
 msgid "Serial"
 msgstr ""
 
-#: ui/machine_view.ui:290
+#: ui/machine_view.ui:289
 msgid "_Pause"
 msgstr ""
 
-#: ui/machine_view.ui:295
+#: ui/machine_view.ui:294
 msgid "Sa_ve"
 msgstr ""
 
-#: ui/machine_view.ui:301
+#: ui/machine_view.ui:300
 msgid "_Shut Down"
 msgstr ""
 
-#: ui/machine_view.ui:305
+#: ui/machine_view.ui:304
 msgid "_Reboot"
 msgstr ""
 
-#: ui/machine_view.ui:311
+#: ui/machine_view.ui:310
 msgid "Force _Reset…"
 msgstr ""
 
-#: ui/machine_view.ui:315
+#: ui/machine_view.ui:314
 msgid "Force _Off…"
 msgstr ""
 
-#: ui/machine_view.ui:323
+#: ui/machine_view.ui:322
 msgid "_Fullscreen"
 msgstr ""
 
-#: ui/machine_view.ui:327
+#: ui/machine_view.ui:326
 msgid "Open Display in New _Window"
 msgstr ""
 
-#: ui/machine_view.ui:331
+#: ui/machine_view.ui:330
 msgid "Take _Screenshot…"
 msgstr ""
 
-#: ui/machine_view.ui:337
+#: ui/machine_view.ui:336
 msgid "_USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:341
+#: ui/machine_view.ui:340
 msgid "_Redirect USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:345
+#: ui/machine_view.ui:344
 msgid "Send _Key"
 msgstr ""
 
-#: ui/machine_view.ui:375
+#: ui/machine_view.ui:374
 msgid "Re_name…"
 msgstr ""
 
-#: ui/machine_view.ui:379
+#: ui/machine_view.ui:378
 msgid "_Clone…"
 msgstr ""
 
-#: ui/machine_view.ui:383
+#: ui/machine_view.ui:382
 msgid "Edit _XML…"
 msgstr ""
 
-#: ui/machine_view.ui:387
+#: ui/machine_view.ui:386
 msgid "Discard _Saved State…"
 msgstr ""
 
-#: ui/machine_view.ui:392
+#: ui/machine_view.ui:391
 msgid "_Delete…"
 msgstr ""
 
@@ -2010,46 +2016,46 @@ msgstr ""
 msgid "Main Menu"
 msgstr ""
 
-#: ui/window.ui:95
+#: ui/window.ui:94
 msgid "No Virtual Machines"
 msgstr ""
 
-#: ui/window.ui:98
+#: ui/window.ui:97
 msgid "_New Virtual Machine"
 msgstr ""
 
-#: ui/window.ui:121
+#: ui/window.ui:120
 msgid "Cannot Connect"
 msgstr ""
 
-#: ui/window.ui:129
+#: ui/window.ui:128
 msgid "_Try Again"
 msgstr ""
 
-#: ui/window.ui:139
+#: ui/window.ui:138
 msgid "Use _User Session"
 msgstr ""
 
-#: ui/window.ui:182
+#: ui/window.ui:181
 msgid "No Virtual Machine Selected"
 msgstr ""
 
-#: ui/window.ui:211
+#: ui/window.ui:210
 msgid "_System"
 msgstr ""
 
-#: ui/window.ui:216
+#: ui/window.ui:215
 msgid "_User Session"
 msgstr ""
 
-#: ui/window.ui:224
+#: ui/window.ui:223
 msgid "_Storage"
 msgstr ""
 
-#: ui/window.ui:228
+#: ui/window.ui:227
 msgid "_Virtual Networks"
 msgstr ""
 
-#: ui/window.ui:234
+#: ui/window.ui:233
 msgid "_About Machines"
 msgstr ""

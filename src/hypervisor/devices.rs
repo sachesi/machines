@@ -41,6 +41,7 @@ pub enum NewGadget {
     Sound,
     /// This directory of the host.
     SharedFolder(String),
+    Serial,
 }
 
 impl Hypervisor {
@@ -205,7 +206,7 @@ impl Hypervisor {
         }
     }
 
-    /// Add a TPM, random number generator, sound card or shared folder. A shared folder
+    /// Add a TPM, random number generator, sound card, serial port or shared folder. A shared folder
     /// needs memory shared with virtiofsd, which the definition gets first, and so a
     /// running machine without it only from its next start.
     pub fn add_gadget(&self, uuid: &str, gadget: &NewGadget) -> Result<Change> {
@@ -218,6 +219,7 @@ impl Hypervisor {
             NewGadget::Tpm => domain_xml::tpm_xml().to_owned(),
             NewGadget::Rng => domain_xml::rng_xml().to_owned(),
             NewGadget::Sound => domain_xml::sound_xml(&config.machine),
+            NewGadget::Serial => domain_xml::SERIAL_XML.to_owned(),
             NewGadget::SharedFolder(path) => {
                 if let Some(shared) = domain_xml::with_shared_memory(&xml)? {
                     Domain::define_xml(&self.conn, &shared).map_err(message)?;

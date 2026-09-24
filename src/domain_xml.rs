@@ -173,6 +173,8 @@ pub enum Gadget {
         source: String,
         tag: String,
     },
+    /// A serial port, which the serial console shows.
+    Serial,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -369,7 +371,14 @@ impl MachineConfig {
                 "graphics" => {
                     graphics.push(dev.attribute("type").unwrap_or_default().to_owned());
                 }
-                "serial" | "console" => serial = true,
+                "serial" => {
+                    serial = true;
+                    gadgets.push(GadgetDevice {
+                        gadget: Gadget::Serial,
+                        xml,
+                    });
+                }
+                "console" => serial = true,
                 "tpm" => gadgets.push(GadgetDevice {
                     gadget: Gadget::Tpm {
                         emulated: sub("backend").and_then(|b| b.attribute("type"))
@@ -1880,7 +1889,7 @@ mod tests {
     fn gadgets_read_back() {
         let folder = shared_folder_xml("/home/me/Shared Stuff", "Shared_Stuff");
         let xml = format!(
-            "<domain><devices>{}{}{}{folder}</devices></domain>",
+            "<domain><devices>{}{}{}{folder}{SERIAL_XML}</devices></domain>",
             tpm_xml(),
             rng_xml(),
             sound_xml("pc-q35-9.1")
@@ -1901,6 +1910,7 @@ mod tests {
                     source: "/home/me/Shared Stuff".into(),
                     tag: "Shared_Stuff".into()
                 },
+                &Gadget::Serial,
             ]
         );
         assert_eq!(c.gadgets[3].xml, folder);

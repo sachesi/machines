@@ -897,7 +897,8 @@ fn gadgets(
     let gadgets = with_pending(&config.gadgets, live, GadgetDevice::same);
     if gadgets.is_empty() {
         group.set_description(Some(&gettext(
-            "A TPM, random number generator, sound card, or folders shared with the guest",
+            "A TPM, random number generator, sound card, serial port, or folders shared with \
+             the guest",
         )));
     }
     for (device, pending) in gadgets {
@@ -916,6 +917,10 @@ fn gadgets(
                     "usb" => gettext("USB Audio"),
                     other => other.to_owned(),
                 },
+            ),
+            Gadget::Serial => (
+                gettext("Serial Port"),
+                gettext("Shown in the serial console"),
             ),
             Gadget::SharedFolder { source, tag } => (
                 gettext("Shared Folder"),

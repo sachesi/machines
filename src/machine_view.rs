@@ -11,7 +11,7 @@ use vte4::prelude::*;
 use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
 use crate::console::{Console, FdSource};
-use crate::domain_xml::{DiskDevice, SERIAL_XML};
+use crate::domain_xml::{DiskDevice, MachineConfig};
 use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result, SerialStream};
 use crate::machine::Machine;
 use crate::window::MachinesWindow;
@@ -32,7 +32,11 @@ mod imp {
         #[template_child]
         pub title: TemplateChild<adw::WindowTitle>,
         #[template_child]
+        pub view_toggle: TemplateChild<adw::ToggleGroup>,
+        #[template_child]
         pub view_stack: TemplateChild<adw::ViewStack>,
+        #[template_child]
+        pub serial_page: TemplateChild<adw::ViewStackPage>,
         #[template_child]
         pub start_button: TemplateChild<gtk::Button>,
         #[template_child]
@@ -89,6 +93,10 @@ mod imp {
         /// is dropped.
         pub(super) serial_generation: Cell<u64>,
         pub(super) serial_error: RefCell<Option<String>>,
+        /// The view toggle's toggles in order, the serial console's among them while the
+        /// group leaves it out.
+        pub(super) view_toggles: OnceCell<Vec<adw::Toggle>>,
+        pub(super) view_toggle_binding: RefCell<Option<glib::Binding>>,
     }
 
     #[glib::object_subclass]
@@ -112,6 +120,12 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
             let obj = self.obj();
+            let toggles = ["console", "serial", "details"]
+                .into_iter()
+                .filter_map(|name| self.view_toggle.toggle_by_name(name))
+                .collect();
+            let _ = self.view_toggles.set(toggles);
+            obj.bind_view_toggle();
             self.console.connect_connected(glib::clone!(
                 #[weak(rename_to = view)]
                 obj,
@@ -316,9 +330,6 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
         view.imp().serial_error.take();
         view.update();
     });
-    klass.install_action("machine.add-serial", None, |view, _, _| {
-        view.change(|hv, uuid| hv.attach(uuid, SERIAL_XML));
-    });
     klass.install_action("machine.delete", None, |view, _, _| view.delete());
     klass.install_action("machine.rename", None, |view, _, _| {
         dialogs::machine::rename(view);
@@ -439,6 +450,50 @@ impl MachineView {
         }
         imp.machine.replace(machine.cloned());
         self.update();
+    }
+
+    fn bind_view_toggle(&self) {
+        let imp = self.imp();
+        let binding = imp
+            .view_stack
+            .bind_property("visible-child-name", &*imp.view_toggle, "active-name")
+            .bidirectional()
+            .sync_create()
+            .build();
+        imp.view_toggle_binding.replace(Some(binding));
+    }
+
+    /// Offer the serial console only to a machine with a serial port, or one it gets at
+    /// its next start.
+    fn offer_serial(&self, offered: bool) {
+        let imp = self.imp();
+        if !offered && imp.view_stack.visible_child_name().as_deref() == Some("serial") {
+            // Updates the view again, which comes back here with the console showing.
+            self.show_console();
+        }
+        if imp.view_toggle.toggle_by_name("serial").is_some() == offered {
+            return;
+        }
+        imp.serial_page.set_visible(offered);
+        // A group only adds at its end, and the serial console goes between the other two.
+        // Unbound meanwhile, for the page not to follow the group through the gap.
+        if let Some(binding) = imp.view_toggle_binding.take() {
+            binding.unbind();
+        }
+        let toggles = imp.view_toggles.get().into_iter().flatten();
+        // Not remove_all(), which leaves the toggles marked as the group's, so that it
+        // refuses them back.
+        for toggle in toggles.clone() {
+            if imp.view_toggle.toggle_by_name(&toggle.name()).is_some() {
+                imp.view_toggle.remove(toggle);
+            }
+        }
+        for toggle in toggles {
+            if offered || toggle.name() != "serial" {
+                imp.view_toggle.add(toggle.clone());
+            }
+        }
+        self.bind_view_toggle();
     }
 
     pub fn show_console(&self) {
@@ -823,6 +878,8 @@ impl MachineView {
     /// Open the serial console while its page shows, and close it otherwise.
     fn update_serial(&self, info: &MachineInfo) {
         let imp = self.imp();
+        let has = |c: Option<&MachineConfig>| c.is_some_and(|c| c.serial);
+        self.offer_serial(has(info.live.as_ref()) || has(info.config.as_ref()));
         if !info.state.is_active() {
             self.close_serial();
             imp.serial_error.take();
@@ -835,24 +892,14 @@ impl MachineView {
             );
             return;
         }
-        if !info
-            .live
-            .as_ref()
-            .or(info.config.as_ref())
-            .is_some_and(|c| c.serial)
-        {
+        if !has(info.live.as_ref().or(info.config.as_ref())) {
+            // Offered only for the port the definition has for the next start.
             self.close_serial();
-            let coming = info.config.as_ref().is_some_and(|c| c.serial);
-            let add = gettext("_Add Serial Port");
             self.serial_message(
                 "utilities-terminal-symbolic",
                 &gettext("No Serial Console"),
-                Some(&if coming {
-                    gettext("The serial port comes with the next start.")
-                } else {
-                    gettext("The virtual machine has no serial port to show here.")
-                }),
-                (info.persistent && !coming).then_some((add.as_str(), "machine.add-serial")),
+                Some(&gettext("The serial port comes with the next start.")),
+                None,
             );
             return;
         }

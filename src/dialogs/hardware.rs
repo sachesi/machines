@@ -1025,8 +1025,8 @@ fn add_redirection(view: &MachineView, win: &MachinesWindow, dialog: &adw::Dialo
     ));
 }
 
-/// "Add Device": a TPM, random number generator or sound card, where the machine has none,
-/// or a folder of the host to share.
+/// "Add Device": a TPM, random number generator, sound card or serial port, where the
+/// machine has none, or a folder of the host to share.
 pub fn add_gadget(view: &MachineView, config: &MachineConfig) {
     let has = |wanted: fn(&Gadget) -> bool| config.gadgets.iter().any(|g| wanted(&g.gadget));
     let group = adw::PreferencesGroup::new();
@@ -1064,6 +1064,12 @@ pub fn add_gadget(view: &MachineView, config: &MachineConfig) {
             gettext("Heard in the console with SPICE"),
             Some(NewGadget::Sound),
             has(|g| matches!(g, Gadget::Sound { .. })),
+        ),
+        (
+            gettext("Serial Port"),
+            gettext("A text console, for systems without a desktop"),
+            Some(NewGadget::Serial),
+            has(|g| matches!(g, Gadget::Serial)),
         ),
     ];
     for (title, subtitle, gadget, present) in choices {
