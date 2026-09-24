@@ -30,6 +30,12 @@
   <developer id="io.github.sachesi"><name>sachesi</name></developer>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.1.1" date="2026-09-25">
+      <description>
+        <p>New virtual machines boot with the firmware chosen for them: BIOS, UEFI, or UEFI with Secure Boot, which is the default where the host's firmware has it, as Windows 11 requires. Their disk goes in the storage pool chosen for it, which shows its free space, and their processors are cores of one socket, so that Windows uses all of them.</p>
+        <p>The serial console is offered only to machines with a serial port, which is added and removed with the other devices. The sidebar selects a machine on a click, no longer as the pointer passes over it. Fullscreen works from any page, with F11 too, and going back to the list leaves it. The user session explains why it has no virtual networks instead of failing to make one, and a keyboard shortcuts dialog lists what the keyboard does.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-09-24">
       <description><p>First release.</p></description>
     </release>

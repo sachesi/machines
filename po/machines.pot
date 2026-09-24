@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: machines 0.1.0\n"
+"Project-Id-Version: machines 0.1.1\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-25 00:34+0300\n"
+"POT-Creation-Date: 2026-09-25 00:40+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -133,7 +133,26 @@ msgstr ""
 msgid "sachesi"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:34
+#: data/io.github.sachesi.machines.metainfo.xml:35
+msgid ""
+"New virtual machines boot with the firmware chosen for them: BIOS, UEFI, or "
+"UEFI with Secure Boot, which is the default where the host's firmware has "
+"it, as Windows 11 requires. Their disk goes in the storage pool chosen for "
+"it, which shows its free space, and their processors are cores of one "
+"socket, so that Windows uses all of them."
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:36
+msgid ""
+"The serial console is offered only to machines with a serial port, which is "
+"added and removed with the other devices. The sidebar selects a machine on a "
+"click, no longer as the pointer passes over it. Fullscreen works from any "
+"page, with F11 too, and going back to the list leaves it. The user session "
+"explains why it has no virtual networks instead of failing to make one, and "
+"a keyboard shortcuts dialog lists what the keyboard does."
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:40
 msgid "First release."
 msgstr ""
 
