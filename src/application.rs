@@ -3,7 +3,7 @@ use gettextrs::gettext;
 use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
 use crate::window::MachinesWindow;
-use crate::{adw, config, gdk, gio, glib, gtk, prefs};
+use crate::{adw, config, gio, glib, gtk, prefs};
 
 mod imp {
     use super::*;
@@ -23,15 +23,6 @@ mod imp {
     impl ApplicationImpl for MachinesApplication {
         fn startup(&self) {
             self.parent_startup();
-            let css = gtk::CssProvider::new();
-            css.load_from_resource(&format!("{}/style.css", config::RESOURCE_PATH));
-            if let Some(display) = gdk::Display::default() {
-                gtk::style_context_add_provider_for_display(
-                    &display,
-                    &css,
-                    gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-                );
-            }
             self.obj().setup_actions();
         }
 
