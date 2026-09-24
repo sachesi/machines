@@ -462,7 +462,7 @@ impl Ipv4Subnet {
     }
 
     fn mask(self) -> u32 {
-        u32::MAX << (32 - u32::from(self.prefix))
+        prefix_mask(self.prefix)
     }
 
     pub fn network(self) -> Self {
@@ -485,8 +485,7 @@ impl Ipv4Subnet {
     }
 
     pub fn overlaps(self, other: Self) -> bool {
-        let shorter = self.prefix.min(other.prefix);
-        let mask = u32::MAX << (32 - u32::from(shorter));
+        let mask = prefix_mask(self.prefix.min(other.prefix));
         u32::from(self.address) & mask == u32::from(other.address) & mask
     }
 
@@ -503,6 +502,13 @@ impl Ipv4Subnet {
                 prefix: 24,
             })
     }
+}
+
+/// The netmask of a `prefix`-bit network prefix, which is at most 32.
+fn prefix_mask(prefix: u8) -> u32 {
+    u32::MAX
+        .checked_shl(32 - u32::from(prefix.min(32)))
+        .unwrap_or(0)
 }
 
 impl fmt::Display for Ipv4Subnet {
@@ -534,7 +540,7 @@ impl NetworkConfig {
         let ipv4 = ip.and_then(|ip| {
             let address: Ipv4Addr = ip.attribute("address")?.parse().ok()?;
             let prefix = match ip.attribute("prefix") {
-                Some(p) => p.parse().ok()?,
+                Some(p) => p.parse().ok().filter(|p| *p <= 32)?,
                 None => {
                     let mask: Ipv4Addr = ip.attribute("netmask")?.parse().ok()?;
                     u8::try_from(u32::from(mask).leading_ones()).ok()?
@@ -793,6 +799,12 @@ mod tests {
             "192.168.101.0/24"
         );
         assert_eq!(Ipv4Subnet::unused(&[wide]).to_string(), "10.100.0.0/24");
+        let everything = Ipv4Subnet {
+            address: Ipv4Addr::UNSPECIFIED,
+            prefix: 0,
+        };
+        assert!(everything.overlaps(default));
+        assert_eq!(everything.network(), everything);
     }
 
     #[test]
