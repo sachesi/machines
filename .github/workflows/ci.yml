@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  # Weekly, for advisories published since the last push, and against Rawhide, for what
+  # the next Fedora's GTK, libadwaita, libvirt and toolchain will break.
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check and test${{ matrix.fedora != '44' && format(' on Fedora {0}', matrix.fedora) || '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: ${{ github.event_name == 'schedule' && fromJSON('["44", "rawhide"]') || fromJSON('["44"]') }}
+    # The toolchain and the libraries the RPMs are built with.
+    container: registry.fedoraproject.org/fedora:${{ matrix.fedora }}
+    steps:
+      - name: Install the build dependencies
+        run: >
+          dnf install -y --setopt=install_weak_deps=False
+          git-core rust cargo rustfmt clippy cargo-deny just blueprint-compiler
+          gtk4-devel libadwaita-devel libvirt-devel gvnc-devel spice-glib-devel
+          libusb1-devel vte291-gtk4-devel glib2-devel
+          desktop-file-utils appstream gettext
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # just check runs cargo deny too, against the advisories as they are today.
+      - name: Lint
+        run: just check
+      - name: Test
+        run: just test
