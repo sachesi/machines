@@ -102,6 +102,23 @@ fn noted(subtitle: String, pending: Pending) -> String {
     }
 }
 
+/// When changes to the settings reach the machine, where that is not at once.
+fn deferred(info: &MachineInfo) -> Option<String> {
+    if info.state.is_active() {
+        Some(gettext(
+            "Changes take effect the next time the virtual machine starts.",
+        ))
+    } else if info.saved {
+        // Its saved state has the settings it ran with, and resuming brings them back.
+        Some(gettext(
+            "It resumes with the settings it was saved with. Changes take effect when it \
+             next starts afresh.",
+        ))
+    } else {
+        None
+    }
+}
+
 fn window(view: &MachineView) -> Option<MachinesWindow> {
     view.root().and_downcast()
 }
@@ -194,8 +211,8 @@ fn firmware_row(view: &MachineView, info: &MachineInfo, config: &MachineConfig) 
                 .unwrap_or(0) as u32,
         )
         .build();
-    if info.state.is_active() {
-        row.set_subtitle(&gettext("Changes take effect at the next start"));
+    if let Some(note) = deferred(info) {
+        row.set_subtitle(&note);
     }
     row.connect_selected_notify(glib::clone!(
         #[weak]
@@ -238,10 +255,8 @@ fn resources(
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Processor and Memory"))
         .build();
-    if info.state.is_active() {
-        group.set_description(Some(&gettext(
-            "Changes take effect the next time the virtual machine starts.",
-        )));
+    if let Some(note) = deferred(info) {
+        group.set_description(Some(&note));
     }
     let vcpus = adw::SpinRow::builder()
         .title(gettext("Processors"))
@@ -1018,10 +1033,8 @@ fn display(
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Display"))
         .build();
-    if info.state.is_active() {
-        group.set_description(Some(&gettext(
-            "Changes take effect the next time the virtual machine starts.",
-        )));
+    if let Some(note) = deferred(info) {
+        group.set_description(Some(&note));
     }
     let current = config.display();
     let options = &info.capabilities;
