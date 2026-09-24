@@ -68,7 +68,8 @@ struct HostDiskChoice {
 struct StorageForm {
     kinds: Vec<StorageKind>,
     kind: adw::ComboRow,
-    pools: Vec<String>,
+    /// The pools new disks can go in, by name, with their free bytes.
+    pools: Vec<(String, u64)>,
     pool: adw::ComboRow,
     size: adw::SpinRow,
     /// Volumes no machine has, with the name of their pool.
@@ -92,6 +93,10 @@ impl StorageForm {
         let kind = self.kind();
         self.pool.set_visible(kind == StorageKind::NewDisk);
         self.size.set_visible(kind == StorageKind::NewDisk);
+        if let Some((_, free)) = self.pools.get(self.pool.selected() as usize) {
+            self.pool
+                .set_subtitle(&gettext("{size} free").replace("{size}", &dialogs::size(*free)));
+        }
         self.host_disk.set_visible(kind == StorageKind::HostDisk);
         self.volume.set_visible(kind == StorageKind::Volume);
         if kind == StorageKind::Volume {
@@ -147,7 +152,7 @@ impl StorageForm {
     fn storage(&self) -> Option<NewStorage> {
         Some(match self.kind() {
             StorageKind::NewDisk => NewStorage::Volume {
-                pool: self.pools.get(self.pool.selected() as usize)?.clone(),
+                pool: self.pools.get(self.pool.selected() as usize)?.0.clone(),
                 gib: self.size.value() as u64,
             },
             StorageKind::Image => NewStorage::Image(self.file.borrow().clone()?),
@@ -207,7 +212,7 @@ pub fn add_storage(view: &MachineView) {
             let pools = pools
                 .into_iter()
                 .filter(Pool::makes_volumes)
-                .map(|p| p.name)
+                .map(|p| (p.name, p.available))
                 .collect();
             let disks = disks
                 .unwrap_or_default()
@@ -237,7 +242,7 @@ pub fn add_storage(view: &MachineView) {
 
 fn present_storage(
     view: &MachineView,
-    pools: Vec<String>,
+    pools: Vec<(String, u64)>,
     volumes: Vec<(Volume, String)>,
     host_disks: Vec<HostDiskChoice>,
 ) {
@@ -265,13 +270,13 @@ fn present_storage(
         .use_underline(true)
         .model(&gtk::StringList::new(&labels))
         .build();
-    let pool_names: Vec<&str> = pools.iter().map(String::as_str).collect();
+    let pool_names: Vec<&str> = pools.iter().map(|(name, _)| name.as_str()).collect();
     let pool = adw::ComboRow::builder()
         .title(gettext("_Pool"))
         .use_underline(true)
         .model(&gtk::StringList::new(&pool_names))
         .build();
-    if let Some(i) = pools.iter().position(|p| p == "default") {
+    if let Some(i) = pools.iter().position(|(name, _)| name == "default") {
         pool.set_selected(i as u32);
     }
     let size = adw::SpinRow::builder()
@@ -347,6 +352,11 @@ fn present_storage(
             form.file.take();
             form.sync();
         }
+    ));
+    form.pool.connect_selected_notify(glib::clone!(
+        #[strong]
+        form,
+        move |_| form.sync()
     ));
     form.volume.connect_selected_notify(glib::clone!(
         #[strong]

@@ -101,7 +101,7 @@ impl Form {
             .get(self.pool.selected() as usize)
             .and_then(|(_, f)| *f);
         self.pool.set_subtitle(&free.map_or(String::new(), |free| {
-            gettext("{size} free").replace("{size}", &glib::format_size(free))
+            gettext("{size} free").replace("{size}", &dialogs::size(free))
         }));
     }
 
