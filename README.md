@@ -11,7 +11,9 @@ A machine's details page graphs what it uses of the host's processors, memory, d
 network while it runs, and adds, removes and grows its disks, adds and removes CD/DVD
 drives and network interfaces, gives it whole disks of the host, a TPM, sound card, random
 number generator and folders shared over virtiofs, and passes USB and PCI devices of the
-host through to it, or plugs USB devices into it while it runs. It sets the processor
+host through to it, or plugs USB devices into it while it runs. A USB device a running
+machine has goes back to it when it is pulled out and plugged in again, as long as Machines
+is open; libvirt alone leaves it to the host. It sets the processor
 model (the host's own, for the fastest), how the processors are laid out in sockets, cores
 and threads, which host processors they run on, huge pages for the memory, and the
 firmware: BIOS, or UEFI with or without Secure Boot. It also picks the display protocol

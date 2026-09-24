@@ -359,7 +359,27 @@ impl MachinesWindow {
                 self.set_connected(false);
                 self.show_error(&gettext("The connection to libvirt was lost"));
             }
+            Event::DeviceAdded(name) => self.replug_usb(name),
         }
+    }
+
+    /// Give a USB device plugged in again back to the running machine that had it.
+    fn replug_usb(&self, name: String) {
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = win)]
+            self,
+            async move {
+                match win.call(move |hv| hv.replug_usb(&name)).await {
+                    Some(Ok(Some((device, machine)))) => win.toast(
+                        &gettext("{device} went back to {machine}")
+                            .replace("{device}", &dialogs::hardware::device_title(&device))
+                            .replace("{machine}", &machine),
+                    ),
+                    Some(Err(e)) => win.toast(&e),
+                    _ => {}
+                }
+            }
+        ));
     }
 
     /// (Re)open the connection the settings name.

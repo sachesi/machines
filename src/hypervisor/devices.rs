@@ -3,13 +3,14 @@
 use gettextrs::gettext;
 use virt::domain::Domain;
 use virt::error::ErrorNumber;
+use virt::nodedev::NodeDevice;
 use virt::storage_pool::StoragePool;
 use virt::storage_vol::StorageVol;
 use virt::sys;
 
 use super::{Hypervisor, Result, image_format, message};
-use crate::domain_xml::{self, DiskDevice, Gadget, MachineConfig};
-use crate::host_xml::{self, HostDevice};
+use crate::domain_xml::{self, DiskDevice, Gadget, HostDev, MachineConfig};
+use crate::host_xml::{self, HostDevice, HostDeviceId};
 
 /// Whether a change reached the running machine as well as its definition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -235,6 +236,46 @@ impl Hypervisor {
         self.attach(uuid, &device)
     }
 
+    /// Give the USB device `name`, a node device just plugged into the host, back to the
+    /// running machine that had it before it was pulled out, and say which one that is.
+    ///
+    /// libvirt holds on to a USB device by the bus and device number it had, and the
+    /// device gets another as it comes back, so the host would keep it otherwise.
+    pub fn replug_usb(&self, name: &str) -> Result<Option<(HostDevice, String)>> {
+        let Some(added) = NodeDevice::lookup_by_name(&self.conn, name)
+            .and_then(|d| d.get_xml_desc(0))
+            .ok()
+            .and_then(|xml| HostDevice::parse(&xml))
+            .filter(|d| matches!(d.id, HostDeviceId::Usb { .. }))
+        else {
+            return Ok(None);
+        };
+        let present: Vec<HostDeviceId> = self.host_devices()?.into_iter().map(|d| d.id).collect();
+        for dom in self
+            .conn
+            .list_all_domains(sys::VIR_CONNECT_LIST_DOMAINS_ACTIVE)
+            .map_err(message)?
+        {
+            let Some(live) = dom
+                .get_xml_desc(0)
+                .ok()
+                .and_then(|xml| MachineConfig::parse(&xml).ok())
+            else {
+                continue;
+            };
+            let Some(stale) = lost_usb_device(&live.host_devices, &added.id, &present) else {
+                continue;
+            };
+            let live_only = sys::VIR_DOMAIN_AFFECT_LIVE;
+            dom.detach_device_flags(&stale.xml, live_only)
+                .map_err(message)?;
+            dom.attach_device_flags(&added.id.hostdev_xml(), live_only)
+                .map_err(message)?;
+            return Ok(Some((added, dom.get_name().map_err(message)?)));
+        }
+        Ok(None)
+    }
+
     /// The host's USB and PCI devices, USB first.
     pub fn host_devices(&self) -> Result<Vec<HostDevice>> {
         let devices = self.node_devices(
@@ -277,5 +318,72 @@ fn volume_disk_xml(vol: &StorageVol, target: &str, bus: &str) -> Result<String> 
         }
         sys::VIR_STORAGE_VOL_BLOCK => Ok(domain_xml::block_disk_xml(&path, target, bus)),
         _ => Err(gettext("{path} is neither a file nor a block device").replace("{path}", &path)),
+    }
+}
+
+/// Of a running machine's host devices, `live`, the USB device of the same kind as
+/// `added` that it lost, as `present`, the host's devices now, no longer has it where the
+/// machine had it; `None` where the machine lost none, or has `added` already.
+fn lost_usb_device<'a>(
+    live: &'a [HostDev],
+    added: &HostDeviceId,
+    present: &[HostDeviceId],
+) -> Option<&'a HostDev> {
+    let HostDeviceId::Usb {
+        vendor, product, ..
+    } = added
+    else {
+        return None;
+    };
+    let alike = |d: &&HostDev| {
+        matches!(&d.id, HostDeviceId::Usb { vendor: v, product: p, .. }
+            if v == vendor && p == product)
+    };
+    if live.iter().filter(alike).any(|d| d.id == *added) {
+        return None;
+    }
+    live.iter().filter(alike).find(|d| {
+        matches!(
+            d.id,
+            HostDeviceId::Usb {
+                address: Some(_),
+                ..
+            }
+        ) && !present.contains(&d.id)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn usb(product: u32, address: (u32, u32)) -> HostDeviceId {
+        HostDeviceId::Usb {
+            vendor: 0x046d,
+            product,
+            address: Some(address),
+        }
+    }
+
+    fn hostdev(id: HostDeviceId) -> HostDev {
+        HostDev {
+            xml: id.hostdev_xml(),
+            id,
+        }
+    }
+
+    #[test]
+    fn a_usb_device_plugged_in_again_goes_back_to_the_machine_that_lost_it() {
+        let live = [hostdev(usb(0xc52b, (1, 5))), hostdev(usb(0xc077, (1, 6)))];
+        let back = usb(0xc52b, (1, 9));
+        // Its old place is gone from the host: it is the one the machine lost.
+        let present = [back.clone(), usb(0xc077, (1, 6))];
+        assert_eq!(lost_usb_device(&live, &back, &present), Some(&live[0]));
+        // Its old place is still there: this is a second one like it, which stays.
+        let twin = [back.clone(), usb(0xc52b, (1, 5)), usb(0xc077, (1, 6))];
+        assert_eq!(lost_usb_device(&live, &back, &twin), None);
+        // Another kind of device, or one the machine has already.
+        assert_eq!(lost_usb_device(&live, &usb(0xaaaa, (1, 9)), &present), None);
+        assert_eq!(lost_usb_device(&live, &usb(0xc077, (1, 6)), &present), None);
     }
 }
