@@ -1,0 +1,43 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ShortcutsDialog shortcuts_dialog {
+  Adw.ShortcutsSection {
+    title: _("General");
+
+    Adw.ShortcutsItem {
+      title: _("New Virtual Machine");
+      action-name: "win.new-machine";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Keyboard Shortcuts");
+      action-name: "app.shortcuts";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Close Window");
+      action-name: "window.close";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Quit");
+      action-name: "app.quit";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("Console");
+
+    Adw.ShortcutsItem {
+      title: _("Fullscreen");
+      action-name: "machine.fullscreen";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Give Back the Keyboard");
+      subtitle: _("Press both together, then let go");
+      accelerator: "Control_L&Alt_L";
+    }
+  }
+}

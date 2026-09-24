@@ -66,6 +66,7 @@ impl MachinesApplication {
         self.set_accels_for_action("app.quit", &["<Control>q"]);
         self.set_accels_for_action("window.close", &["<Control>w"]);
         self.set_accels_for_action("win.new-machine", &["<Control>n"]);
+        self.set_accels_for_action("machine.fullscreen", &["F11"]);
     }
 
     fn show_about(&self) {
