@@ -1197,8 +1197,16 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
         x.push_str("    <smm state='on'/>\n");
     }
     x.push_str("  </features>\n");
+    // One socket with a core for each processor: without a topology each is a socket of
+    // its own, and Windows uses no more than two sockets, or one for its Home edition.
+    let topology = format!("<topology sockets='1' cores='{}' threads='1'/>", m.vcpus);
     if kvm {
-        x.push_str("  <cpu mode='host-passthrough' check='none' migratable='on'/>\n");
+        let _ = writeln!(
+            x,
+            "  <cpu mode='host-passthrough' check='none' migratable='on'>{topology}</cpu>"
+        );
+    } else {
+        let _ = writeln!(x, "  <cpu>{topology}</cpu>");
     }
     let _ = writeln!(
         x,
@@ -1799,6 +1807,8 @@ mod tests {
         assert_eq!(c.firmware, Firmware::Uefi);
         assert_eq!(c.memory_mib, 4096);
         assert_eq!(c.vcpus, 2);
+        assert_eq!(c.cpu.topology, Topology::Cores);
+        assert_eq!(c.cpu.model, CpuModel::HostPassthrough);
         assert_eq!(c.disk_files(), ["/images/a'b.qcow2"]);
         assert_eq!(c.disks[0].bus, "virtio");
         assert_eq!(c.disks[1].source.as_deref(), Some("/isos/install.iso"));
