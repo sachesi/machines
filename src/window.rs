@@ -1,8 +1,8 @@
 //! The main window: the machines of one libvirt connection in the sidebar, the selected
 //! one in the content pane.
 //!
-//! libvirt is polled rather than subscribed to: a listing every two seconds is cheap, and
-//! it also picks up machines other tools define.
+//! The machines are listed again whenever libvirt tells of a change to one, and every so
+//! often for what it tells nothing of.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
