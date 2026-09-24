@@ -92,13 +92,18 @@ impl Networks {
         let group = adw::PreferencesGroup::builder()
             .title(gettext("Virtual Networks"))
             .build();
-        let add = add_button(&gettext("New Virtual Network"));
-        add.connect_clicked(glib::clone!(
-            #[strong(rename_to = this)]
-            self,
-            move |_| this.new_network()
-        ));
-        group.set_header_suffix(Some(&add));
+        // A session cannot make the bridge a network needs, and its machines use QEMU's
+        // user networking anyway.
+        let session = self.win.is_session();
+        if !session {
+            let add = add_button(&gettext("New Virtual Network"));
+            add.connect_clicked(glib::clone!(
+                #[strong(rename_to = this)]
+                self,
+                move |_| this.new_network()
+            ));
+            group.set_header_suffix(Some(&add));
+        }
         let networks = match networks {
             Ok(networks) => networks,
             Err(e) => {
@@ -107,7 +112,14 @@ impl Networks {
             }
         };
         if networks.is_empty() && group.description().is_none_or(|d| d.is_empty()) {
-            group.set_description(Some(&gettext("No virtual networks")));
+            group.set_description(Some(&if session {
+                gettext(
+                    "Virtual networks are the system connection’s. Machines of the user \
+                     session reach the network through QEMU’s user networking.",
+                )
+            } else {
+                gettext("No virtual networks")
+            }));
         }
         for net in &networks {
             let mut subtitle = mode(&net.config);
