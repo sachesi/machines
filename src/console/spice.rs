@@ -44,6 +44,9 @@ pub(super) struct Spice {
     pub usb: Option<spice::UsbDeviceManager>,
     /// Watches the host's clipboard, to offer what is copied there to the guest.
     pub clipboard_changed: Option<glib::SignalHandlerId>,
+    /// Whether the host's clipboard changed while the console did not have the keyboard,
+    /// to offer once it does.
+    pub clipboard_offer_pending: bool,
     /// A 3D frame drawn that QEMU waits to hear is done with.
     pub draw_pending: bool,
     pub resize: Option<glib::SourceId>,
@@ -88,7 +91,7 @@ impl Console {
         let changed = self.clipboard().connect_changed(glib::clone!(
             #[weak(rename_to = console)]
             self,
-            move |_| console.offer_clipboard()
+            move |_| console.on_host_clipboard()
         ));
         self.spice_state().clipboard_changed = Some(changed);
         if !session.open_fd(fd) {
@@ -128,6 +131,24 @@ impl Console {
             .is_some_and(|usb| usb.devices().iter().any(|d| usb.is_device_connected(d)))
     }
 
+    /// The host's clipboard changed: offer it to the guest now if the console has the
+    /// keyboard, else once it does, so that the guest does not see what is copied while
+    /// the user works elsewhere.
+    fn on_host_clipboard(&self) {
+        if self.has_focus() {
+            self.offer_clipboard();
+        } else {
+            self.spice_state().clipboard_offer_pending = true;
+        }
+    }
+
+    /// The console took the keyboard: offer what the host copied meanwhile.
+    pub(super) fn offer_pending_clipboard(&self) {
+        if std::mem::take(&mut self.spice_state().clipboard_offer_pending) {
+            self.offer_clipboard();
+        }
+    }
+
     /// Tell the guest's agent the host's clipboard has text, when something other than the
     /// guest put it there.
     fn offer_clipboard(&self) {
@@ -148,12 +169,17 @@ impl Console {
     }
 
     fn share_clipboard(&self, main: &spice::MainChannel) {
-        // The guest copied text: fetch it for the host's clipboard.
-        main.connect_main_clipboard_selection_grab(|main, selection, types| {
-            if selection == CLIPBOARD && types.contains(&UTF8_TEXT) {
-                main.clipboard_selection_request(CLIPBOARD, UTF8_TEXT);
+        // The guest copied text: fetch it for the host's clipboard, if the user copied it,
+        // with the console's keyboard, and not the guest by itself.
+        main.connect_main_clipboard_selection_grab(glib::clone!(
+            #[weak(rename_to = console)]
+            self,
+            move |main, selection, types| {
+                if console.has_focus() && selection == CLIPBOARD && types.contains(&UTF8_TEXT) {
+                    main.clipboard_selection_request(CLIPBOARD, UTF8_TEXT);
+                }
             }
-        });
+        ));
         main.connect_main_clipboard_selection(glib::clone!(
             #[weak(rename_to = console)]
             self,
@@ -173,6 +199,10 @@ impl Console {
             move |main, selection, kind| {
                 if selection != CLIPBOARD || kind != UTF8_TEXT {
                     return false;
+                }
+                if !console.has_focus() {
+                    main.clipboard_selection_notify(CLIPBOARD, UTF8_TEXT, &[]);
+                    return true;
                 }
                 let (main, clipboard) = (main.clone(), console.clipboard());
                 glib::spawn_future_local(async move {
@@ -251,7 +281,7 @@ impl Console {
                 self,
                 move |_| {
                     console.resize_guest();
-                    console.offer_clipboard();
+                    console.on_host_clipboard();
                 }
             ));
             self.share_clipboard(main);

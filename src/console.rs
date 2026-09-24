@@ -543,7 +543,10 @@ impl Console {
         focus.connect_enter(glib::clone!(
             #[weak(rename_to = console)]
             self,
-            move |_| console.hold_shortcuts(true)
+            move |_| {
+                console.hold_shortcuts(true);
+                console.offer_pending_clipboard();
+            }
         ));
         focus.connect_leave(glib::clone!(
             #[weak(rename_to = console)]
