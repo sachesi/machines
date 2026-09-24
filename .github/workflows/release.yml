@@ -1,0 +1,243 @@
+name: Release
+
+# A release tag gets a GitHub release, once CI has passed (ci.yml calls this). The tag
+# must agree with the version in Cargo.toml and Cargo.lock and with the newest release in
+# the metainfo, whose notes become the release's. The release carries the crates the build
+# needs, for building without a network, and packages for Fedora, Debian, Ubuntu and Arch
+# Linux. Run by hand, it publishes a tag that was pushed before this workflow existed.
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, such as v0.1.0
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  source:
+    name: Check the version and vendor the crates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - name: Check the version and write the notes
+        run: |
+          mkdir -p notes
+          python3 - <<'EOF'
+          import os, re, sys, tomllib
+          import xml.etree.ElementTree as ET
+
+          tag = os.environ["TAG"].removeprefix("v")
+          with open("Cargo.toml", "rb") as f:
+              cargo = tomllib.load(f)["package"]["version"]
+          with open("Cargo.lock", "rb") as f:
+              lock = next(p["version"] for p in tomllib.load(f)["package"] if p["name"] == "machines")
+          release = ET.parse("data/io.github.sachesi.machines.metainfo.xml").find("releases/release")
+          found = {"Cargo.toml": cargo, "Cargo.lock": lock, "the metainfo": release.get("version")}
+          wrong = [f"{where} says {v}" for where, v in found.items() if v != tag]
+          if wrong:
+              sys.exit(f"The tag is {tag}, but " + ", ".join(wrong))
+
+          if release.find("description") is None:
+              sys.exit(f"The metainfo release {tag} has no description to take the notes from")
+
+          def text(e):
+              return re.sub(r"\s+", " ", "".join(e.itertext())).strip()
+
+          notes = []
+          for e in release.find("description"):
+              if e.tag == "p":
+                  notes.append(text(e))
+              elif e.tag in ("ul", "ol"):
+                  notes.append("\n".join(f"- {text(li)}" for li in e))
+          with open("notes/notes.md", "w") as f:
+              f.write("\n\n".join(notes) + "\n")
+          EOF
+      - name: Vendor the crates
+        run: |
+          dir="machines-${TAG#v}"
+          mkdir -p "$dir/.cargo" dist
+          cargo vendor --locked --versioned-dirs "$dir/vendor" > "$dir/.cargo/config.toml"
+          # Paths relative to the source tree, so the tarball unpacks over it.
+          sed -i 's|^directory = .*|directory = "vendor"|' "$dir/.cargo/config.toml"
+          tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
+            -cJf "dist/$dir-vendor.tar.xz" "$dir"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: notes
+          path: notes/notes.md
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vendor
+          path: dist/*
+
+  fedora:
+    name: Package for Fedora
+    needs: source
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install the tools
+        run: dnf install -y --setopt=install_weak_deps=False git-core rpm-build dnf-plugins-core
+      # The spec of this workflow's revision, which builds the tag's sources.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The spec's Source1, which the release is not yet there to serve.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: vendor
+          path: rpmbuild/SOURCES
+      - name: Build
+        run: |
+          spec=packaging/fedora/machines.spec
+          sed -i "s/^Version:.*/Version:        ${TAG#v}/; s/^Release:.*/Release:        1%{?dist}/" "$spec"
+          dnf builddep -y --setopt=install_weak_deps=False "$spec"
+          # rpmbuild fetches Source0 from the tag into a directory it does not create itself.
+          mkdir -p rpmbuild/SOURCES
+          rpmbuild -bb --define "_topdir $PWD/rpmbuild" --define "_disable_source_fetch 0" "$spec"
+          mkdir dist && mv rpmbuild/RPMS/*/*.rpm dist/
+          # The dependencies resolve on the release it was built for.
+          dnf install -y dist/*.rpm
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fedora
+          path: dist/*
+
+  debian:
+    name: Package for ${{ matrix.name }}
+    needs: source
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Testing: stable's GTK and libadwaita are older than Machines needs.
+          - name: Debian
+            image: debian:forky
+            artifact: debian
+            revision: "1"
+          # Its Rust is 1.93; a newer rust-version needs one of its rustc-1.xx packages.
+          - name: Ubuntu 26.04
+            image: ubuntu:26.04
+            artifact: ubuntu
+            revision: 1~ubuntu26.04
+    container: ${{ matrix.image }}
+    env:
+      REVISION: ${{ matrix.revision }}
+    steps:
+      - name: Install the build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git cargo rustc just \
+            dpkg-dev pkg-config blueprint-compiler gettext \
+            libgtk-4-dev libadwaita-1-dev libglib2.0-dev libvirt-dev libgvnc-1.0-dev \
+            libspice-client-glib-2.0-dev libusb-1.0-0-dev libvte-2.91-gtk4-dev
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - name: Build
+        run: |
+          export MACHINES_LOCALEDIR=/usr/share/locale
+          cargo build --locked --release
+          DESTDIR="$PWD/stage" just prefix=/usr install
+          install -Dm644 LICENSE stage/usr/share/doc/machines/copyright
+      - name: Package
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          bins=stage/usr/bin/machines
+          strip --strip-unneeded $bins
+          # dpkg-shlibdeps wants a source package to belong to.
+          mkdir debian
+          printf 'Source: machines\n\nPackage: machines\nArchitecture: any\n' > debian/control
+          shlibs=$(dpkg-shlibdeps -O $(printf -- '-e %s ' $bins) | sed -n 's/^shlibs:Depends=//p')
+          mkdir stage/DEBIAN
+          cat > stage/DEBIAN/control <<EOF
+          Package: machines
+          Version: ${TAG#v}-$REVISION
+          Architecture: $(dpkg --print-architecture)
+          Maintainer: sachesi <xsachesi@pm.me>
+          Installed-Size: $(du -sk stage | cut -f1)
+          Depends: $shlibs, libgtk-4-1 (>= 4.22), libadwaita-1-0 (>= 1.9), hicolor-icon-theme
+          Recommends: libvirt-daemon-system, osinfo-db, ovmf, swtpm, virtiofsd
+          Section: admin
+          Priority: optional
+          Homepage: https://github.com/sachesi/machines
+          Description: Manager for libvirt virtual machines
+           Machines manages the QEMU/KVM virtual machines of a libvirt connection, the
+           system one or your user session, built with GTK 4 and libadwaita: a VNC,
+           SPICE and serial console, new machines from an installation ISO, snapshots,
+           hardware, storage pools and virtual networks.
+          EOF
+          mkdir dist
+          deb="dist/machines_${TAG#v}-${REVISION}_$(dpkg --print-architecture).deb"
+          dpkg-deb --root-owner-group -Zxz --build stage "$deb"
+          # The dependencies resolve on the release it was built for.
+          apt-get install -y "./$deb"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/*
+
+  arch:
+    name: Package for Arch Linux
+    needs: source
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      # The PKGBUILD of this workflow's revision, which packages every release's layout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build
+        run: |
+          pacman -Syu --noconfirm --needed git
+          useradd -m builder
+          install -d -o builder pkg
+          cp packaging/aur/PKGBUILD pkg/
+          sed -i "s/^pkgver=.*/pkgver=${TAG#v}/; s/^pkgrel=.*/pkgrel=1/" pkg/PKGBUILD
+          (source pkg/PKGBUILD && pacman -S --noconfirm --needed --asdeps "${depends[@]}" "${makedepends[@]}")
+          su builder -c 'cd pkg && makepkg --noconfirm'
+          mkdir dist && mv pkg/machines-"${TAG#v}"-1-*.pkg.tar.zst dist/
+          # The dependencies resolve on Arch as it is today.
+          pacman -U --noconfirm dist/*.pkg.tar.zst
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: arch
+          path: dist/*
+
+  publish:
+    name: Publish the release
+    needs: [source, fedora, debian, arch]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: notes
+          name: notes
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          pattern: "{vendor,fedora,debian,ubuntu,arch}"
+          merge-multiple: true
+      - name: Publish
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          # A release that already exists keeps its notes, which may have been edited by hand.
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber *
+          else
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --title "Machines ${TAG#v}" \
+              --notes-file ../notes/notes.md *
+          fi
