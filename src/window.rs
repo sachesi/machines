@@ -143,6 +143,26 @@ mod imp {
                 obj,
                 move |_, _| win.imp().split_view.set_show_content(true)
             ));
+            // A click selects a row, and in a collapsed split view it goes on to the machine
+            // too. single-click-activate would do that, but also select the rows under the
+            // pointer as it passes over them.
+            let click = gtk::GestureClick::new();
+            click.set_propagation_phase(gtk::PropagationPhase::Capture);
+            click.connect_pressed(glib::clone!(
+                #[weak(rename_to = win)]
+                obj,
+                move |_, _, x, y| {
+                    let imp = win.imp();
+                    let list = imp.machine_list.upcast_ref::<gtk::Widget>();
+                    if list
+                        .pick(x, y, gtk::PickFlags::DEFAULT)
+                        .is_some_and(|picked| picked != *list)
+                    {
+                        imp.split_view.set_show_content(true);
+                    }
+                }
+            ));
+            self.machine_list.add_controller(click);
             self.selection.connect_selected_item_notify(glib::clone!(
                 #[weak(rename_to = win)]
                 obj,
