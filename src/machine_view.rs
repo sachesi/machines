@@ -608,7 +608,7 @@ impl MachineView {
         let detached = imp.detached.borrow().is_some();
         self.action_set_enabled(
             "machine.fullscreen",
-            imp.console.is_open() && !detached || imp.fullscreen.get(),
+            active && !detached || imp.fullscreen.get(),
         );
         self.action_set_enabled(
             "machine.detach-console",
