@@ -42,10 +42,12 @@ schemas:
 run *args: build-debug schemas
     GSETTINGS_SCHEMA_DIR={{schema_dir}} target/debug/machines {{args}}
 
-# Lints: rustfmt, clippy, blueprint, desktop file and metainfo validation.
+# Lints: rustfmt, clippy, dependency advisories and licences, blueprint, desktop file and
+# metainfo validation.
 check:
     cargo fmt --check
     cargo clippy --all-targets -- -D warnings
+    cargo deny check
     mkdir -p {{check_dir}}
     blueprint-compiler batch-compile {{check_dir}} data/ui data/ui/*.blp >/dev/null
     desktop-file-validate data/{{app_id}}.desktop
