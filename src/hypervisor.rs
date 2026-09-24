@@ -886,11 +886,7 @@ impl Hypervisor {
 /// A name for a new volume in `pool`, after the machine `machine`, that no volume there has.
 fn unused_volume_name(pool: &StoragePool, machine: &str, extension: &str) -> String {
     let _ = pool.refresh(0);
-    let stem = machine
-        .split(|c: char| !(c.is_alphanumeric() || "._".contains(c)))
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("-");
+    let stem = volume_stem(machine);
     (0..)
         .map(|i| match i {
             0 => format!("{stem}{extension}"),
@@ -898,6 +894,22 @@ fn unused_volume_name(pool: &StoragePool, machine: &str, extension: &str) -> Str
         })
         .find(|n| StorageVol::lookup_by_name(pool, n).is_err())
         .expect("an unused name")
+}
+
+/// The machine's name as a file name: its letters, digits, `.` and `_`, the rest made `-`,
+/// and not starting with a `.`, which would hide the file.
+fn volume_stem(machine: &str) -> String {
+    let stem = machine
+        .split(|c: char| !(c.is_alphanumeric() || "._".contains(c)))
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let stem = stem.trim_start_matches('.');
+    if stem.is_empty() {
+        "machine".to_owned()
+    } else {
+        stem.to_owned()
+    }
 }
 
 /// qcow2 by its magic number, where the file can be read; otherwise by extension, with raw
@@ -918,4 +930,17 @@ fn image_format(path: &Path) -> String {
 
 fn on_path(program: &str) -> bool {
     glib::find_program_in_path(program).is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn volumes_are_named_after_their_machine() {
+        assert_eq!(volume_stem("Fedora 42 (Copy)"), "Fedora-42-Copy");
+        assert_eq!(volume_stem("win11_test.2"), "win11_test.2");
+        assert_eq!(volume_stem("???"), "machine");
+        assert_eq!(volume_stem("..hidden"), "hidden");
+    }
 }
