@@ -177,6 +177,16 @@ mod imp {
                 ),
             );
             obj.connect_fullscreened_notify(|win| win.follow_fullscreen());
+            // Going back to the list, which fullscreen folds away, leaves fullscreen.
+            self.split_view.connect_show_content_notify(glib::clone!(
+                #[weak(rename_to = win)]
+                obj,
+                move |split| {
+                    if win.is_fullscreen() && !split.shows_content() {
+                        win.unfullscreen();
+                    }
+                }
+            ));
             obj.connect();
         }
 
