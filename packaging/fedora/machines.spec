@@ -35,20 +35,30 @@ BuildRequires:  pkgconfig(vte-2.91-gtk4)
 Requires:       gtk4%{?_isa} >= 4.22
 Requires:       libadwaita%{?_isa} >= 1.9
 Requires:       hicolor-icon-theme
-# The daemons and QEMU for machines on this computer; a remote connection needs neither.
-Recommends:     libvirt-daemon-kvm
-Recommends:     libvirt-daemon-config-network
-# Recognizing the system on an installation ISO.
-Recommends:     osinfo-db
-# UEFI firmware, an emulated TPM, and folders shared with a machine.
+# What machines on this computer need, and no more than that: libvirt-daemon-kvm would
+# also bring every storage backend and QEMU's own windows. The QEMU driver brings swtpm,
+# the default network brings its driver and dnsmasq, and QEMU brings its firmware.
+Requires:       libvirt-daemon-driver-qemu
+Requires:       libvirt-daemon-driver-nodedev
+Requires:       libvirt-daemon-driver-storage-core
+Requires:       libvirt-daemon-config-network
 %ifarch x86_64
-Recommends:     edk2-ovmf
+Requires:       qemu-system-x86-core
+Requires:       qemu-device-display-virtio-vga-gl
 %endif
 %ifarch aarch64
-Recommends:     edk2-aarch64
+Requires:       qemu-system-aarch64-core
 %endif
-Recommends:     swtpm-tools
-Recommends:     virtiofsd
+Requires:       qemu-device-display-virtio-gpu-pci-gl
+Requires:       qemu-audio-spice
+Requires:       qemu-audio-pipewire
+# The SPICE agent's channel and USB redirection are spicevmc character devices.
+Requires:       qemu-char-spice
+Requires:       qemu-device-usb-host
+Requires:       qemu-device-usb-redirect
+Requires:       virtiofsd
+# Recognizing the system on an installation ISO.
+Recommends:     osinfo-db
 
 %description
 Machines manages the QEMU/KVM virtual machines of a libvirt connection, the
