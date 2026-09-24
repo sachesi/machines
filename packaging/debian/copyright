@@ -1,0 +1,15 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: machines
+Upstream-Contact: sachesi <xsachesi@pm.me>
+Source: https://github.com/sachesi/machines
+
+Files: *
+Copyright: sachesi <xsachesi@pm.me>
+License: GPL-3.0-or-later
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in /usr/share/common-licenses/GPL-3.
+
+Files: vendor/*
+Copyright: The authors of each crate, as listed in its Cargo.toml
+License: various
+ Each vendored crate carries its own license, in its directory under vendor/.

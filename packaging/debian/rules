@@ -1,0 +1,25 @@
+#!/usr/bin/make -f
+
+export CARGO_HOME = $(CURDIR)/debian/cargo-home
+export MACHINES_LOCALEDIR = /usr/share/locale
+
+%:
+	dh $@
+
+# The crates come as the orig-vendor component, which unpacks into vendor/ with the cargo
+# configuration that points at them. The source package leaves out their Cargo.toml.orig
+# files, which cargo would check against each crate's list of file checksums; the crate's
+# own sum stays.
+override_dh_auto_configure:
+	mkdir -p .cargo
+	sed 's|^directory = .*|directory = "vendor/vendor"|' vendor/.cargo/config.toml > .cargo/config.toml
+	find vendor/vendor -name .cargo-checksum.json -print0 | xargs -0 sed -i 's/"files":{[^}]*}/"files":{}/'
+
+override_dh_auto_build:
+	cargo build --release --offline --locked
+
+# CI runs the tests on every change; the package build does not compile everything twice.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	DESTDIR=$(CURDIR)/debian/machines JUST_TEMPDIR=$(CURDIR)/debian just prefix=/usr install

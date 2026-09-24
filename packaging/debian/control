@@ -1,0 +1,44 @@
+Source: machines
+Section: admin
+Priority: optional
+Maintainer: sachesi <xsachesi@pm.me>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc (>= 1.92),
+               pkg-config,
+               just,
+               blueprint-compiler,
+               gettext,
+               libgtk-4-dev (>= 4.22),
+               libadwaita-1-dev (>= 1.9),
+               libglib2.0-dev,
+               libvirt-dev,
+               libgvnc-1.0-dev,
+               libspice-client-glib-2.0-dev,
+               libusb-1.0-0-dev,
+               libvte-2.91-gtk4-dev
+Standards-Version: 4.7.2
+Homepage: https://github.com/sachesi/machines
+Rules-Requires-Root: no
+
+Package: machines
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         libgtk-4-1 (>= 4.22),
+         libadwaita-1-0 (>= 1.9),
+         hicolor-icon-theme
+Recommends: libvirt-daemon-system,
+            osinfo-db,
+            ovmf,
+            swtpm,
+            virtiofsd
+Description: Manager for libvirt virtual machines
+ Machines manages the QEMU/KVM virtual machines of a libvirt connection, the
+ system one or your user session, built with GTK 4 and libadwaita. It starts,
+ stops, pauses and saves machines, shows their display in a built-in VNC or
+ SPICE console and their serial console as text, creates them from an
+ installation ISO or a disk image, clones them, takes snapshots of them, and
+ changes their hardware: disks, network interfaces, host USB and PCI devices,
+ processors, memory and firmware. It also manages storage pools and virtual
+ networks.
