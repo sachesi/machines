@@ -50,3 +50,30 @@ jobs:
     uses: ./.github/workflows/release.yml
     permissions:
       contents: write
+
+  aur:
+    name: AUR
+    # After the release, whose job also checks that the tag matches the sources.
+    needs: release
+    uses: ./.github/workflows/aur.yml
+    # A called workflow sees no secrets, its environment's included, unless the
+    # caller passes them on.
+    secrets: inherit
+
+  copr:
+    name: Copr
+    # After the release, whose files the build downloads.
+    needs: release
+    uses: ./.github/workflows/copr.yml
+    # A called workflow sees no secrets unless the caller passes them on.
+    secrets: inherit
+
+  obs:
+    name: OBS
+    # After the release, whose files the build downloads.
+    needs: release
+    uses: ./.github/workflows/obs.yml
+    permissions:
+      contents: write
+    # A called workflow sees no secrets unless the caller passes them on.
+    secrets: inherit

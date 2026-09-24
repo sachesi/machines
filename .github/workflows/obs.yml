@@ -1,0 +1,78 @@
+name: OBS
+
+# A release tag is built on the openSUSE Build Service, in home:sachesi:software, once its
+# GitHub release is published (ci.yml calls this). The obs branch gets the openSUSE spec and
+# the Debian source package for the tag, made from packaging/opensuse and packaging/debian,
+# and OBS is told to fetch them along with the tarballs they name. Run by hand, it builds
+# the given tag again.
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build, such as v0.1.0
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  obs:
+    name: Build on OBS
+    runs-on: ubuntu-latest
+    # Listed with the repository's deployments, linking to the package on OBS.
+    environment:
+      name: obs
+      url: https://build.opensuse.org/package/show/home:sachesi:software/machines
+    permissions:
+      # For the obs branch.
+      contents: write
+    env:
+      NAME: machines
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      # The packaging of this workflow's revision, which builds the tag's sources.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Make the packaging
+        run: |
+          ver=${TAG#v}
+          mkdir -p work obs
+          # The tarballs OBS downloads too, by the URLs in the spec: the tag's archive and
+          # the release's vendored crates, which the Debian package unpacks into vendor/.
+          curl -fsSL -o "work/${NAME}_$ver.orig.tar.gz" \
+            "https://github.com/$GITHUB_REPOSITORY/archive/refs/tags/$TAG.tar.gz"
+          curl -fsSL -o "work/${NAME}_$ver.orig-vendor.tar.xz" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$NAME-$ver-vendor.tar.xz"
+          tar -xzf "work/${NAME}_$ver.orig.tar.gz" -C work
+          mkdir "work/$NAME-$ver/vendor"
+          tar -xJf "work/${NAME}_$ver.orig-vendor.tar.xz" -C "work/$NAME-$ver/vendor" --strip-components=1
+          cp -r packaging/debian "work/$NAME-$ver/debian"
+          cat > "work/$NAME-$ver/debian/changelog" <<EOF
+          $NAME ($ver-1) unstable; urgency=medium
+
+            * Release $ver.
+
+           -- sachesi <xsachesi@pm.me>  $(date -R)
+          EOF
+          (cd work && dpkg-source -b "$NAME-$ver")
+          mv work/*.dsc work/*.debian.tar.xz obs/
+          sed "s/^Version:.*/Version:        $ver/" "packaging/opensuse/$NAME.spec" > "obs/$NAME.spec"
+      - name: Publish it on the obs branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd obs
+          git init -q -b obs
+          git add -A
+          git -c user.name=sachesi -c user.email=107267487+sachesi@users.noreply.github.com \
+            commit -q -m "Packaging for OBS of $NAME $TAG"
+          # One commit, replaced for each release; OBS reads only the newest.
+          git push -f "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" obs
+      - name: Start the build
+        env:
+          # A runservice token of home:sachesi:software/machines.
+          OBS_TOKEN: ${{ secrets.OBS_TOKEN }}
+        run: |
+          [ -n "$OBS_TOKEN" ] || { echo "OBS_TOKEN is not set" >&2; exit 1; }
+          curl -fsS -X POST -H "Authorization: Token $OBS_TOKEN" \
+            "https://api.opensuse.org/trigger/runservice?project=home:sachesi:software&package=$NAME"
