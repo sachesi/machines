@@ -156,9 +156,10 @@ template $MachinesWindow: Adw.ApplicationWindow {
                 show-title: false;
               }
 
+              // The list always has one selected, so this shows only while the sidebar
+              // says there are none, or no connection.
               content: Adw.StatusPage {
                 icon-name: "io.github.sachesi.machines-symbolic";
-                title: _("No Virtual Machine Selected");
               };
             };
           }
