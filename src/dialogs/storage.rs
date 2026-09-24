@@ -167,12 +167,8 @@ impl Storage {
                 Some(path) => gettext("{path} · Inactive").replace("{path}", path),
                 None => kind(pool),
             };
-            let row = adw::ActionRow::builder()
-                .use_markup(false)
-                .title(&pool.name)
-                .subtitle(subtitle)
-                .activatable(true)
-                .build();
+            let row = adw::ActionRow::builder().activatable(true).build();
+            dialogs::set_plain_text(&row, &pool.name, &subtitle);
             row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
             row.connect_activated(glib::clone!(
                 #[strong(rename_to = this)]
@@ -233,12 +229,8 @@ impl Storage {
                             gettext("Used by {machines}").replace("{machines}", &users.join(", "))
                         );
                     }
-                    let row = adw::ActionRow::builder()
-                        .use_markup(false)
-                        .title(disk.name())
-                        .subtitle(subtitle)
-                        .subtitle_selectable(true)
-                        .build();
+                    let row = adw::ActionRow::builder().subtitle_selectable(true).build();
+                    dialogs::set_plain_text(&row, &disk.name(), &subtitle);
                     group.add(&row);
                 }
             }
@@ -408,11 +400,8 @@ impl Storage {
                 .valign(gtk::Align::Center)
                 .hexpand(true)
                 .build();
-            let row = adw::ActionRow::builder()
-                .use_markup(false)
-                .title(&upload.name)
-                .subtitle(gettext("Uploading"))
-                .build();
+            let row = adw::ActionRow::new();
+            dialogs::set_plain_text(&row, &upload.name, &gettext("Uploading"));
             row.add_suffix(&bar);
             upload.bar.replace(bar.downgrade());
             upload.show_progress();
@@ -455,11 +444,8 @@ impl Storage {
                 gettext("Used by {machines}").replace("{machines}", &users.join(", "))
             );
         }
-        let row = adw::ActionRow::builder()
-            .use_markup(false)
-            .title(&vol.name)
-            .subtitle(subtitle)
-            .build();
+        let row = adw::ActionRow::new();
+        dialogs::set_plain_text(&row, &vol.name, &subtitle);
         let delete = gtk::Button::builder()
             .icon_name("user-trash-symbolic")
             .tooltip_text(gettext("Delete"))

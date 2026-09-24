@@ -117,12 +117,8 @@ impl Networks {
             if !net.active {
                 subtitle = format!("{subtitle} · {}", gettext("Inactive"));
             }
-            let row = adw::ActionRow::builder()
-                .use_markup(false)
-                .title(&net.name)
-                .subtitle(subtitle)
-                .activatable(true)
-                .build();
+            let row = adw::ActionRow::builder().activatable(true).build();
+            dialogs::set_plain_text(&row, &net.name, &subtitle);
             row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
             row.connect_activated(glib::clone!(
                 #[strong(rename_to = this)]

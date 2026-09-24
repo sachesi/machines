@@ -25,6 +25,15 @@ pub fn toast(text: &str) -> adw::Toast {
     adw::Toast::builder().title(text).use_markup(false).build()
 }
 
+/// Show `title` and `subtitle` in `row` as they are. Rows read their text as markup, and
+/// one built with both markup off and text still parses the text first.
+pub fn set_plain_text(row: &impl IsA<adw::ActionRow>, title: &str, subtitle: &str) {
+    let row = row.upcast_ref::<adw::ActionRow>();
+    row.set_use_markup(false);
+    PreferencesRowExt::set_title(row, title);
+    row.set_subtitle(subtitle);
+}
+
 /// A file, or with `folder` a folder, of the host libvirt runs on, which on this computer
 /// the file chooser picks, and on another is typed in.
 pub async fn choose_on_host(

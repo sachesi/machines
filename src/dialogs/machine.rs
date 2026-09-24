@@ -403,11 +403,8 @@ fn fill_boot_list(
     let last = entries.len().saturating_sub(1);
     for (i, (device, on)) in entries.into_iter().enumerate() {
         let (title, subtitle) = boot_label(config, device);
-        let row = adw::ActionRow::builder()
-            .use_markup(false)
-            .title(title)
-            .subtitle(subtitle)
-            .build();
+        let row = adw::ActionRow::new();
+        dialogs::set_plain_text(&row, &title, &subtitle);
         let check = gtk::CheckButton::builder()
             .active(on)
             .valign(gtk::Align::Center)

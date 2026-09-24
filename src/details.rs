@@ -124,13 +124,12 @@ fn window(view: &MachineView) -> Option<MachinesWindow> {
 }
 
 pub fn info_row(title: &str, subtitle: &str) -> adw::ActionRow {
-    adw::ActionRow::builder()
-        .use_markup(false)
-        .title(title)
-        .subtitle(subtitle)
+    let row = adw::ActionRow::builder()
         .subtitle_selectable(true)
         .css_classes(["property"])
-        .build()
+        .build();
+    dialogs::set_plain_text(&row, title, subtitle);
+    row
 }
 
 fn overview(
@@ -582,12 +581,10 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending) -> adw::ActionRow
         subtitle = format!("{subtitle}\n{bus}");
     }
     let row = adw::ActionRow::builder()
-        .use_markup(false)
-        .title(title)
-        .subtitle(noted(subtitle, pending))
         .subtitle_selectable(true)
         .css_classes(["property"])
         .build();
+    dialogs::set_plain_text(&row, &title, &noted(subtitle, pending));
     let remove = remove_button(&gettext("Remove"));
     remove.connect_clicked(glib::clone!(
         #[weak]
@@ -796,12 +793,10 @@ fn nic_row(view: &MachineView, nic: &Nic, pending: Pending) -> adw::ActionRow {
         .collect::<Vec<_>>()
         .join(" · ");
     let row = adw::ActionRow::builder()
-        .use_markup(false)
-        .title(title)
-        .subtitle(noted(subtitle, pending))
         .subtitle_selectable(true)
         .css_classes(["property"])
         .build();
+    dialogs::set_plain_text(&row, &title, &noted(subtitle, pending));
     if pending != Pending::Removed {
         row.add_suffix(&detach_button(view, &nic.xml));
     }
@@ -855,12 +850,8 @@ fn host_devices(
                 HostDeviceId::Usb { .. } => gettext("USB Device"),
                 HostDeviceId::Pci(_) => gettext("PCI Device"),
             };
-            let row = adw::ActionRow::builder()
-                .use_markup(false)
-                .title(title)
-                .subtitle(noted(dev.id.to_string(), pending))
-                .subtitle_selectable(true)
-                .build();
+            let row = adw::ActionRow::builder().subtitle_selectable(true).build();
+            dialogs::set_plain_text(&row, &title, &noted(dev.id.to_string(), pending));
             if pending != Pending::Removed {
                 row.add_suffix(&detach_button(view, &dev.xml));
             }
@@ -934,12 +925,10 @@ fn gadgets(
             ),
         };
         let row = adw::ActionRow::builder()
-            .use_markup(false)
-            .title(title)
-            .subtitle(noted(subtitle, pending))
             .subtitle_selectable(true)
             .css_classes(["property"])
             .build();
+        dialogs::set_plain_text(&row, &title, &noted(subtitle, pending));
         if pending != Pending::Removed {
             row.add_suffix(&detach_button(view, &device.xml));
         }
@@ -985,12 +974,8 @@ fn snapshot_row(view: &MachineView, snapshot: &Snapshot) -> adw::ActionRow {
     if let Some(description) = &snapshot.description {
         subtitle = format!("{subtitle}\n{description}");
     }
-    let row = adw::ActionRow::builder()
-        .use_markup(false)
-        .title(&snapshot.name)
-        .subtitle(subtitle)
-        .subtitle_selectable(true)
-        .build();
+    let row = adw::ActionRow::builder().subtitle_selectable(true).build();
+    dialogs::set_plain_text(&row, &snapshot.name, &subtitle);
     if snapshot.current {
         row.add_suffix(
             &gtk::Label::builder()

@@ -643,12 +643,10 @@ fn host_devices_page(
             subtitle = format!("{subtitle}\n{}", gettext("The host runs from a disk on it"));
         }
         let row = adw::ActionRow::builder()
-            .use_markup(false)
-            .title(device_title(dev))
-            .subtitle(subtitle)
             .activatable(!in_use)
             .sensitive(!in_use)
             .build();
+        dialogs::set_plain_text(&row, &device_title(dev), &subtitle);
         row.add_suffix(&gtk::Image::from_icon_name("list-add-symbolic"));
         let xml = dev.passthrough_id(devices).hostdev_xml();
         let chosen = dev.clone();
@@ -785,11 +783,9 @@ pub fn plug_usb(view: &MachineView) {
             }
             for dev in usb {
                 let row = adw::SwitchRow::builder()
-                    .use_markup(false)
-                    .title(device_title(dev))
-                    .subtitle(device_subtitle(dev))
                     .active(plugged.iter().any(|p| p.matches(&dev.id)))
                     .build();
+                dialogs::set_plain_text(&row, &device_title(dev), &device_subtitle(dev));
                 let xml = dev.passthrough_id(&devices).hostdev_xml();
                 // Set while the switch goes back after a failure or a refusal, which is no
                 // request.
@@ -915,25 +911,20 @@ pub fn redirect_usb(view: &MachineView) {
                 let redirected = usb.is_device_connected(&device);
                 let refused = usb.can_redirect_device(&device).err();
                 let row = adw::SwitchRow::builder()
-                    .use_markup(false)
-                    .title(
-                        device
-                            .description(Some("%1$s %2$s"))
-                            .unwrap_or_default()
-                            .trim(),
-                    )
-                    // Printf's numbered arguments may skip none, so the first two print
-                    // nothing rather than go unnamed.
-                    .subtitle(match &refused {
-                        Some(e) if !redirected => e.message().to_owned(),
-                        _ => device
-                            .description(Some("%1$.0s%2$.0s%3$s"))
-                            .unwrap_or_default()
-                            .into(),
-                    })
                     .active(redirected)
                     .sensitive(redirected || refused.is_none())
                     .build();
+                let title = device.description(Some("%1$s %2$s")).unwrap_or_default();
+                // Printf's numbered arguments may skip none, so the first two print nothing
+                // rather than go unnamed.
+                let subtitle = match &refused {
+                    Some(e) if !redirected => e.message().to_owned(),
+                    _ => device
+                        .description(Some("%1$.0s%2$.0s%3$s"))
+                        .unwrap_or_default()
+                        .into(),
+                };
+                dialogs::set_plain_text(&row, title.trim(), &subtitle);
                 // Set while the switch goes back after a failure, which is no request.
                 let reverting = Rc::new(std::cell::Cell::new(false));
                 row.connect_active_notify(glib::clone!(
