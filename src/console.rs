@@ -12,6 +12,7 @@ pub use spice::FdSource;
 use std::cell::{Cell, RefCell};
 use std::sync::OnceLock;
 
+use gettextrs::gettext;
 use gvnc::prelude::*;
 
 use crate::adw::prelude::*;
@@ -52,6 +53,9 @@ mod imp {
         pub(super) pointer: Cell<(f64, f64)>,
         /// Keys sent down and not yet up, to release when the focus leaves.
         pub(super) pressed: RefCell<Vec<(u32, u16)>>,
+        /// Whether Ctrl and Alt are down with no other key, so that letting go of them
+        /// gives the keyboard back.
+        pub(super) release_armed: Cell<bool>,
         /// Application shortcuts put aside while the console has the keyboard.
         pub(super) accels: RefCell<Vec<(String, Vec<glib::GString>)>>,
         pub(super) error: RefCell<Option<String>>,
@@ -78,6 +82,10 @@ mod imp {
             obj.set_focusable(true);
             obj.set_focus_on_click(true);
             obj.set_overflow(gtk::Overflow::Hidden);
+            obj.update_property(&[gtk::accessible::Property::Description(&gettext(
+                "Takes every key for the virtual machine; press and let go of Ctrl+Alt to \
+                 leave it",
+            ))]);
             obj.setup_input();
         }
 
@@ -571,6 +579,25 @@ impl Console {
             }
         }
         self.key_event(down, keysym, scancode);
+        self.follow_release_chord(down, keysym);
+    }
+
+    /// Ctrl and Alt pressed together, with no other key, and let go: the console gives up
+    /// the keyboard, which it otherwise keeps for the guest, Tab included.
+    fn follow_release_chord(&self, down: bool, keysym: u32) {
+        let imp = self.imp();
+        if down {
+            let pressed = imp.pressed.borrow();
+            let has = |wanted: fn(u32) -> bool| pressed.iter().any(|&(k, _)| wanted(k));
+            let other = has(|k| !is_ctrl(k) && !is_alt(k));
+            imp.release_armed
+                .set(!other && (imp.release_armed.get() || has(is_ctrl) && has(is_alt)));
+        } else if imp.release_armed.replace(false) && (is_ctrl(keysym) || is_alt(keysym)) {
+            self.release_keys();
+            if let Some(root) = self.root() {
+                root.set_focus(gtk::Widget::NONE);
+            }
+        }
     }
 
     fn key_event(&self, down: bool, keysym: u32, scancode: u16) {
@@ -614,6 +641,23 @@ impl Console {
             }
         }
     }
+}
+
+fn is_ctrl(keysym: u32) -> bool {
+    [gdk::Key::Control_L, gdk::Key::Control_R]
+        .iter()
+        .any(|k| k.into_glib() == keysym)
+}
+
+fn is_alt(keysym: u32) -> bool {
+    [
+        gdk::Key::Alt_L,
+        gdk::Key::Alt_R,
+        gdk::Key::Meta_L,
+        gdk::Key::Meta_R,
+    ]
+    .iter()
+    .any(|k| k.into_glib() == keysym)
 }
 
 fn button_bit(button: u32) -> u8 {
