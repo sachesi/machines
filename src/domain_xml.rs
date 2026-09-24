@@ -998,17 +998,7 @@ pub fn set_firmware(xml: &str, firmware: Firmware) -> Result<String, String> {
             escape(attribute.value())
         );
     }
-    let features = |secure: &str| {
-        format!(
-            " firmware='efi'><firmware><feature enabled='{secure}' name='enrolled-keys'/>\
-             <feature enabled='{secure}' name='secure-boot'/></firmware>"
-        )
-    };
-    open.push_str(&match firmware {
-        Firmware::Bios => ">".to_owned(),
-        Firmware::Uefi => features("no"),
-        Firmware::UefiSecureBoot => features("yes"),
-    });
+    open.push_str(&os_firmware(firmware));
     let mut edits = vec![(range.start..open_end, open)];
     for gone in os
         .children()
@@ -1017,6 +1007,22 @@ pub fn set_firmware(xml: &str, firmware: Firmware) -> Result<String, String> {
         edits.push((gone.range(), String::new()));
     }
     Ok(apply_edits(xml, edits))
+}
+
+/// What follows `<os` for `firmware`, up to the end of its opening tag and the features
+/// libvirt picks the firmware by.
+fn os_firmware(firmware: Firmware) -> String {
+    let features = |secure: &str| {
+        format!(
+            " firmware='efi'><firmware><feature enabled='{secure}' name='enrolled-keys'/>\
+             <feature enabled='{secure}' name='secure-boot'/></firmware>"
+        )
+    };
+    match firmware {
+        Firmware::Bios => ">".to_owned(),
+        Firmware::Uefi => features("no"),
+        Firmware::UefiSecureBoot => features("yes"),
+    }
 }
 
 fn child<'a, 'i>(parent: roxmltree::Node<'a, 'i>, name: &str) -> Option<roxmltree::Node<'a, 'i>> {
@@ -1130,7 +1136,7 @@ pub struct NewMachine {
     pub os: GuestOs,
     /// The osinfo id of the system, such as `http://fedoraproject.org/fedora/42`.
     pub osinfo: Option<String>,
-    pub uefi: bool,
+    pub firmware: Firmware,
     pub tpm: bool,
     pub memory_mib: u64,
     pub vcpus: u32,
@@ -1171,11 +1177,7 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
         m.memory_mib
     );
     let _ = writeln!(x, "  <vcpu>{}</vcpu>", m.vcpus);
-    x.push_str(if m.uefi {
-        "  <os firmware='efi'>\n"
-    } else {
-        "  <os>\n"
-    });
+    let _ = writeln!(x, "  <os{}", os_firmware(m.firmware));
     x.push_str("    <type arch='x86_64' machine='q35'>hvm</type>\n");
     if m.disk.is_some() {
         x.push_str("    <boot dev='hd'/>\n");
@@ -1191,7 +1193,7 @@ pub fn new_machine_xml(m: &NewMachine) -> String {
              <synic state='on'/>\n      <stimer state='on'/>\n    </hyperv>\n",
         );
     }
-    if m.uefi {
+    if m.firmware != Firmware::Bios {
         x.push_str("    <smm state='on'/>\n");
     }
     x.push_str("  </features>\n");
@@ -1756,7 +1758,7 @@ mod tests {
             virt_type: "kvm".into(),
             os,
             osinfo: Some("http://fedoraproject.org/fedora/42".into()),
-            uefi: true,
+            firmware: Firmware::Uefi,
             tpm: false,
             memory_mib: 4096,
             vcpus: 2,
@@ -1809,6 +1811,22 @@ mod tests {
                 .count(),
             1 + REDIRDEV_SLOTS
         );
+    }
+
+    #[test]
+    fn new_machines_boot_the_firmware_chosen() {
+        for firmware in [Firmware::Bios, Firmware::Uefi, Firmware::UefiSecureBoot] {
+            let xml = new_machine_xml(&NewMachine {
+                firmware,
+                ..new_machine(GuestOs::Linux)
+            });
+            assert_eq!(
+                MachineConfig::parse(&xml).unwrap().firmware,
+                firmware,
+                "{xml}"
+            );
+            assert_eq!(xml.contains("<smm"), firmware != Firmware::Bios, "{xml}");
+        }
     }
 
     #[test]

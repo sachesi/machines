@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-25 00:09+0300\n"
+"POT-Creation-Date: 2026-09-25 00:12+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -216,7 +216,7 @@ msgstr ""
 msgid "Boot Order"
 msgstr ""
 
-#: src/details.rs:200
+#: src/details.rs:200 src/dialogs/new_machine.rs:244
 #, no-c-format
 msgid "UEFI with Secure Boot"
 msgstr ""
@@ -246,7 +246,7 @@ msgstr ""
 msgid "Memory"
 msgstr ""
 
-#: src/details.rs:294 src/dialogs/mod.rs:183 src/dialogs/new_machine.rs:201
+#: src/details.rs:294 src/dialogs/mod.rs:183 src/dialogs/new_machine.rs:260
 #: src/dialogs/storage.rs:716
 #, no-c-format
 msgid "GiB"
@@ -389,7 +389,7 @@ msgstr ""
 msgid "Resize…"
 msgstr ""
 
-#: src/details.rs:717 src/dialogs/new_machine.rs:419
+#: src/details.rs:717 src/dialogs/new_machine.rs:506
 #, no-c-format
 msgid "Disc Images"
 msgstr ""
@@ -649,7 +649,7 @@ msgstr ""
 
 #: src/dialogs/delete.rs:34 src/dialogs/machine.rs:34
 #: src/dialogs/machine.rs:512 src/dialogs/mod.rs:88 src/dialogs/mod.rs:142
-#: src/dialogs/mod.rs:247 src/dialogs/new_machine.rs:246
+#: src/dialogs/mod.rs:247 src/dialogs/new_machine.rs:311
 #, no-c-format
 msgid "_Cancel"
 msgstr ""
@@ -691,7 +691,7 @@ msgstr ""
 msgid "_Remove"
 msgstr ""
 
-#: src/dialogs/hardware.rs:124 src/dialogs/new_machine.rs:102
+#: src/dialogs/hardware.rs:124 src/dialogs/new_machine.rs:150
 #, no-c-format
 msgid "Disk Image"
 msgstr ""
@@ -706,7 +706,7 @@ msgstr ""
 msgid "None, the drive starts empty"
 msgstr ""
 
-#: src/dialogs/hardware.rs:141 src/dialogs/new_machine.rs:119
+#: src/dialogs/hardware.rs:141 src/dialogs/new_machine.rs:167
 #: src/dialogs/storage.rs:529
 #, no-c-format
 msgid "None chosen"
@@ -738,7 +738,7 @@ msgstr ""
 msgid "Existing Volume"
 msgstr ""
 
-#: src/dialogs/hardware.rs:255 src/dialogs/new_machine.rs:157
+#: src/dialogs/hardware.rs:255 src/dialogs/new_machine.rs:211
 #, no-c-format
 msgid "Existing Disk Image"
 msgstr ""
@@ -759,7 +759,7 @@ msgstr ""
 msgid "_Size"
 msgstr ""
 
-#: src/dialogs/hardware.rs:279 src/dialogs/new_machine.rs:227
+#: src/dialogs/hardware.rs:279 src/dialogs/new_machine.rs:286
 #, no-c-format
 msgid "GiB, allocated as the guest writes"
 msgstr ""
@@ -774,7 +774,7 @@ msgstr ""
 msgid "_Disk"
 msgstr ""
 
-#: src/dialogs/hardware.rs:306 src/dialogs/new_machine.rs:161
+#: src/dialogs/hardware.rs:306 src/dialogs/new_machine.rs:215
 #: src/dialogs/storage.rs:522
 #, no-c-format
 msgid "_Choose…"
@@ -1258,7 +1258,7 @@ msgid ""
 "on it is removed."
 msgstr ""
 
-#: src/dialogs/networks.rs:290 src/dialogs/new_machine.rs:173
+#: src/dialogs/networks.rs:290 src/dialogs/new_machine.rs:227
 #: src/dialogs/storage.rs:510 src/dialogs/storage.rs:704
 #, no-c-format
 msgid "_Name"
@@ -1289,7 +1289,7 @@ msgstr ""
 msgid "Give guests their addresses"
 msgstr ""
 
-#: src/dialogs/networks.rs:332 src/dialogs/new_machine.rs:240
+#: src/dialogs/networks.rs:332 src/dialogs/new_machine.rs:305
 #: src/dialogs/storage.rs:547 src/dialogs/storage.rs:726
 #, no-c-format
 msgid "C_reate"
@@ -1315,87 +1315,92 @@ msgstr ""
 msgid "Guests reach only the host and each other"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:104
+#: src/dialogs/new_machine.rs:98
+#, no-c-format
+msgid "{size} free"
+msgstr ""
+
+#: src/dialogs/new_machine.rs:152
 #, no-c-format
 msgid "Installation Media"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:153
+#: src/dialogs/new_machine.rs:207
 #, no-c-format
 msgid "_Install From"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:156
+#: src/dialogs/new_machine.rs:210
 #, no-c-format
 msgid "Installation Media (ISO)"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:178
+#: src/dialogs/new_machine.rs:232
 #, no-c-format
 msgid "_Operating System"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:183
+#: src/dialogs/new_machine.rs:237
 #, no-c-format
 msgid "Other"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:187
+#: src/dialogs/new_machine.rs:248
 #, no-c-format
-msgid "_UEFI Firmware"
+msgid "_Firmware"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:188
-#, no-c-format
-msgid "Off, the machine boots with a BIOS"
-msgstr ""
-
-#: src/dialogs/new_machine.rs:195
+#: src/dialogs/new_machine.rs:254
 #, no-c-format
 msgid "QEMU has no UEFI firmware on this host"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:200
+#: src/dialogs/new_machine.rs:259
 #, no-c-format
 msgid "_Memory"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:214
+#: src/dialogs/new_machine.rs:273
 #, no-c-format
 msgid "_Processors"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:226
+#: src/dialogs/new_machine.rs:285
 #, no-c-format
 msgid "_Disk Size"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:272 src/window.rs:612
+#: src/dialogs/new_machine.rs:300
+#, no-c-format
+msgid "Storage _Pool"
+msgstr ""
+
+#: src/dialogs/new_machine.rs:340 src/window.rs:612
 #, no-c-format
 msgid "System"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:278
+#: src/dialogs/new_machine.rs:346
 #, no-c-format
 msgid "Resources"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:298 ui/window.ui:41
+#: src/dialogs/new_machine.rs:367 ui/window.ui:41
 #, no-c-format
 msgid "New Virtual Machine"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:414
+#: src/dialogs/new_machine.rs:501
 #, no-c-format
 msgid "Disk Images"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:424
+#: src/dialogs/new_machine.rs:511
 #, no-c-format
 msgid "Choose a Disk Image"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:426
+#: src/dialogs/new_machine.rs:513
 #, no-c-format
 msgid "Choose Installation Media"
 msgstr ""
@@ -1664,7 +1669,7 @@ msgstr ""
 msgid "Saved"
 msgstr ""
 
-#: src/hypervisor.rs:332
+#: src/hypervisor.rs:337
 #, no-c-format
 msgid ""
 "The host’s devices cannot be listed, as libvirt’s node device service "
@@ -1672,17 +1677,17 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:539
+#: src/hypervisor.rs:544
 #, no-c-format
 msgid "The definition has a NUL character in it"
 msgstr ""
 
-#: src/hypervisor.rs:549
+#: src/hypervisor.rs:554
 #, no-c-format
 msgid "The definition has to keep the UUID {uuid}"
 msgstr ""
 
-#: src/hypervisor.rs:597
+#: src/hypervisor.rs:602
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""

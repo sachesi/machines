@@ -1,5 +1,5 @@
-//! "New Virtual Machine": what to boot, a name, the guest's family, and how much of the
-//! host it gets. An installation ISO the osinfo database knows sets the rest to what its
+//! "New Virtual Machine": what to boot, a name, the guest's family and firmware, and how
+//! much of the host it gets. An installation ISO the osinfo database knows sets the rest to what its
 //! system recommends.
 
 use std::cell::{Cell, RefCell};
@@ -10,8 +10,8 @@ use gettextrs::gettext;
 
 use crate::adw::prelude::*;
 use crate::dialogs;
-use crate::domain_xml::GuestOs;
-use crate::hypervisor::{CreateRequest, InstallSource};
+use crate::domain_xml::{Firmware, GuestOs};
+use crate::hypervisor::{CreateRequest, InstallSource, Pool};
 use crate::osinfo::{self, FirmwareNeed, Os};
 use crate::window::MachinesWindow;
 use crate::{adw, gio, glib, gtk};
@@ -19,6 +19,8 @@ use crate::{adw, gio, glib, gtk};
 const DEFAULT_DISK_GIB: f64 = 32.0;
 const WINDOWS_DISK_GIB: f64 = 64.0;
 const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+/// The pool new disks go in unless another is chosen, which is made if it is missing.
+const DEFAULT_POOL: &str = "default";
 
 struct Form {
     source: adw::ComboRow,
@@ -30,11 +32,15 @@ struct Form {
     /// Whether the name is still the one taken from the file, and may follow it.
     name_is_derived: Cell<bool>,
     os: adw::ComboRow,
-    uefi: adw::SwitchRow,
+    firmware: adw::ComboRow,
+    firmwares: Vec<Firmware>,
     memory: adw::SpinRow,
     vcpus: adw::SpinRow,
     disk: adw::SpinRow,
     disk_touched: Cell<bool>,
+    pool: adw::ComboRow,
+    /// The pools the pool row offers, by name, with their free bytes where known.
+    pools: RefCell<Vec<(String, Option<u64>)>>,
     create: gtk::Button,
     taken: Vec<String>,
     /// Whether QEMU runs as a user of its own, who may not reach the file.
@@ -54,6 +60,45 @@ impl Form {
         }
     }
 
+    fn firmware(&self) -> Firmware {
+        self.firmwares
+            .get(self.firmware.selected() as usize)
+            .copied()
+            .unwrap_or(Firmware::Bios)
+    }
+
+    fn set_firmware(&self, firmware: Firmware) {
+        if let Some(i) = self.firmwares.iter().position(|f| *f == firmware) {
+            self.firmware.set_selected(i as u32);
+        }
+    }
+
+    /// Offer the pools of `pools` that new disks can go in, the default one first.
+    fn offer_pools(&self, pools: &[Pool]) {
+        let mut offered = vec![(DEFAULT_POOL.to_owned(), None)];
+        for pool in pools.iter().filter(|p| p.makes_volumes()) {
+            if pool.name == DEFAULT_POOL {
+                offered[0].1 = Some(pool.available);
+            } else {
+                offered.push((pool.name.clone(), Some(pool.available)));
+            }
+        }
+        let names: Vec<&str> = offered.iter().map(|(name, _)| name.as_str()).collect();
+        self.pool.set_model(Some(&gtk::StringList::new(&names)));
+        self.pools.replace(offered);
+        self.show_pool_space();
+    }
+
+    fn show_pool_space(&self) {
+        let pools = self.pools.borrow();
+        let free = pools
+            .get(self.pool.selected() as usize)
+            .and_then(|(_, f)| *f);
+        self.pool.set_subtitle(&free.map_or(String::new(), |free| {
+            gettext("{size} free").replace("{size}", &glib::format_size(free))
+        }));
+    }
+
     /// Take in the system found on the ISO: its family, firmware and what it recommends.
     fn detect(&self, os: Option<Os>) {
         self.os
@@ -65,8 +110,10 @@ impl Form {
                 _ => 2,
             });
             match os.firmware {
-                FirmwareNeed::Uefi if self.uefi.is_sensitive() => self.uefi.set_active(true),
-                FirmwareNeed::Bios => self.uefi.set_active(false),
+                FirmwareNeed::Uefi if self.firmware() == Firmware::Bios => {
+                    self.set_firmware(Firmware::Uefi);
+                }
+                FirmwareNeed::Bios => self.set_firmware(Firmware::Bios),
                 _ => {}
             }
             let r = os.resources;
@@ -98,6 +145,7 @@ impl Form {
 
     fn sync(&self) {
         self.disk.set_visible(!self.importing());
+        self.pool.set_visible(!self.importing());
         self.file_row.set_title(&if self.importing() {
             gettext("Disk Image")
         } else {
@@ -132,7 +180,7 @@ impl Form {
             name: self.name.text().trim().to_owned(),
             os: self.os(),
             osinfo: self.detected.borrow().as_ref().map(|os| os.id.clone()),
-            uefi: self.uefi.is_active(),
+            firmware: self.firmware(),
             memory_mib: (self.memory.value() * 1024.0).round() as u64,
             vcpus: self.vcpus.value() as u32,
             source: if self.importing() {
@@ -141,6 +189,12 @@ impl Form {
                 InstallSource::Media {
                     iso: file,
                     disk_gib: self.disk.value() as u64,
+                    pool: self
+                        .pools
+                        .borrow()
+                        .get(self.pool.selected() as usize)
+                        .map(|(name, _)| name.clone())
+                        .filter(|name| name != DEFAULT_POOL),
                 }
             },
         })
@@ -183,16 +237,21 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
             &gettext("Other"),
         ]))
         .build();
-    let uefi = adw::SwitchRow::builder()
-        .title(gettext("_UEFI Firmware"))
-        .subtitle(gettext("Off, the machine boots with a BIOS"))
+    let mut firmwares = vec![Firmware::Bios];
+    let mut firmware_labels = vec!["BIOS".to_owned()];
+    if host.uefi {
+        firmwares.extend([Firmware::Uefi, Firmware::UefiSecureBoot]);
+        firmware_labels.extend(["UEFI".to_owned(), gettext("UEFI with Secure Boot")]);
+    }
+    let firmware_labels: Vec<&str> = firmware_labels.iter().map(String::as_str).collect();
+    let firmware = adw::ComboRow::builder()
+        .title(gettext("_Firmware"))
         .use_underline(true)
-        .active(true)
+        .model(&gtk::StringList::new(&firmware_labels))
         .build();
     if !host.uefi {
-        uefi.set_active(false);
-        uefi.set_sensitive(false);
-        uefi.set_subtitle(&gettext("QEMU has no UEFI firmware on this host"));
+        firmware.set_sensitive(false);
+        firmware.set_subtitle(&gettext("QEMU has no UEFI firmware on this host"));
     }
 
     let host_gib = (host.memory_mib as f64 / 1024.0).floor().max(1.0);
@@ -236,6 +295,12 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         ))
         .build();
 
+    let pool = adw::ComboRow::builder()
+        .use_markup(false)
+        .title(gettext("Storage _Pool"))
+        .use_underline(true)
+        .build();
+
     let create = gtk::Button::builder()
         .label(gettext("C_reate"))
         .use_underline(true)
@@ -255,11 +320,14 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         name,
         name_is_derived: Cell::new(true),
         os,
-        uefi,
+        firmware,
+        firmwares,
         memory,
         vcpus,
         disk,
         disk_touched: Cell::new(false),
+        pool,
+        pools: RefCell::default(),
         create: create.clone(),
         taken: win.machine_names(),
         qemu_is_other_user: host.qemu_is_other_user,
@@ -273,13 +341,14 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         .build();
     system.add(&form.name);
     system.add(&form.os);
-    system.add(&form.uefi);
+    system.add(&form.firmware);
     let resources = adw::PreferencesGroup::builder()
         .title(gettext("Resources"))
         .build();
     resources.add(&form.memory);
     resources.add(&form.vcpus);
     resources.add(&form.disk);
+    resources.add(&form.pool);
     let page = adw::PreferencesPage::new();
     page.add(&install);
     page.add(&system);
@@ -401,6 +470,24 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
             if let Some(request) = form.request() {
                 dialog.close();
                 on_create(&win, request);
+            }
+        }
+    ));
+    form.set_firmware(Firmware::Uefi);
+    form.offer_pools(&[]);
+    form.pool.connect_selected_notify(glib::clone!(
+        #[strong]
+        form,
+        move |_| form.show_pool_space()
+    ));
+    glib::spawn_future_local(glib::clone!(
+        #[strong]
+        form,
+        #[weak]
+        win,
+        async move {
+            if let Some(Ok(pools)) = win.call(|hv| hv.pools()).await {
+                form.offer_pools(&pools);
             }
         }
     ));

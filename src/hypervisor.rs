@@ -130,8 +130,13 @@ pub struct InterfaceAddresses {
 
 #[derive(Debug, Clone)]
 pub enum InstallSource {
-    /// Boot an installer ISO with a new, empty disk of this many GiB.
-    Media { iso: String, disk_gib: u64 },
+    /// Boot an installer ISO with a new, empty disk of this many GiB, in the storage pool
+    /// of this name, or the default one.
+    Media {
+        iso: String,
+        disk_gib: u64,
+        pool: Option<String>,
+    },
     /// Boot a disk image that already has a system on it.
     Import { image: String },
 }
@@ -141,7 +146,7 @@ pub struct CreateRequest {
     pub name: String,
     pub os: GuestOs,
     pub osinfo: Option<String>,
-    pub uefi: bool,
+    pub firmware: Firmware,
     pub memory_mib: u64,
     pub vcpus: u32,
     pub source: InstallSource,
@@ -767,8 +772,16 @@ impl Hypervisor {
         let fail = |e: String| (None, e);
         let (virt_type, caps) = self.new_machine_capabilities().map_err(fail)?;
         let (disk, cdrom, new_vol) = match &req.source {
-            InstallSource::Media { iso, disk_gib } => {
-                let pool = self.default_pool().map_err(fail)?;
+            InstallSource::Media {
+                iso,
+                disk_gib,
+                pool,
+            } => {
+                let pool = match pool {
+                    Some(name) => StoragePool::lookup_by_name(&self.conn, name).map_err(message),
+                    None => self.default_pool(),
+                }
+                .map_err(fail)?;
                 let vol = self.new_disk(&pool, &req.name, *disk_gib).map_err(fail)?;
                 let path = vol.get_path().map_err(message).map_err(fail)?;
                 (
@@ -788,7 +801,7 @@ impl Hypervisor {
             virt_type: virt_type.to_owned(),
             os: req.os,
             osinfo: req.osinfo.clone(),
-            uefi: req.uefi,
+            firmware: req.firmware,
             // swtpm has to be on the host, which from here can only be seen when it is this
             // computer.
             tpm: req.os == GuestOs::Windows && (!self.is_local() || on_path("swtpm")),
