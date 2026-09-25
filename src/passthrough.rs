@@ -90,6 +90,12 @@ pub fn input_devices() -> (Vec<InputDevice>, Vec<InputDevice>) {
     (keyboards, mice)
 }
 
+/// Whether this user may read the device, as QEMU has to where it runs as this user.
+/// Opening an input device takes nothing from the host; only a grab would.
+pub fn readable(path: &str) -> bool {
+    fs::File::open(path).is_ok()
+}
+
 /// "usb-Logitech_USB_Receiver-if02" as "Logitech USB Receiver".
 fn input_name(stem: &str) -> String {
     let stem = stem.split_once('-').map_or(stem, |(_, rest)| rest);

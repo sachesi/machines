@@ -481,7 +481,7 @@ impl MachineConfig {
             accel3d,
             boot,
             serial,
-            looking_glass: kvmfr_args(root).map(|(path, _)| path),
+            looking_glass: kvmfr_args(root).map(|k| k.path),
             balloon,
             hypervisor_hidden: child("features")
                 .and_then(|f| self::child(f, "kvm"))
@@ -1046,11 +1046,18 @@ fn qemu_option<'a>(option: &'a str, key: &str) -> Option<&'a str> {
     }
 }
 
-/// The `<qemu:arg>`s that give the guest a kvmfr device for Looking Glass, with the
-/// `-object` and `-device` before them, and the device's path.
-fn kvmfr_args<'a, 'i>(
-    root: roxmltree::Node<'a, 'i>,
-) -> Option<(String, Vec<roxmltree::Node<'a, 'i>>)> {
+/// The arguments on QEMU's command line that give the guest a kvmfr device for Looking
+/// Glass.
+struct KvmfrArgs<'a, 'i> {
+    /// The device's path.
+    path: String,
+    /// The `memory-backend-file` object on the device.
+    memory: roxmltree::Node<'a, 'i>,
+    /// Every `<qemu:arg>` of it, the `-object` and `-device` before them among them.
+    nodes: Vec<roxmltree::Node<'a, 'i>>,
+}
+
+fn kvmfr_args<'a, 'i>(root: roxmltree::Node<'a, 'i>) -> Option<KvmfrArgs<'a, 'i>> {
     let line = root.children().find(|n| {
         n.tag_name().namespace() == Some(QEMU_NS) && n.tag_name().name() == "commandline"
     })?;
@@ -1077,7 +1084,11 @@ fn kvmfr_args<'a, 'i>(
         }
         nodes.push(args[i]);
     }
-    Some((path, nodes))
+    Some(KvmfrArgs {
+        path,
+        memory: args[memory],
+        nodes,
+    })
 }
 
 /// An edit that puts `content` after the last child of `node`, which may have none.
@@ -1101,53 +1112,95 @@ fn append_to(xml: &str, node: roxmltree::Node, content: &str) -> (std::ops::Rang
 /// device `device`, a path and its size in bytes, or without it.
 ///
 /// libvirt has no element for it, so it goes on QEMU's command line, as Looking Glass
-/// documents it.
+/// documents it. A device it has already only changes its memory, so an address given to
+/// the device stays.
 pub fn set_looking_glass(xml: &str, device: Option<(&str, u64)>) -> Result<String, String> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
     let root = doc.root_element();
     let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
-    let old = kvmfr_args(root).map(|(_, nodes)| nodes).unwrap_or_default();
+    let old = kvmfr_args(root);
     let line = root.children().find(|n| {
         n.tag_name().namespace() == Some(QEMU_NS) && n.tag_name().name() == "commandline"
     });
-    let others = line.is_some_and(|l| {
-        l.children()
-            .filter(|n| n.is_element())
-            .any(|n| !old.contains(&n))
-    });
-    match line {
-        Some(line) if !others && device.is_none() => edits.push((line.range(), String::new())),
-        _ => edits.extend(old.iter().map(|n| (n.range(), String::new()))),
-    }
-    if let Some((path, bytes)) = device {
-        let prefix = line
-            .and_then(|l| l.lookup_prefix(QEMU_NS))
-            .or_else(|| root.lookup_prefix(QEMU_NS))
-            .unwrap_or("qemu");
-        let arg = |value: &str| format!("<{prefix}:arg value='{}'/>", escape(value));
-        let args = [
-            arg("-device"),
-            arg(r#"{"driver":"ivshmem-plain","id":"shmem0","memdev":"looking-glass"}"#),
-            arg("-object"),
-            arg(&format!(
-                r#"{{"qom-type":"memory-backend-file","id":"looking-glass","mem-path":"{path}","size":{bytes},"share":true}}"#,
-            )),
-        ]
-        .concat();
-        match line {
-            Some(line) => edits.push(append_to(xml, line, &args)),
-            None => {
-                if root.lookup_prefix(QEMU_NS).is_none() {
-                    let at = root.range().start + "<domain".len();
-                    edits.push((at..at, format!(" xmlns:qemu='{QEMU_NS}'")));
+    let memory = |id: &str, path: &str, bytes: u64| {
+        format!(
+            r#"{{"qom-type":"memory-backend-file","id":"{id}","mem-path":"{path}","size":{bytes},"share":true}}"#
+        )
+    };
+    match (device, old, line) {
+        (Some((path, bytes)), Some(old), _) => {
+            let value = old.memory.attribute("value").unwrap_or_default();
+            let id = qemu_option(value, "id").unwrap_or("looking-glass");
+            let prefix = old
+                .memory
+                .lookup_prefix(QEMU_NS)
+                .ok_or("a broken qemu:arg")?;
+            edits.push((
+                old.memory.range(),
+                format!(
+                    "<{prefix}:arg value='{}'/>",
+                    escape(&memory(id, path, bytes))
+                ),
+            ));
+        }
+        (Some((path, bytes)), None, line) => {
+            let prefix = line
+                .and_then(|l| l.lookup_prefix(QEMU_NS))
+                .or_else(|| root.lookup_prefix(QEMU_NS))
+                .unwrap_or("qemu");
+            let taken: Vec<&str> = line
+                .iter()
+                .flat_map(|l| l.children())
+                .filter_map(|n| qemu_option(n.attribute("value")?, "id"))
+                .collect();
+            let free = |name: &dyn Fn(u32) -> String| {
+                (0..)
+                    .map(name)
+                    .find(|id| !taken.contains(&id.as_str()))
+                    .expect("an unused id")
+            };
+            let shmem = free(&|i| format!("shmem{i}"));
+            let backend = free(&|i| match i {
+                0 => "looking-glass".to_owned(),
+                i => format!("looking-glass{i}"),
+            });
+            let arg = |value: &str| format!("<{prefix}:arg value='{}'/>", escape(value));
+            let args = [
+                arg("-device"),
+                arg(&format!(
+                    r#"{{"driver":"ivshmem-plain","id":"{shmem}","memdev":"{backend}"}}"#
+                )),
+                arg("-object"),
+                arg(&memory(&backend, path, bytes)),
+            ]
+            .concat();
+            match line {
+                Some(line) => edits.push(append_to(xml, line, &args)),
+                None => {
+                    if root.lookup_prefix(QEMU_NS).is_none() {
+                        let at = root.range().start + "<domain".len();
+                        edits.push((at..at, format!(" xmlns:qemu='{QEMU_NS}'")));
+                    }
+                    let end = root.range().end - "</domain>".len();
+                    edits.push((
+                        end..end,
+                        format!("<{prefix}:commandline>{args}</{prefix}:commandline>"),
+                    ));
                 }
-                let end = root.range().end - "</domain>".len();
-                edits.push((
-                    end..end,
-                    format!("<{prefix}:commandline>{args}</{prefix}:commandline>"),
-                ));
             }
         }
+        (None, Some(old), Some(line)) => {
+            let others = line
+                .children()
+                .filter(|n| n.is_element())
+                .any(|n| !old.nodes.contains(&n));
+            if others {
+                edits.extend(old.nodes.iter().map(|n| (n.range(), String::new())));
+            } else {
+                edits.push((line.range(), String::new()));
+            }
+        }
+        (None, ..) => {}
     }
     Ok(apply_edits(xml, edits))
 }
@@ -1173,7 +1226,8 @@ pub fn set_balloon(xml: &str, on: bool) -> Result<String, String> {
 }
 
 /// `xml` with KVM hidden from the guest, and Hyper-V, where the guest has it, naming a
-/// vendor of no hypervisor; or with both as they would be without.
+/// vendor of no hypervisor; or with both as they would be without. A `vendor_id` set some
+/// other way is left as it is.
 pub fn set_hypervisor_hidden(xml: &str, on: bool) -> Result<String, String> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
     let root = doc.root_element();
@@ -1199,18 +1253,16 @@ pub fn set_hypervisor_hidden(xml: &str, on: bool) -> Result<String, String> {
                 edits.push((end..end, format!("<features><kvm>{hide}</kvm></features>")));
             }
         }
-        let id = format!("<vendor_id state='on' value='{HIDDEN_VENDOR_ID}'/>");
-        match (hyperv, vendor) {
-            (_, Some(vendor)) => edits.push((vendor.range(), id)),
-            (Some(hyperv), None) => edits.push(append_to(xml, hyperv, &id)),
-            (None, _) => {}
+        if let (Some(hyperv), None) = (hyperv, vendor) {
+            let id = format!("<vendor_id state='on' value='{HIDDEN_VENDOR_ID}'/>");
+            edits.push(append_to(xml, hyperv, &id));
         }
     } else {
         if let (Some(kvm), Some(hidden)) = (kvm, hidden) {
             let gone = if only_child(kvm, hidden) { kvm } else { hidden };
             edits.push((gone.range(), String::new()));
         }
-        if let Some(vendor) = vendor {
+        if let Some(vendor) = vendor.filter(|v| v.attribute("value") == Some(HIDDEN_VENDOR_ID)) {
             edits.push((vendor.range(), String::new()));
         }
     }
@@ -1220,14 +1272,24 @@ pub fn set_hypervisor_hidden(xml: &str, on: bool) -> Result<String, String> {
 /// `xml` with the host's keyboard, or mouse, at `dev` passed through, in place of the one it
 /// had; `None` passes none through. Both Ctrl keys switch the keyboard, and with it the
 /// mouse, between the host and the guest.
+///
+/// QEMU takes the devices from the host as the machine starts, and only the keyboard gives
+/// them back, so a mouse goes through only with a keyboard, and goes when the keyboard does.
 pub fn set_evdev(xml: &str, keyboard: bool, dev: Option<&str>) -> Result<String, String> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
     let devices = child(doc.root_element(), "devices").ok_or("the domain has no devices")?;
-    let mut edits: Vec<_> = devices
+    let evdev: Vec<_> = devices
         .children()
         .filter(|n| n.has_tag_name("input") && n.attribute("type") == Some("evdev"))
-        .filter(|n| child(*n, "source").is_some_and(is_evdev_keyboard) == keyboard)
-        .map(|n| (n.range(), String::new()))
+        .map(|n| (n, child(n, "source").is_some_and(is_evdev_keyboard)))
+        .collect();
+    if !keyboard && dev.is_some() && !evdev.iter().any(|(_, k)| *k) {
+        return Err("a mouse is passed through only with a keyboard to give it back".to_owned());
+    }
+    let mut edits: Vec<_> = evdev
+        .iter()
+        .filter(|(_, k)| *k == keyboard || keyboard && dev.is_none())
+        .map(|(n, _)| (n.range(), String::new()))
         .collect();
     if let Some(dev) = dev {
         let grab = if keyboard {
@@ -2503,7 +2565,16 @@ mod tests {
             off.contains("<qemu:arg value='-no-hpet'/>") && !off.contains("ivshmem"),
             "{off}"
         );
-        let moved = set_looking_glass(&documented, Some(("/dev/kvmfr0", 64 << 20))).unwrap();
+        let addressed = documented.replace(
+            "&quot;memdev&quot;:&quot;looking-glass&quot;}",
+            "&quot;memdev&quot;:&quot;looking-glass&quot;,&quot;addr&quot;:&quot;0x10&quot;}",
+        );
+        let moved = set_looking_glass(&addressed, Some(("/dev/kvmfr0", 64 << 20))).unwrap();
+        assert!(
+            moved.contains("&quot;addr&quot;:&quot;0x10&quot;"),
+            "{moved}"
+        );
+        assert!(moved.contains("&quot;size&quot;:67108864"), "{moved}");
         assert_eq!(moved.matches("ivshmem").count(), 1, "{moved}");
         assert_eq!(
             MachineConfig::parse(&moved)
@@ -2511,6 +2582,28 @@ mod tests {
                 .looking_glass
                 .as_deref(),
             Some("/dev/kvmfr0")
+        );
+    }
+
+    #[test]
+    fn looking_glass_takes_ids_nothing_else_has() {
+        let taken = VIRT_MANAGER
+            .replace(
+                "<domain type='kvm'>",
+                "<domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>",
+            )
+            .replace(
+                "</devices>\n",
+                "</devices>\n<qemu:commandline><qemu:arg value='-device'/>\
+                 <qemu:arg value='ivshmem-plain,id=shmem0,memdev=looking-glass'/>\
+                 </qemu:commandline>\n",
+            );
+        let on = set_looking_glass(&taken, Some(("/dev/kvmfr0", 32 << 20))).unwrap();
+        assert!(
+            on.contains(
+                "&quot;id&quot;:&quot;shmem1&quot;,&quot;memdev&quot;:&quot;looking-glass&quot;}"
+            ),
+            "{on}"
         );
     }
 
@@ -2553,6 +2646,14 @@ mod tests {
             "{hidden}"
         );
         assert_eq!(set_hypervisor_hidden(&hidden, false).unwrap(), windows);
+
+        let own = windows.replace(
+            "<relaxed state='on'/>",
+            "<relaxed state='on'/><vendor_id state='on' value='mine'/>",
+        );
+        let hidden = set_hypervisor_hidden(&own, true).unwrap();
+        assert!(hidden.contains("value='mine'") && !hidden.contains(HIDDEN_VENDOR_ID));
+        assert_eq!(set_hypervisor_hidden(&hidden, false).unwrap(), own);
     }
 
     #[test]
@@ -2581,8 +2682,16 @@ mod tests {
         );
         let other = set_evdev(&both, true, Some("/dev/input/event3")).unwrap();
         assert_eq!(MachineConfig::parse(&other).unwrap().evdev.len(), 2);
-        let none = set_evdev(&set_evdev(&other, true, None).unwrap(), false, None).unwrap();
-        assert_eq!(none, VIRT_MANAGER);
+        // The mouse goes with the keyboard, which alone gives it back to the host.
+        assert_eq!(set_evdev(&other, true, None).unwrap(), VIRT_MANAGER);
+        assert!(set_evdev(VIRT_MANAGER, false, Some(mouse)).is_err());
+        assert_eq!(
+            MachineConfig::parse(&set_evdev(&other, false, None).unwrap())
+                .unwrap()
+                .evdev
+                .len(),
+            1
+        );
     }
 
     #[test]

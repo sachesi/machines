@@ -16,5 +16,10 @@
       <summary>Window maximized</summary>
       <description>Whether the main window was maximized the last time it closed.</description>
     </key>
+    <key name="definition-editor-size" type="(ii)">
+      <default>(720, 640)</default>
+      <summary>Definition editor size</summary>
+      <description>The width and height of the window a machine’s XML definition is edited in.</description>
+    </key>
   </schema>
 </schemalist>

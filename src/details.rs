@@ -1158,7 +1158,8 @@ fn passthrough(
     info: &MachineInfo,
     config: &MachineConfig,
 ) -> Option<adw::PreferencesGroup> {
-    let local = window(view).is_none_or(|w| w.host().local);
+    let host = window(view).map(|w| w.host()).unwrap_or_default();
+    let local = host.local;
     let in_use = config.looking_glass.is_some()
         || !config.balloon
         || config.hypervisor_hidden
@@ -1178,11 +1179,17 @@ fn passthrough(
     } else {
         Vec::new()
     };
-    let shared = config
+    // The device the machine has, where the host still has it, else the host's first.
+    let target = kvmfr
+        .iter()
+        .find(|k| config.looking_glass.as_ref() == Some(&k.path))
+        .or(kvmfr.first())
+        .cloned();
+    if let Some(path) = config
         .looking_glass
         .clone()
-        .or_else(|| kvmfr.first().map(|k| k.path.clone()));
-    if let Some(path) = shared {
+        .or_else(|| target.as_ref().map(|k| k.path.clone()))
+    {
         let row = adw::SwitchRow::builder()
             .title("Looking Glass")
             .subtitle(
@@ -1190,14 +1197,16 @@ fn passthrough(
                     .replace("{path}", &path),
             )
             .active(config.looking_glass.is_some())
-            .sensitive(config.looking_glass.is_some() || !kvmfr.is_empty())
+            .sensitive(config.looking_glass.is_some() || target.is_some())
             .build();
         row.connect_active_notify(glib::clone!(
             #[weak]
             view,
             move |row| {
-                let device = kvmfr
-                    .first()
+                // Once off, it only comes back on with a device to share through.
+                row.set_sensitive(row.is_active() || target.is_some());
+                let device = target
+                    .as_ref()
                     .filter(|_| row.is_active())
                     .map(|k| (k.path.clone(), k.bytes));
                 view.run(move |hv, uuid| {
@@ -1251,7 +1260,12 @@ fn passthrough(
         Default::default()
     };
     for (keyboard, devices) in [(true, keyboards), (false, mice)] {
-        if let Some(row) = evdev_row(view, config, keyboard, devices) {
+        // On the user's own connection QEMU runs as the user, and reads only what the user
+        // may.
+        let (devices, unreadable): (Vec<_>, Vec<_>) = devices
+            .into_iter()
+            .partition(|d| host.qemu_is_other_user || passthrough::readable(&d.path));
+        if let Some(row) = evdev_row(view, config, keyboard, devices, !unreadable.is_empty()) {
             group.add(&row);
         }
     }
@@ -1264,15 +1278,19 @@ fn evdev_row(
     config: &MachineConfig,
     keyboard: bool,
     devices: Vec<passthrough::InputDevice>,
+    left_out: bool,
 ) -> Option<adw::ComboRow> {
     let current = config
         .evdev
         .iter()
         .find(|e| e.keyboard == keyboard)
         .map(|e| e.dev.clone());
-    if devices.is_empty() && current.is_none() {
+    if devices.is_empty() && current.is_none() && !left_out {
         return None;
     }
+    // QEMU takes the mouse from the host as the machine starts, and only the keyboard's
+    // Ctrl keys give it back.
+    let has_keyboard = config.evdev.iter().any(|e| e.keyboard);
     let mut choices: Vec<(Option<String>, String)> = vec![(None, gettext("None"))];
     for device in &devices {
         // A receiver has a node for each of its interfaces, all of one name.
@@ -1293,23 +1311,35 @@ fn evdev_row(
     {
         choices.push((Some(current.clone()), current.clone()));
     }
-    let (title, subtitle) = if keyboard {
+    let (title, mut subtitle) = if keyboard {
         (
             gettext("Host Keyboard"),
             gettext("Both Ctrl keys switch it, and the mouse, between the host and the guest"),
         )
-    } else {
+    } else if has_keyboard {
         (
             gettext("Host Mouse"),
             gettext("Goes between the host and the guest with the keyboard"),
         )
+    } else {
+        (
+            gettext("Host Mouse"),
+            gettext("Needs a host keyboard, whose Ctrl keys give the mouse back to the host"),
+        )
     };
+    if left_out {
+        subtitle = format!(
+            "{subtitle}\n{}",
+            gettext("Devices you may not read are left out: QEMU runs as you on this connection")
+        );
+    }
     let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
     let row = adw::ComboRow::builder()
         .title(title)
         .subtitle(subtitle)
         .model(&gtk::StringList::new(&labels))
         .selected(choices.iter().position(|(p, _)| *p == current).unwrap_or(0) as u32)
+        .sensitive(keyboard || has_keyboard || current.is_some())
         .build();
     row.connect_selected_notify(glib::clone!(
         #[weak]

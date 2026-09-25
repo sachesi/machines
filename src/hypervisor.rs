@@ -59,19 +59,21 @@ fn start_error(e: virt::error::Error) -> String {
              display to VNC in the details.",
         );
     }
-    if let Some(path) = e
-        .split("can't open backing store ")
-        .nth(1)
-        .and_then(|rest| rest.split_whitespace().next())
-        .filter(|path| path.starts_with("/dev/kvmfr"))
+    if let Some(rest) = e.split("can't open backing store ").nth(1)
+        && let Some(path) = rest
+            .split_whitespace()
+            .next()
+            .filter(|path| path.starts_with("/dev/kvmfr"))
     {
+        let reason = rest.rsplit(": ").next().unwrap_or_default().trim();
         return gettext(
-            "QEMU may not open {path}, which Looking Glass shares the screen through. On the \
-             system connection, libvirt lets QEMU open only the devices that \
-             “cgroup_device_acl” in /etc/libvirt/qemu.conf lists, and SELinux or AppArmor \
-             have to allow it too.",
+            "QEMU cannot open {path}, which Looking Glass shares the screen through: {reason}. \
+             The kvmfr module has to be loaded, and on the system connection libvirt lets QEMU \
+             open only the devices that “cgroup_device_acl” in /etc/libvirt/qemu.conf lists, \
+             which SELinux or AppArmor have to allow too.",
         )
-        .replace("{path}", path);
+        .replace("{path}", path)
+        .replace("{reason}", reason);
     }
     e
 }

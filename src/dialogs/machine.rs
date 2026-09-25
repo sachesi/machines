@@ -495,7 +495,11 @@ pub fn edit_xml(view: &MachineView) {
                 .as_ref(),
         );
         follow_style(&buffer);
+        // Not a step to undo, and not a change to save.
+        buffer.begin_irreversible_action();
         buffer.set_text(&xml);
+        buffer.end_irreversible_action();
+        buffer.set_modified(false);
         let text = sourceview5::View::builder()
             .buffer(&buffer)
             .monospace(true)
@@ -537,11 +541,14 @@ pub fn edit_xml(view: &MachineView) {
         toolbar.add_top_bar(&header);
         toolbar.add_top_bar(&error);
         // A window rather than a dialog, so it can be made as large as the definition is
-        // long.
+        // long; it opens as it was last left, but no larger than the main window.
+        let settings = crate::prefs::settings();
+        let (width, height): (i32, i32) = settings.get("definition-editor-size");
+        let fit = |size: i32, room: i32| if room > 0 { size.min(room) } else { size };
         let dialog = adw::Window::builder()
             .title(gettext("Definition of “{name}”").replace("{name}", &info.name))
-            .default_width(720)
-            .default_height(640)
+            .default_width(fit(width, win.width()))
+            .default_height(fit(height, win.height()))
             .width_request(360)
             .height_request(294)
             .modal(true)
@@ -555,6 +562,38 @@ pub fn edit_xml(view: &MachineView) {
             Some(gtk::NamedAction::new("window.close")),
         ));
         dialog.add_controller(escape);
+        dialog.connect_close_request(glib::clone!(
+            #[weak]
+            buffer,
+            #[upgrade_or]
+            glib::Propagation::Proceed,
+            move |dialog| {
+                let _ = settings.set("definition-editor-size", dialog.default_size());
+                if !buffer.is_modified() {
+                    return glib::Propagation::Proceed;
+                }
+                glib::spawn_future_local(glib::clone!(
+                    #[weak]
+                    dialog,
+                    #[weak]
+                    buffer,
+                    async move {
+                        let discard = dialogs::confirm(
+                            &dialog,
+                            &gettext("Discard Changes?"),
+                            &gettext("The changes to the definition have not been saved."),
+                            &gettext("_Discard"),
+                        )
+                        .await;
+                        if discard {
+                            buffer.set_modified(false);
+                            dialog.close();
+                        }
+                    }
+                ));
+                glib::Propagation::Stop
+            }
+        ));
         cancel.connect_clicked(glib::clone!(
             #[weak]
             dialog,
@@ -578,11 +617,14 @@ pub fn edit_xml(view: &MachineView) {
                 glib::spawn_future_local(glib::clone!(
                     #[weak]
                     save,
+                    #[weak]
+                    buffer,
                     async move {
                         let defined = win.call(move |hv| hv.define(&uuid, &xml)).await;
                         save.set_sensitive(true);
                         match defined {
                             Some(Ok(change)) => {
+                                buffer.set_modified(false);
                                 dialog.close();
                                 if change == Change::AtNextStart {
                                     win.toast(&gettext(
