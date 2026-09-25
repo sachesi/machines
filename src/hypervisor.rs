@@ -48,6 +48,20 @@ fn message(e: virt::error::Error) -> String {
     e.message().to_owned()
 }
 
+/// Why a machine did not start, in words for what a user can do about it where QEMU's
+/// alone would not say.
+fn start_error(e: virt::error::Error) -> String {
+    let e = message(e);
+    if e.contains("'spicevmc' is not a valid char driver name") {
+        return gettext(
+            "QEMU cannot make the SPICE channels of this virtual machine’s display: its \
+             SPICE character device module is not installed. Install it, or switch the \
+             display to VNC in the details.",
+        );
+    }
+    e
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, glib::Enum)]
 #[enum_type(name = "MachinesMachineState")]
 pub enum MachineState {
@@ -375,7 +389,7 @@ impl Hypervisor {
                 } else {
                     0
                 };
-                dom.create_with_flags(flags).map_err(message)?;
+                dom.create_with_flags(flags).map_err(start_error)?;
                 if reset {
                     let _ = self.set_reset_nvram(&dom, false);
                 }

@@ -1405,8 +1405,16 @@ impl Capabilities {
             .filter(|n| n.has_tag_name("model") && n.attribute("usable") == Some("yes"))
             .filter_map(|n| n.text().map(str::to_owned))
             .collect();
+        let mut graphics = values("graphics", "type");
+        // A SPICE display comes with its agent's channel and USB redirection, spicevmc
+        // character devices, which QEMU keeps in a module of their own that may be missing.
+        // An older libvirt lists no channel types, and then its word on graphics stands.
+        let channels = values("channel", "type");
+        if !channels.is_empty() && !channels.iter().any(|c| c == "spicevmc") {
+            graphics.retain(|g| g != "spice");
+        }
         Self {
-            graphics: values("graphics", "type"),
+            graphics,
             video: values("video", "modelType"),
             efi,
             secure_boot: values("loader", "secure").iter().any(|v| v == "yes"),
@@ -1769,6 +1777,30 @@ mod tests {
             "<value>yes</value><value>no</value></enum></loader>",
         );
         assert!(Capabilities::parse(&secure).secure_boot);
+    }
+
+    #[test]
+    fn spice_needs_its_channels() {
+        let caps = |channels: &str| {
+            Capabilities::parse(&format!(
+                "<domainCapabilities><devices><graphics supported='yes'><enum name='type'>\
+                 <value>vnc</value><value>spice</value></enum></graphics>{channels}\
+                 </devices></domainCapabilities>"
+            ))
+            .graphics
+        };
+        let channel = |types: &str| {
+            format!("<channel supported='yes'><enum name='type'>{types}</enum></channel>")
+        };
+        assert_eq!(caps(""), ["vnc", "spice"]);
+        assert_eq!(
+            caps(&channel("<value>pty</value><value>spicevmc</value>")),
+            ["vnc", "spice"]
+        );
+        assert_eq!(
+            caps(&channel("<value>pty</value><value>unix</value>")),
+            ["vnc"]
+        );
     }
 
     fn new_machine(os: GuestOs) -> NewMachine {
