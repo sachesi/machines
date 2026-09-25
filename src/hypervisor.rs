@@ -43,6 +43,52 @@ pub type Result<T> = std::result::Result<T, String>;
 const METADATA_NS: &str = "https://github.com/sachesi/machines/metadata/1";
 /// Marks a machine whose firmware variables are to be made afresh at its next start.
 const RESET_NVRAM: &str = "reset-nvram";
+/// The video card a machine had before Looking Glass took its screen, to have again after.
+const VIDEO_BEFORE_LOOKING_GLASS: &str = "video-before-looking-glass";
+/// Marks a machine whose video card rendered 3D before Looking Glass.
+const ACCEL3D_BEFORE_LOOKING_GLASS: &str = "accel3d-before-looking-glass";
+
+/// The marks in the app's metadata element, by name, with their text.
+fn parse_marks(element: &str) -> Vec<(String, String)> {
+    let Ok(doc) = roxmltree::Document::parse(element) else {
+        return Vec::new();
+    };
+    doc.root_element()
+        .children()
+        .filter(|n| n.is_element())
+        .map(|n| {
+            (
+                n.tag_name().name().to_owned(),
+                n.text().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// `marks` with `name` set to `value`, or taken out; `None` where none are left.
+fn marks_element(
+    mut marks: Vec<(String, String)>,
+    name: &str,
+    value: Option<&str>,
+) -> Option<String> {
+    marks.retain(|(n, _)| n != name);
+    if let Some(value) = value {
+        marks.push((name.to_owned(), value.to_owned()));
+    }
+    if marks.is_empty() {
+        return None;
+    }
+    let mut element = "<machine>".to_owned();
+    for (name, value) in &marks {
+        element.push_str(&if value.is_empty() {
+            format!("<{name}/>")
+        } else {
+            format!("<{name}>{}</{name}>", domain_xml::escape(value))
+        });
+    }
+    element.push_str("</machine>");
+    Some(element)
+}
 
 fn message(e: virt::error::Error) -> String {
     e.message().to_owned()
@@ -76,6 +122,32 @@ fn start_error(e: virt::error::Error) -> String {
         .replace("{reason}", reason);
     }
     e
+}
+
+/// The marks the app keeps in the machine's metadata.
+fn marks(dom: &Domain) -> Vec<(String, String)> {
+    dom.get_metadata(
+        sys::VIR_DOMAIN_METADATA_ELEMENT as i32,
+        Some(METADATA_NS),
+        sys::VIR_DOMAIN_AFFECT_CONFIG,
+    )
+    .map(|m| parse_marks(&m))
+    .unwrap_or_default()
+}
+
+/// Set the mark `name` in the machine's metadata to `value`, or take it out, keeping the
+/// others.
+fn set_mark(dom: &Domain, name: &str, value: Option<&str>) -> Result<()> {
+    let element = marks_element(marks(dom), name, value);
+    dom.set_metadata(
+        sys::VIR_DOMAIN_METADATA_ELEMENT as i32,
+        element.as_deref(),
+        Some("machines"),
+        Some(METADATA_NS),
+        sys::VIR_DOMAIN_AFFECT_CONFIG,
+    )
+    .map(drop)
+    .map_err(message)
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, glib::Enum)]
@@ -393,13 +465,7 @@ impl Hypervisor {
             MachineState::Paused => dom.resume().map(drop).map_err(message),
             MachineState::Suspended => dom.pm_wakeup(0).map(drop).map_err(message),
             _ => {
-                let reset = dom
-                    .get_metadata(
-                        sys::VIR_DOMAIN_METADATA_ELEMENT as i32,
-                        Some(METADATA_NS),
-                        sys::VIR_DOMAIN_AFFECT_CONFIG,
-                    )
-                    .is_ok_and(|m| m.contains(RESET_NVRAM));
+                let reset = marks(&dom).iter().any(|(n, _)| n == RESET_NVRAM);
                 let flags = if reset {
                     sys::VIR_DOMAIN_START_RESET_NVRAM
                 } else {
@@ -417,16 +483,7 @@ impl Hypervisor {
     /// Mark the machine's firmware variables to be made afresh at its next start, or clear
     /// the mark.
     fn set_reset_nvram(&self, dom: &Domain, reset: bool) -> Result<()> {
-        let element = format!("<machine><{RESET_NVRAM}/></machine>");
-        dom.set_metadata(
-            sys::VIR_DOMAIN_METADATA_ELEMENT as i32,
-            reset.then_some(element.as_str()),
-            Some("machines"),
-            Some(METADATA_NS),
-            sys::VIR_DOMAIN_AFFECT_CONFIG,
-        )
-        .map(drop)
-        .map_err(message)
+        set_mark(dom, RESET_NVRAM, reset.then_some(""))
     }
 
     pub fn shut_down(&self, uuid: &str) -> Result<()> {
@@ -529,9 +586,56 @@ impl Hypervisor {
     }
 
     /// Share the guest's screen through the kvmfr device `device`, a path and its size in
-    /// bytes, or stop sharing it.
+    /// bytes, or stop sharing it. The SPICE display, which the client takes the keyboard,
+    /// mouse and clipboard over, listens on the loopback address for as long.
+    ///
+    /// Its video card goes, so that the guest shows its screen on the passed-through card
+    /// alone, and comes back as it was when Looking Glass goes.
     pub fn set_looking_glass(&self, uuid: &str, device: Option<(&str, u64)>) -> Result<()> {
-        self.edit_definition(uuid, |xml| domain_xml::set_looking_glass(xml, device))
+        let dom = self.domain(uuid)?;
+        let display = MachineConfig::parse(&self.definition(uuid)?)?.display();
+        let saved = marks(&dom);
+        let saved = |name: &str| {
+            saved
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, v)| v.clone())
+        };
+        let video = match (device, saved(VIDEO_BEFORE_LOOKING_GLASS)) {
+            (Some(_), _) if display.video != "none" => {
+                set_mark(&dom, VIDEO_BEFORE_LOOKING_GLASS, Some(&display.video))?;
+                set_mark(
+                    &dom,
+                    ACCEL3D_BEFORE_LOOKING_GLASS,
+                    display.accel3d.then_some(""),
+                )?;
+                Some(Display {
+                    video: "none".to_owned(),
+                    accel3d: false,
+                    ..display.clone()
+                })
+            }
+            // Unless it has had another card put in since.
+            (None, Some(video)) if display.video == "none" => Some(Display {
+                video,
+                accel3d: saved(ACCEL3D_BEFORE_LOOKING_GLASS).is_some(),
+                ..display.clone()
+            }),
+            _ => None,
+        };
+        self.edit_definition(uuid, |xml| {
+            let xml = domain_xml::set_looking_glass(xml, device)?;
+            let xml = match &video {
+                Some(video) => domain_xml::set_display(&xml, video)?,
+                None => xml,
+            };
+            domain_xml::set_spice_loopback(&xml, device.is_some())
+        })?;
+        if device.is_none() {
+            set_mark(&dom, VIDEO_BEFORE_LOOKING_GLASS, None)?;
+            set_mark(&dom, ACCEL3D_BEFORE_LOOKING_GLASS, None)?;
+        }
+        Ok(())
     }
 
     pub fn set_balloon(&self, uuid: &str, on: bool) -> Result<()> {
@@ -1007,6 +1111,29 @@ fn on_path(program: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn marks_keep_each_other() {
+        let libvirt = "<machine xmlns=\"https://github.com/sachesi/machines/metadata/1\">\
+                       <reset-nvram/></machine>";
+        let marks = parse_marks(libvirt);
+        assert_eq!(marks, [(RESET_NVRAM.to_owned(), String::new())]);
+        let both = marks_element(marks, VIDEO_BEFORE_LOOKING_GLASS, Some("virtio")).unwrap();
+        assert_eq!(
+            both,
+            "<machine><reset-nvram/><video-before-looking-glass>virtio\
+             </video-before-looking-glass></machine>"
+        );
+        let video = marks_element(parse_marks(&both), RESET_NVRAM, None).unwrap();
+        assert_eq!(
+            parse_marks(&video),
+            [(VIDEO_BEFORE_LOOKING_GLASS.to_owned(), "virtio".to_owned())]
+        );
+        assert_eq!(
+            marks_element(parse_marks(&video), VIDEO_BEFORE_LOOKING_GLASS, None),
+            None
+        );
+    }
 
     #[test]
     fn volumes_are_named_after_their_machine() {

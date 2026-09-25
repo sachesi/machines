@@ -1775,11 +1775,28 @@ pub fn set_display(xml: &str, display: &Display) -> Result<String, String> {
     let spice = display.protocol == Protocol::Spice;
     let accel3d =
         display.accel3d && display.video == "virtio" && display.protocol != Protocol::None;
-    let gl = if accel3d { "<gl enable='yes'/>" } else { "" };
-    let mut graphics = match display.protocol {
-        Protocol::Spice => format!("<graphics type='spice'><listen type='none'/>{gl}</graphics>"),
-        Protocol::Vnc => "<graphics type='vnc'><listen type='none'/></graphics>".to_owned(),
-        Protocol::None => String::new(),
+    let gl = if accel3d && spice {
+        "<gl enable='yes'/>"
+    } else {
+        ""
+    };
+    let kind = match display.protocol {
+        Protocol::Spice => "spice",
+        Protocol::Vnc => "vnc",
+        Protocol::None => "",
+    };
+    // A display of the same protocol keeps what it has, a listening address and password
+    // among it.
+    let same = devices
+        .children()
+        .find(|n| n.has_tag_name("graphics") && n.attribute("type") == Some(kind));
+    let mut graphics = match (display.protocol, same) {
+        (Protocol::None, _) => String::new(),
+        (_, Some(old)) => {
+            let (open, children) = element_parts(xml, old, |c| !c.has_tag_name("gl"))?;
+            format!("{open}{children}{gl}</graphics>")
+        }
+        (_, None) => format!("<graphics type='{kind}'><listen type='none'/>{gl}</graphics>"),
     };
     if accel3d && !spice {
         graphics.push_str("<graphics type='egl-headless'/>");
@@ -1840,6 +1857,72 @@ pub fn set_display(xml: &str, display: &Display) -> Result<String, String> {
     let end = devices.range().end - "</devices>".len();
     edits.push((end..end, added));
     Ok(apply_edits(xml, edits))
+}
+
+/// The opening tag of `node`, never self-closing, and the text of those of its element
+/// children `keep` keeps.
+fn element_parts(
+    xml: &str,
+    node: roxmltree::Node,
+    keep: impl Fn(&roxmltree::Node) -> bool,
+) -> Result<(String, String), String> {
+    let text = &xml[node.range()];
+    let end = text.find('>').ok_or("a broken element")?;
+    let open = match text[..end].strip_suffix('/') {
+        Some(open) => format!("{}>", open.trim_end()),
+        None => text[..=end].to_owned(),
+    };
+    let children = node
+        .children()
+        .filter(|c| c.is_element() && keep(c))
+        .map(|c| &xml[c.range()])
+        .collect();
+    Ok((open, children))
+}
+
+/// Where the Looking Glass client finds the SPICE display, which it takes the keyboard,
+/// mouse and clipboard over.
+const LOOPBACK: &str = "127.0.0.1";
+
+/// `xml` with its SPICE display listening on the loopback address, at a port libvirt picks
+/// from 5900 up, or, where it does, listening on nothing again, as the app's displays do.
+pub fn set_spice_loopback(xml: &str, on: bool) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let Some(graphics) = child(doc.root_element(), "devices").and_then(|d| {
+        d.children()
+            .find(|n| n.has_tag_name("graphics") && n.attribute("type") == Some("spice"))
+    }) else {
+        return Ok(xml.to_owned());
+    };
+    let looped = graphics.children().any(|l| {
+        l.has_tag_name("listen")
+            && l.attribute("type") == Some("address")
+            && l.attribute("address") == Some(LOOPBACK)
+    });
+    if looped == on {
+        return Ok(xml.to_owned());
+    }
+    let mut open = "<graphics".to_owned();
+    for a in graphics
+        .attributes()
+        .filter(|a| !["port", "autoport", "listen"].contains(&a.name()))
+    {
+        let _ = write!(open, " {}='{}'", a.name(), escape(a.value()));
+    }
+    let listen = if on {
+        open.push_str(" autoport='yes'");
+        format!("<listen type='address' address='{LOOPBACK}'/>")
+    } else {
+        "<listen type='none'/>".to_owned()
+    };
+    let (_, children) = element_parts(xml, graphics, |c| !c.has_tag_name("listen"))?;
+    Ok(apply_edits(
+        xml,
+        vec![(
+            graphics.range(),
+            format!("{open}>{listen}{children}</graphics>"),
+        )],
+    ))
 }
 
 /// A saved state of a machine's disks, and of its memory if it was running.
@@ -2053,6 +2136,62 @@ mod tests {
         let qxl = MachineConfig::parse(&set_display(&accel, &vnc("qxl", true)).unwrap()).unwrap();
         assert_eq!(qxl.display(), vnc("qxl", false));
         assert_eq!(qxl.graphics, ["vnc"]);
+    }
+
+    #[test]
+    fn a_display_keeps_its_listener_through_changes() {
+        let listening = VIRT_MANAGER.replace(
+            "<graphics type='spice' autoport='yes'>\n      <listen type='address'/>",
+            "<graphics type='spice' autoport='yes' passwd='secret'>\n      \
+             <listen type='address' address='127.0.0.1'/>",
+        );
+        let c = MachineConfig::parse(&listening).unwrap();
+        let accel = Display {
+            accel3d: true,
+            ..c.display()
+        };
+        let xml = set_display(&listening, &accel).unwrap();
+        assert!(
+            xml.contains("<graphics type='spice' autoport='yes' passwd='secret'>")
+                && xml.contains("<listen type='address' address='127.0.0.1'/>")
+                && xml.contains("<gl enable='yes'/>"),
+            "{xml}"
+        );
+        let off = set_display(
+            &xml,
+            &Display {
+                accel3d: false,
+                ..accel
+            },
+        )
+        .unwrap();
+        assert!(!off.contains("<gl"), "{off}");
+    }
+
+    #[test]
+    fn looking_glass_finds_spice_on_the_loopback_address() {
+        let on = set_spice_loopback(VIRT_MANAGER, true).unwrap();
+        assert!(
+            on.contains(
+                "<graphics type='spice' autoport='yes'>\
+                 <listen type='address' address='127.0.0.1'/>"
+            ),
+            "{on}"
+        );
+        assert!(on.contains("<image compression='off'/>"), "{on}");
+        assert_eq!(set_spice_loopback(&on, true).unwrap(), on);
+        let off = set_spice_loopback(&on, false).unwrap();
+        assert!(
+            off.contains("<graphics type='spice'><listen type='none'/><image"),
+            "{off}"
+        );
+        // A listener the app did not make stays.
+        assert_eq!(
+            set_spice_loopback(VIRT_MANAGER, false).unwrap(),
+            VIRT_MANAGER
+        );
+        let vnc = set_display(VIRT_MANAGER, &vnc("vga", false)).unwrap();
+        assert_eq!(set_spice_loopback(&vnc, true).unwrap(), vnc);
     }
 
     #[test]

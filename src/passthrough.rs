@@ -5,21 +5,16 @@
 //! on this computer.
 
 use std::fs;
-use std::path::Path;
+use std::io::{Seek, SeekFrom};
 
-/// How many graphics cards the host has, bound to a driver or to none; one of them is
-/// passed through only where there is another for the host.
-pub fn graphics_cards() -> usize {
-    let Ok(entries) = fs::read_dir("/sys/bus/pci/devices") else {
-        return 0;
-    };
-    entries
-        .flatten()
-        .filter(|e| {
-            // The PCI class 0x03 is a display controller.
-            fs::read_to_string(e.path().join("class")).is_ok_and(|c| c.starts_with("0x03"))
-        })
-        .count()
+use crate::host_xml::PciAddress;
+
+/// Whether the host's PCI device at `address` is a graphics card, which it is whether it
+/// is bound to its own driver or to the one that passes it through.
+pub fn is_graphics_card(address: &PciAddress) -> bool {
+    // The PCI class 0x03 is a display controller.
+    fs::read_to_string(format!("/sys/bus/pci/devices/{address}/class"))
+        .is_ok_and(|c| c.starts_with("0x03"))
 }
 
 /// A kvmfr device, which Looking Glass shares the guest's screen through.
@@ -29,28 +24,27 @@ pub struct Kvmfr {
     pub bytes: u64,
 }
 
-/// The kvmfr devices, which the module makes one of for each size it is loaded with.
+/// The kvmfr devices, with the size each has, which the module does not show anywhere
+/// but on the device: at its end, where the Looking Glass client finds it too. A device
+/// this user may not open is left out, as there is no size to give QEMU.
 pub fn kvmfr_devices() -> Vec<Kvmfr> {
-    let Ok(sizes) = fs::read_to_string("/sys/module/kvmfr/parameters/static_size_mb") else {
+    let Ok(entries) = fs::read_dir("/dev") else {
         return Vec::new();
     };
-    kvmfr_sizes(&sizes)
+    let mut numbers: Vec<u32> = entries
+        .flatten()
+        .filter_map(|e| e.file_name().to_str()?.strip_prefix("kvmfr")?.parse().ok())
+        .collect();
+    numbers.sort_unstable();
+    numbers
         .into_iter()
-        .filter(|k| Path::new(&k.path).exists())
-        .collect()
-}
-
-/// The devices the sizes in MiB, "32,64", make: `/dev/kvmfr0` of the first, and on.
-fn kvmfr_sizes(sizes: &str) -> Vec<Kvmfr> {
-    sizes
-        .trim()
-        .split(',')
-        .enumerate()
-        .filter_map(|(i, mib)| {
-            Some(Kvmfr {
-                path: format!("/dev/kvmfr{i}"),
-                bytes: mib.trim().parse::<u64>().ok().filter(|&m| m > 0)? << 20,
-            })
+        .filter_map(|n| {
+            let path = format!("/dev/kvmfr{n}");
+            let bytes = fs::File::open(&path)
+                .and_then(|mut f| f.seek(SeekFrom::End(0)))
+                .ok()
+                .filter(|&b| b > 0)?;
+            Some(Kvmfr { path, bytes })
         })
         .collect()
 }
@@ -109,24 +103,6 @@ fn input_name(stem: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn kvmfr_devices_follow_the_sizes() {
-        assert_eq!(
-            kvmfr_sizes("32,128\n"),
-            [
-                Kvmfr {
-                    path: "/dev/kvmfr0".to_owned(),
-                    bytes: 32 << 20
-                },
-                Kvmfr {
-                    path: "/dev/kvmfr1".to_owned(),
-                    bytes: 128 << 20
-                },
-            ]
-        );
-        assert!(kvmfr_sizes("\n").is_empty());
-    }
 
     #[test]
     fn input_names_leave_out_the_bus_and_interface() {

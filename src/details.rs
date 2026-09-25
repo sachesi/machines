@@ -1151,8 +1151,8 @@ fn display(
     group
 }
 
-/// Settings for a machine a graphics card is passed through to, where the host has a card
-/// to spare or the machine has one of them on already.
+/// Settings for a machine a graphics card of the host's is passed through to, or that has
+/// one of them on already.
 fn passthrough(
     view: &MachineView,
     info: &MachineInfo,
@@ -1164,7 +1164,11 @@ fn passthrough(
         || !config.balloon
         || config.hypervisor_hidden
         || !config.evdev.is_empty();
-    if !(in_use || local && passthrough::graphics_cards() >= 2) {
+    let graphics_card = config.host_devices.iter().any(|d| match &d.id {
+        HostDeviceId::Pci(address) => passthrough::is_graphics_card(address),
+        HostDeviceId::Usb { .. } => false,
+    });
+    if !(in_use || local && graphics_card) {
         return None;
     }
     let group = adw::PreferencesGroup::builder()
@@ -1190,12 +1194,20 @@ fn passthrough(
         .clone()
         .or_else(|| target.as_ref().map(|k| k.path.clone()))
     {
+        let mut subtitle = gettext(
+            "Shares the guest’s screen through {path} in place of its video card; the client \
+             takes the keyboard, mouse and clipboard over SPICE on 127.0.0.1",
+        )
+        .replace("{path}", &path);
+        if config.display().protocol != Protocol::Spice {
+            subtitle = format!(
+                "{subtitle}\n{}",
+                gettext("This machine has no SPICE display for the client to connect to")
+            );
+        }
         let row = adw::SwitchRow::builder()
             .title("Looking Glass")
-            .subtitle(
-                gettext("Shares the guest’s screen with the Looking Glass client through {path}")
-                    .replace("{path}", &path),
-            )
+            .subtitle(subtitle)
             .active(config.looking_glass.is_some())
             .sensitive(config.looking_glass.is_some() || target.is_some())
             .build();

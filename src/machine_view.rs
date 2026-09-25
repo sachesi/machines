@@ -807,6 +807,22 @@ impl MachineView {
         if imp.console.is_open() || imp.connecting.get() {
             return;
         }
+        // With no video card, the display has nothing to show but what Looking Glass does.
+        if let Some(live) = &info.live
+            && live.looking_glass.is_some()
+            && live.video.as_deref() == Some("none")
+        {
+            self.console_message(
+                "video-display-symbolic",
+                &gettext("Shown in Looking Glass"),
+                Some(&gettext(
+                    "The guest shows its screen on the passed-through graphics card. Open it \
+                     with the Looking Glass client.",
+                )),
+                None,
+            );
+            return;
+        }
         let live_graphics = info.live.as_ref().and_then(|l| l.graphics.first());
         match live_graphics.map(String::as_str) {
             Some(protocol @ ("vnc" | "spice")) => {
