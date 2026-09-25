@@ -1605,18 +1605,28 @@ pub fn set_io_thread_pins(xml: &str, cpus: &[u32]) -> Result<String, String> {
         is_io_thread_pin,
         on.then_some(pin.as_str()),
     )];
+    let devices = child(root, "devices");
+    let is_virtio_disk = |d: &roxmltree::Node| {
+        d.has_tag_name("disk")
+            && child(*d, "target").and_then(|t| t.attribute("bus")) == Some("virtio")
+    };
+    // Other than the virtio disks, which let go of it here.
+    let used_elsewhere = devices.iter().flat_map(|d| d.descendants()).any(|n| {
+        n.attribute("iothread") == Some("1") && !n.ancestors().any(|a| is_virtio_disk(&a))
+    });
     let threads = child(root, "iothreads");
     let one = threads.and_then(|t| t.text()).map(str::trim) == Some("1");
     match threads {
         None if on => edits.push(Some(append_to(xml, root, "<iothreads>1</iothreads>"))),
-        Some(threads) if one && !on => edits.push(Some((threads.range(), String::new()))),
+        Some(threads) if one && !on && !used_elsewhere => {
+            edits.push(Some((threads.range(), String::new())));
+        }
         _ => {}
     }
-    let devices = child(root, "devices");
-    let disks = devices.iter().flat_map(|d| d.children()).filter(|d| {
-        d.has_tag_name("disk")
-            && child(*d, "target").and_then(|t| t.attribute("bus")) == Some("virtio")
-    });
+    let disks = devices
+        .iter()
+        .flat_map(|d| d.children())
+        .filter(is_virtio_disk);
     for disk in disks {
         edits.push(match child(disk, "driver") {
             Some(driver) if on && driver.attribute("iothread").is_none() => {
@@ -3443,6 +3453,14 @@ mod tests {
         assert!(on.contains("discard='unmap' iothread='1'/>"), "{on}");
         assert_eq!(MachineConfig::parse(&on).unwrap().io_thread_cpuset, "2,3");
         assert_eq!(set_io_thread_pins(&on, &[]).unwrap(), VIRT_MANAGER);
+
+        // The thread stays for a controller of its own.
+        let scsi =
+            "<controller type='scsi' model='virtio-scsi'><driver iothread='1'/></controller>";
+        let shared = on.replace("</devices>", &format!("{scsi}</devices>"));
+        let off = set_io_thread_pins(&shared, &[]).unwrap();
+        assert!(off.contains("<iothreads>1</iothreads>"), "{off}");
+        assert!(!off.contains("iothreadpin") && off.contains(scsi), "{off}");
     }
 
     #[test]
