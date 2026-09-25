@@ -48,6 +48,12 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.1.2" date="2026-09-25">
+      <description>
+        <p>A click in the console gives the virtual machine the shortcuts the desktop would otherwise take, such as Super and Alt+Tab, until Ctrl+Alt releases the keyboard, which the console says as it takes them. Fullscreen has a button in the main window too, and in fullscreen the machine's controls, with the keys to send, come down from the top edge of the screen: for a moment as fullscreen starts, while the pointer is at the edge, and at a tap there on a touch screen. The serial console says so while nothing has arrived from the guest.</p>
+        <p>A libvirt daemon that stops answering now shows as a lost connection instead of leaving the window waiting. SPICE is offered only where QEMU has its SPICE modules, and a machine that cannot start without them says what to install. The console redraws only what changed of the guest's screen, and screen readers know it by the machine's name.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-09-25">
       <description>
         <p>New virtual machines boot with the firmware chosen for them: BIOS, UEFI, or UEFI with Secure Boot, which is the default where the host's firmware has it, as Windows 11 requires. Their disk goes in the storage pool chosen for it, which shows its free space, and their processors are cores of one socket, so that Windows uses all of them.</p>

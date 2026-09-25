@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: machines 0.1.1\n"
+"Project-Id-Version: machines 0.1.2\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-25 10:10+0300\n"
+"POT-Creation-Date: 2026-09-25 10:13+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -151,6 +151,27 @@ msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:53
 msgid ""
+"A click in the console gives the virtual machine the shortcuts the desktop "
+"would otherwise take, such as Super and Alt+Tab, until Ctrl+Alt releases the "
+"keyboard, which the console says as it takes them. Fullscreen has a button "
+"in the main window too, and in fullscreen the machine's controls, with the "
+"keys to send, come down from the top edge of the screen: for a moment as "
+"fullscreen starts, while the pointer is at the edge, and at a tap there on a "
+"touch screen. The serial console says so while nothing has arrived from the "
+"guest."
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:54
+msgid ""
+"A libvirt daemon that stops answering now shows as a lost connection instead "
+"of leaving the window waiting. SPICE is offered only where QEMU has its "
+"SPICE modules, and a machine that cannot start without them says what to "
+"install. The console redraws only what changed of the guest's screen, and "
+"screen readers know it by the machine's name."
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:59
+msgid ""
 "New virtual machines boot with the firmware chosen for them: BIOS, UEFI, or "
 "UEFI with Secure Boot, which is the default where the host's firmware has "
 "it, as Windows 11 requires. Their disk goes in the storage pool chosen for "
@@ -158,7 +179,7 @@ msgid ""
 "socket, so that Windows uses all of them."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:54
+#: data/io.github.sachesi.machines.metainfo.xml:60
 msgid ""
 "The serial console is offered only to machines with a serial port, which is "
 "added and removed with the other devices. The sidebar selects a machine on a "
@@ -168,7 +189,7 @@ msgid ""
 "a keyboard shortcuts dialog lists what the keyboard does."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:58
+#: data/io.github.sachesi.machines.metainfo.xml:64
 msgid "First release."
 msgstr ""
 
