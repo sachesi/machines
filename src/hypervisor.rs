@@ -277,6 +277,9 @@ pub struct Host {
     /// Whether QEMU runs as a user of its own, as the system connection's does, which
     /// opens only the files that user may.
     pub qemu_is_other_user: bool,
+    /// Whether this is the system connection of this computer's libvirt, which runs the
+    /// scripts of [`crate::hooks`].
+    pub hooks: bool,
 }
 
 impl Default for Host {
@@ -288,6 +291,7 @@ impl Default for Host {
             secure_boot: true,
             local: true,
             qemu_is_other_user: false,
+            hooks: false,
         }
     }
 }
@@ -347,6 +351,7 @@ impl Hypervisor {
             secure_boot: caps.efi && caps.secure_boot,
             local: self.is_local(),
             qemu_is_other_user: self.is_local() && !self.is_session(),
+            hooks: self.is_local() && !self.is_session(),
         }
     }
 

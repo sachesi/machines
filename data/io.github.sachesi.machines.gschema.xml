@@ -24,7 +24,7 @@
     <key name="show-advanced-settings" type="b">
       <default>false</default>
       <summary>Show advanced settings</summary>
-      <description>Whether a machine’s details show the settings few machines need: disk and network card models, clock, power actions, and pinning.</description>
+      <description>Whether a machine’s details show the settings few machines need: disk and network card models, clock, power actions, pinning, and the scripts run as it starts and stops.</description>
     </key>
   </schema>
 </schemalist>

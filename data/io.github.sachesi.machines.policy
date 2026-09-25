@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "https://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Machines</vendor>
+  <vendor_url>https://github.com/sachesi/machines</vendor_url>
+  <icon_name>io.github.sachesi.machines</icon_name>
+  <action id="io.github.sachesi.machines.hooks">
+    <description>Change the scripts virtual machines run as they start and stop</description>
+    <message>Authentication is required to change the scripts libvirt runs as root when a virtual machine starts or stops</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXECDIR@/machines-hooks</annotate>
+  </action>
+</policyconfig>

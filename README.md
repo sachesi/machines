@@ -36,6 +36,9 @@ version of the machine type, a boot menu, what happens when the guest powers off
 or crashes, the clock in local time as Windows keeps it, Hyper-V enlightenments, the host's
 own system information, host processors for QEMU's emulator and disk I/O threads, locked
 memory, and each disk's bus, cache, I/O mode and discard, and each network card's model.
+On the system connection it also edits the scripts libvirt runs as root before the machine
+starts and after it stops, to set huge pages aside or hand a graphics card over, say. A
+helper writes them through pkexec, so saving one asks for an administrator's password.
 
 The console reaches a machine's display through libvirt rather than over the network, so
 new machines have a display with no listening socket at all: SPICE where
@@ -69,7 +72,9 @@ Then:
     sudo just install        # or: just prefix=$HOME/.local install
 
 `just run` starts the debug build without installing it, and `just check` and `just test`
-are what a change has to pass.
+are what a change has to pass. Besides the app, `install` puts the helper that writes the
+start and stop scripts in `libexec`, and its polkit policy in `/usr/share/polkit-1/actions`,
+the one place polkit reads policies from.
 
 ## Connections
 

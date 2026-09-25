@@ -14,6 +14,9 @@ app_id := "io.github.sachesi.machines"
 prefix := env("PREFIX", "/usr/local")
 destdir := env("DESTDIR", "")
 bindir := destdir + prefix + "/bin"
+libexecdir := prefix + "/libexec"
+# polkit reads actions from here alone, whatever the prefix.
+polkitdir := destdir + "/usr/share/polkit-1/actions"
 datadir := destdir + prefix + "/share"
 release := "target/release"
 schema_dir := "target/schemas"
@@ -59,7 +62,7 @@ test:
     cargo test
 
 # Regenerate po/machines.pot from the Rust sources, the Blueprint files, the desktop entry,
-# the metainfo and the schema.
+# the metainfo, the schema and the polkit policy.
 pot:
     mkdir -p {{pot_dir}}/ui
     blueprint-compiler batch-compile {{pot_dir}}/ui data/ui data/ui/*.blp >/dev/null
@@ -73,7 +76,7 @@ pot:
         --add-comments=Translators --sort-by-file --directory={{pot_dir}} -o po/machines.pot $(cd {{pot_dir}} && find src -name '*.rs' | sort)
     xgettext -j --from-code=UTF-8 --package-name=machines --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/machines/issues --add-comments=Translators --sort-by-file --directory={{pot_dir}} -o po/machines.pot $(cd {{pot_dir}} && ls ui/*.ui)
     xgettext -j --from-code=UTF-8 --package-name=machines --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/machines/issues --language=Desktop --sort-by-file -o po/machines.pot data/{{app_id}}.desktop
-    xgettext -j --from-code=UTF-8 --package-name=machines --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/machines/issues --sort-by-file -o po/machines.pot data/{{app_id}}.metainfo.xml data/{{app_id}}.gschema.xml
+    xgettext -j --from-code=UTF-8 --package-name=machines --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/machines/issues --sort-by-file -o po/machines.pot data/{{app_id}}.metainfo.xml data/{{app_id}}.gschema.xml data/{{app_id}}.policy
 
 # Merge the current template into every po/<lang>.po.
 po: pot
@@ -84,6 +87,12 @@ po: pot
 install:
     @test -x {{release}}/machines || { echo "error: {{release}}/machines missing; run 'just build' first" >&2; exit 1; }
     install -Dm755 {{release}}/machines {{bindir}}/machines
+    install -Dm755 {{release}}/machines-hooks {{destdir}}{{libexecdir}}/machines-hooks
+    # Without it, pkexec still runs the helper, asking in its own words.
+    if [ -n "{{destdir}}" ] || [ -w /usr/share/polkit-1/actions ]; then \
+        install -d {{polkitdir}}; \
+        msgfmt --xml --template=data/{{app_id}}.policy -d po -o - | sed 's|@LIBEXECDIR@|{{libexecdir}}|' > {{polkitdir}}/{{app_id}}.policy; \
+    else echo "note: the polkit policy goes to /usr/share/polkit-1/actions, which takes root" >&2; fi
     mkdir -p {{datadir}}/applications {{datadir}}/metainfo
     msgfmt --desktop --template=data/{{app_id}}.desktop -d po -o {{datadir}}/applications/{{app_id}}.desktop
     msgfmt --xml --template=data/{{app_id}}.metainfo.xml -d po -o {{datadir}}/metainfo/{{app_id}}.metainfo.xml
@@ -98,7 +107,8 @@ install:
     @echo "installed to {{prefix}}"
 
 uninstall:
-    rm -f {{bindir}}/machines
+    rm -f {{bindir}}/machines {{destdir}}{{libexecdir}}/machines-hooks
+    [ ! -w {{polkitdir}} ] || rm -f {{polkitdir}}/{{app_id}}.policy
     rm -f {{datadir}}/applications/{{app_id}}.desktop {{datadir}}/metainfo/{{app_id}}.metainfo.xml
     rm -f {{datadir}}/glib-2.0/schemas/{{app_id}}.gschema.xml
     rm -f {{datadir}}/icons/hicolor/scalable/apps/{{app_id}}.svg {{datadir}}/icons/hicolor/symbolic/apps/{{app_id}}-symbolic.svg

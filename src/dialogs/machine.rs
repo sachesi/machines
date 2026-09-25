@@ -486,232 +486,250 @@ pub fn edit_xml(view: &MachineView) {
             Some(Err(e)) => return win.toast(&e),
             None => return,
         };
-        static INIT: std::sync::Once = std::sync::Once::new();
-        INIT.call_once(sourceview5::init);
-        let buffer = sourceview5::Buffer::new(None);
-        buffer.set_language(
-            sourceview5::LanguageManager::default()
-                .language("xml")
-                .as_ref(),
-        );
-        follow_style(&buffer);
-        // Not a step to undo, and not a change to save.
-        buffer.begin_irreversible_action();
-        buffer.set_text(&xml);
-        buffer.end_irreversible_action();
-        buffer.set_modified(false);
-        let text = sourceview5::View::builder()
-            .buffer(&buffer)
-            .monospace(true)
-            .show_line_numbers(true)
-            .highlight_current_line(true)
-            .auto_indent(true)
-            .tab_width(2)
-            .indent_width(2)
-            .insert_spaces_instead_of_tabs(true)
-            .top_margin(12)
-            .bottom_margin(12)
-            .left_margin(12)
-            .right_margin(12)
-            .build();
-        let scroller = gtk::ScrolledWindow::builder()
-            .child(&text)
-            .vexpand(true)
-            .build();
-        let error = adw::Banner::builder().use_markup(false).build();
-        let save = gtk::Button::builder()
-            .label(gettext("_Save"))
-            .use_underline(true)
-            .css_classes(["suggested-action"])
-            .build();
-        let cancel = gtk::Button::builder()
-            .label(gettext("_Cancel"))
-            .use_underline(true)
-            .build();
-        let header = adw::HeaderBar::builder()
-            .show_start_title_buttons(false)
-            .show_end_title_buttons(false)
-            .build();
-        header.pack_start(&cancel);
-        header.pack_end(&save);
-        let find = FindBar::new(&text, &buffer);
-        let find_button = gtk::ToggleButton::builder()
-            .icon_name("edit-find-symbolic")
-            .tooltip_text(gettext("Find and Replace"))
-            .build();
-        find_button
-            .bind_property("active", &find.bar, "search-mode-enabled")
-            .bidirectional()
-            .sync_create()
-            .build();
-        header.pack_end(&find_button);
-        let toolbar = adw::ToolbarView::builder()
-            .top_bar_style(adw::ToolbarStyle::Raised)
-            .content(&scroller)
-            .build();
-        toolbar.add_top_bar(&header);
-        toolbar.add_top_bar(&error);
-        toolbar.add_top_bar(&find.bar);
-        // A window rather than a dialog, so it can be made as large as the definition is
-        // long; it opens as it was last left, but no larger than the main window.
-        let settings = crate::prefs::settings();
-        let (width, height): (i32, i32) = settings.get("definition-editor-size");
-        let fit = |size: i32, room: i32| if room > 0 { size.min(room) } else { size };
-        let dialog = adw::Window::builder()
-            .title(gettext("Definition of “{name}”").replace("{name}", &info.name))
-            .default_width(fit(width, win.width()))
-            .default_height(fit(height, win.height()))
-            .width_request(360)
-            .height_request(294)
-            .modal(true)
-            .transient_for(&win)
-            .content(&toolbar)
-            .build();
-        dialog.set_application(win.application().as_ref());
-        let shortcuts = gtk::ShortcutController::new();
-        let add = |trigger: &str, f: Box<dyn Fn()>| {
-            shortcuts.add_shortcut(gtk::Shortcut::new(
-                gtk::ShortcutTrigger::parse_string(trigger),
-                Some(gtk::CallbackAction::new(move |_, _| {
-                    f();
-                    glib::Propagation::Stop
-                })),
-            ));
-        };
-        add(
-            "<Control>f",
-            Box::new(glib::clone!(
-                #[strong]
-                find,
-                move || find.open(false)
-            )),
-        );
-        add(
-            "<Control>h",
-            Box::new(glib::clone!(
-                #[strong]
-                find,
-                move || find.open(true)
-            )),
-        );
-        add(
-            "<Control>g",
-            Box::new(glib::clone!(
-                #[strong]
-                find,
-                move || find.step(true)
-            )),
-        );
-        add(
-            "<Shift><Control>g",
-            Box::new(glib::clone!(
-                #[strong]
-                find,
-                move || find.step(false)
-            )),
-        );
-        // The find bar first, then the window.
-        add(
-            "Escape",
-            Box::new(glib::clone!(
-                #[strong]
-                find,
+        let title = gettext("Definition of “{name}”").replace("{name}", &info.name);
+        let target = win.clone();
+        edit_text(&win, &title, &xml, "xml", move |xml| {
+            let (win, uuid) = (target.clone(), info.uuid.clone());
+            async move {
+                let change = win.call(move |hv| hv.define(&uuid, &xml)).await?;
+                Some(change.map(|change| {
+                    if change == Change::AtNextStart {
+                        win.toast(&gettext(
+                            "The change takes effect the next time the virtual machine starts",
+                        ));
+                    }
+                    win.refresh();
+                }))
+            }
+        });
+    });
+}
+
+/// A window to edit `text` in, highlighted as `language`, for `save` to save. It closes
+/// once `save` gives `Some(Ok)`, shows the error of `Some(Err)`, and stays as it is with
+/// `None`, where nothing was done.
+pub fn edit_text<F, Fut>(win: &MachinesWindow, title: &str, text: &str, language: &str, on_save: F)
+where
+    F: Fn(String) -> Fut + 'static,
+    Fut: Future<Output = Option<Result<(), String>>> + 'static,
+{
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(sourceview5::init);
+    let buffer = sourceview5::Buffer::new(None);
+    buffer.set_language(
+        sourceview5::LanguageManager::default()
+            .language(language)
+            .as_ref(),
+    );
+    follow_style(&buffer);
+    // Not a step to undo, and not a change to save.
+    buffer.begin_irreversible_action();
+    buffer.set_text(text);
+    buffer.end_irreversible_action();
+    buffer.set_modified(false);
+    let text = sourceview5::View::builder()
+        .buffer(&buffer)
+        .monospace(true)
+        .show_line_numbers(true)
+        .highlight_current_line(true)
+        .auto_indent(true)
+        .tab_width(2)
+        .indent_width(2)
+        .insert_spaces_instead_of_tabs(true)
+        .top_margin(12)
+        .bottom_margin(12)
+        .left_margin(12)
+        .right_margin(12)
+        .build();
+    let scroller = gtk::ScrolledWindow::builder()
+        .child(&text)
+        .vexpand(true)
+        .build();
+    let error = adw::Banner::builder().use_markup(false).build();
+    let save = gtk::Button::builder()
+        .label(gettext("_Save"))
+        .use_underline(true)
+        .css_classes(["suggested-action"])
+        .build();
+    let cancel = gtk::Button::builder()
+        .label(gettext("_Cancel"))
+        .use_underline(true)
+        .build();
+    let header = adw::HeaderBar::builder()
+        .show_start_title_buttons(false)
+        .show_end_title_buttons(false)
+        .build();
+    header.pack_start(&cancel);
+    header.pack_end(&save);
+    let find = FindBar::new(&text, &buffer);
+    let find_button = gtk::ToggleButton::builder()
+        .icon_name("edit-find-symbolic")
+        .tooltip_text(gettext("Find and Replace"))
+        .build();
+    find_button
+        .bind_property("active", &find.bar, "search-mode-enabled")
+        .bidirectional()
+        .sync_create()
+        .build();
+    header.pack_end(&find_button);
+    let toolbar = adw::ToolbarView::builder()
+        .top_bar_style(adw::ToolbarStyle::Raised)
+        .content(&scroller)
+        .build();
+    toolbar.add_top_bar(&header);
+    toolbar.add_top_bar(&error);
+    toolbar.add_top_bar(&find.bar);
+    // A window rather than a dialog, so it can be made as large as the definition is
+    // long; it opens as it was last left, but no larger than the main window.
+    let settings = crate::prefs::settings();
+    let (width, height): (i32, i32) = settings.get("definition-editor-size");
+    let fit = |size: i32, room: i32| if room > 0 { size.min(room) } else { size };
+    let dialog = adw::Window::builder()
+        .title(title)
+        .default_width(fit(width, win.width()))
+        .default_height(fit(height, win.height()))
+        .width_request(360)
+        .height_request(294)
+        .modal(true)
+        .transient_for(win)
+        .content(&toolbar)
+        .build();
+    dialog.set_application(win.application().as_ref());
+    let shortcuts = gtk::ShortcutController::new();
+    let add = |trigger: &str, f: Box<dyn Fn()>| {
+        shortcuts.add_shortcut(gtk::Shortcut::new(
+            gtk::ShortcutTrigger::parse_string(trigger),
+            Some(gtk::CallbackAction::new(move |_, _| {
+                f();
+                glib::Propagation::Stop
+            })),
+        ));
+    };
+    add(
+        "<Control>f",
+        Box::new(glib::clone!(
+            #[strong]
+            find,
+            move || find.open(false)
+        )),
+    );
+    add(
+        "<Control>h",
+        Box::new(glib::clone!(
+            #[strong]
+            find,
+            move || find.open(true)
+        )),
+    );
+    add(
+        "<Control>g",
+        Box::new(glib::clone!(
+            #[strong]
+            find,
+            move || find.step(true)
+        )),
+    );
+    add(
+        "<Shift><Control>g",
+        Box::new(glib::clone!(
+            #[strong]
+            find,
+            move || find.step(false)
+        )),
+    );
+    // The find bar first, then the window.
+    add(
+        "Escape",
+        Box::new(glib::clone!(
+            #[strong]
+            find,
+            #[weak]
+            dialog,
+            move || {
+                if find.bar.is_search_mode() {
+                    find.bar.set_search_mode(false);
+                } else {
+                    dialog.close();
+                }
+            }
+        )),
+    );
+    dialog.add_controller(shortcuts);
+    dialog.connect_close_request(glib::clone!(
+        #[weak]
+        buffer,
+        #[upgrade_or]
+        glib::Propagation::Proceed,
+        move |dialog| {
+            let _ = settings.set("definition-editor-size", dialog.default_size());
+            if !buffer.is_modified() {
+                return glib::Propagation::Proceed;
+            }
+            glib::spawn_future_local(glib::clone!(
                 #[weak]
                 dialog,
-                move || {
-                    if find.bar.is_search_mode() {
-                        find.bar.set_search_mode(false);
-                    } else {
+                #[weak]
+                buffer,
+                async move {
+                    let discard = dialogs::confirm(
+                        &dialog,
+                        &gettext("Discard Changes?"),
+                        &gettext("The changes have not been saved."),
+                        &gettext("_Discard"),
+                    )
+                    .await;
+                    if discard {
+                        buffer.set_modified(false);
                         dialog.close();
                     }
                 }
-            )),
-        );
-        dialog.add_controller(shortcuts);
-        dialog.connect_close_request(glib::clone!(
-            #[weak]
-            buffer,
-            #[upgrade_or]
-            glib::Propagation::Proceed,
-            move |dialog| {
-                let _ = settings.set("definition-editor-size", dialog.default_size());
-                if !buffer.is_modified() {
-                    return glib::Propagation::Proceed;
-                }
-                glib::spawn_future_local(glib::clone!(
-                    #[weak]
-                    dialog,
-                    #[weak]
-                    buffer,
-                    async move {
-                        let discard = dialogs::confirm(
-                            &dialog,
-                            &gettext("Discard Changes?"),
-                            &gettext("The changes to the definition have not been saved."),
-                            &gettext("_Discard"),
-                        )
-                        .await;
-                        if discard {
+            ));
+            glib::Propagation::Stop
+        }
+    ));
+    cancel.connect_clicked(glib::clone!(
+        #[weak]
+        dialog,
+        move |_| {
+            dialog.close();
+        }
+    ));
+    let on_save = Rc::new(on_save);
+    save.connect_clicked(glib::clone!(
+        #[weak]
+        dialog,
+        #[weak]
+        error,
+        move |save| {
+            let text = buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .to_string();
+            let saved = on_save(text);
+            save.set_sensitive(false);
+            glib::spawn_future_local(glib::clone!(
+                #[weak]
+                save,
+                #[weak]
+                buffer,
+                async move {
+                    let saved = saved.await;
+                    save.set_sensitive(true);
+                    match saved {
+                        Some(Ok(())) => {
                             buffer.set_modified(false);
                             dialog.close();
                         }
-                    }
-                ));
-                glib::Propagation::Stop
-            }
-        ));
-        cancel.connect_clicked(glib::clone!(
-            #[weak]
-            dialog,
-            move |_| {
-                dialog.close();
-            }
-        ));
-        save.connect_clicked(glib::clone!(
-            #[weak]
-            dialog,
-            #[weak]
-            win,
-            #[weak]
-            error,
-            move |save| {
-                let xml = buffer
-                    .text(&buffer.start_iter(), &buffer.end_iter(), false)
-                    .to_string();
-                let uuid = info.uuid.clone();
-                save.set_sensitive(false);
-                glib::spawn_future_local(glib::clone!(
-                    #[weak]
-                    save,
-                    #[weak]
-                    buffer,
-                    async move {
-                        let defined = win.call(move |hv| hv.define(&uuid, &xml)).await;
-                        save.set_sensitive(true);
-                        match defined {
-                            Some(Ok(change)) => {
-                                buffer.set_modified(false);
-                                dialog.close();
-                                if change == Change::AtNextStart {
-                                    win.toast(&gettext(
-                                        "The change takes effect the next time the virtual \
-                                             machine starts",
-                                    ));
-                                }
-                                win.refresh();
-                            }
-                            Some(Err(e)) => {
-                                error.set_title(&e);
-                                error.set_revealed(true);
-                            }
-                            None => {}
+                        Some(Err(e)) => {
+                            error.set_title(&e);
+                            error.set_revealed(true);
                         }
+                        None => {}
                     }
-                ));
-            }
-        ));
-        dialog.present();
-    });
+                }
+            ));
+        }
+    ));
+    dialog.present();
 }
 
 /// Find, and find and replace, in the definition editor.

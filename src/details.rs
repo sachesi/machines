@@ -15,6 +15,7 @@ use crate::domain_xml::{
     HostDev, MachineConfig, Nic, PowerActions, Protocol, Snapshot, Topology, cpu_list,
     parse_cpu_list,
 };
+use crate::hooks::{self, Event};
 use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
 use crate::machine_view::MachineView;
@@ -50,6 +51,9 @@ pub fn fill(view: &MachineView, info: &MachineInfo, start: &gtk::Box, end: &gtk:
     if advanced {
         start.append(&power(view, info, config));
         start.append(&features(view, info, config));
+    }
+    if let Some(group) = scripts(view, info, advanced) {
+        start.append(&group);
     }
     end.append(&storage(view, config, live, advanced));
     end.append(&network(view, info, config, live, advanced));
@@ -1459,6 +1463,126 @@ fn features(
         ),
     ));
     group
+}
+
+/// The scripts libvirt runs as the machine starts and stops, where they are this app's to
+/// change: shown with the advanced settings, or where there are any.
+fn scripts(
+    view: &MachineView,
+    info: &MachineInfo,
+    advanced: bool,
+) -> Option<adw::PreferencesGroup> {
+    if !window(view)?.host().hooks || !info.persistent {
+        return None;
+    }
+    let found = [Event::Prepare, Event::Release].map(|e| (e, hooks::script(&info.uuid, e)));
+    if !advanced && found.iter().all(|(_, s)| s.is_none()) {
+        return None;
+    }
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Scripts"))
+        .description(gettext(
+            "Run as root by libvirt, with the machine’s name as their first argument and its \
+             definition on standard input. They must not use libvirt, which waits for them.",
+        ))
+        .build();
+    for (event, script) in found {
+        let (title, subtitle) = match event {
+            Event::Prepare => (
+                gettext("Before It Starts"),
+                gettext("If it fails, the machine does not start"),
+            ),
+            Event::Release => (
+                gettext("After It Stops"),
+                gettext("Once libvirt has taken back what it gave the machine"),
+            ),
+        };
+        let subtitle = if script.is_some() {
+            subtitle
+        } else {
+            format!("{subtitle}\n{}", gettext("None"))
+        };
+        let row = adw::ActionRow::builder()
+            .title(title)
+            .subtitle(subtitle)
+            .activatable(true)
+            .build();
+        if script.is_some() {
+            let remove = remove_button(&gettext("Remove Script"));
+            let uuid = info.uuid.clone();
+            remove.connect_clicked(glib::clone!(
+                #[weak]
+                view,
+                move |_| remove_script(&view, uuid.clone(), event)
+            ));
+            row.add_suffix(&remove);
+        }
+        row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+        let (uuid, name) = (info.uuid.clone(), info.name.clone());
+        row.connect_activated(glib::clone!(
+            #[weak]
+            view,
+            move |_| edit_script(&view, &uuid, &name, event, script.clone())
+        ));
+        group.add(&row);
+    }
+    Some(group)
+}
+
+fn edit_script(view: &MachineView, uuid: &str, name: &str, event: Event, script: Option<String>) {
+    let Some(win) = window(view) else {
+        return;
+    };
+    let title = match event {
+        Event::Prepare => gettext("Before “{name}” Starts"),
+        Event::Release => gettext("After “{name}” Stops"),
+    }
+    .replace("{name}", name);
+    let text = script.unwrap_or_else(|| "#!/bin/sh\n".to_owned());
+    let (view, uuid) = (view.downgrade(), uuid.to_owned());
+    dialogs::machine::edit_text(&win, &title, &text, "sh", move |text| {
+        let (view, uuid) = (view.clone(), uuid.clone());
+        async move {
+            match hooks::set_script(&uuid, event, &text).await {
+                Ok(true) => {
+                    if let Some(view) = view.upgrade() {
+                        view.refresh_details();
+                    }
+                    Some(Ok(()))
+                }
+                Ok(false) => None,
+                Err(e) => Some(Err(e)),
+            }
+        }
+    });
+}
+
+fn remove_script(view: &MachineView, uuid: String, event: Event) {
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        view,
+        async move {
+            let remove = dialogs::confirm(
+                &view,
+                &gettext("Remove Script?"),
+                &gettext("libvirt no longer runs it for this machine."),
+                &gettext("_Remove"),
+            )
+            .await;
+            if !remove {
+                return;
+            }
+            match hooks::set_script(&uuid, event, "").await {
+                Ok(true) => view.refresh_details(),
+                Ok(false) => {}
+                Err(e) => {
+                    if let Some(win) = window(&view) {
+                        win.toast(&e);
+                    }
+                }
+            }
+        }
+    ));
 }
 
 fn display(
