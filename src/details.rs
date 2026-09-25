@@ -956,7 +956,7 @@ fn disk_settings(view: &MachineView, disk: &Disk) -> Vec<adw::PreferencesRow> {
         ],
         disk.cache.clone(),
         disk.cache.clone().unwrap_or_default(),
-        with(|t, cache| t.cache = cache),
+        with(DiskTuning::set_cache),
     );
     let io = choice_row(
         &gettext("I/O"),
@@ -968,9 +968,11 @@ fn disk_settings(view: &MachineView, disk: &Disk) -> Vec<adw::PreferencesRow> {
         ],
         disk.io.clone(),
         disk.io.clone().unwrap_or_default(),
-        with(|t, io| t.io = io),
+        with(DiskTuning::set_io),
     );
-    io.set_subtitle(&gettext("Native needs the cache None or Direct Sync"));
+    io.set_subtitle(&gettext(
+        "Native needs the cache None or Direct Sync, and sets None otherwise",
+    ));
     let discard = switch_row(
         &gettext("Discard"),
         &gettext("Space the guest frees is freed in the image too"),
@@ -1375,18 +1377,19 @@ fn power(view: &MachineView, info: &MachineInfo, config: &MachineConfig) -> adw:
     let set = Rc::new(set);
     let stop = || ("destroy".to_owned(), gettext("Stop"));
     let restart = || ("restart".to_owned(), gettext("Restart"));
+    // QEMU cannot restart a guest that powers off while stopping one that reboots.
     let rows = [
         (
             gettext("When the Guest Powers Off"),
             None,
-            vec![stop(), restart()],
+            vec![Some(stop()), (power.reboot != "destroy").then(restart)],
             power.poweroff.clone(),
             (|p: &mut PowerActions, a| p.poweroff = a) as fn(&mut PowerActions, String),
         ),
         (
             gettext("When the Guest Reboots"),
             None,
-            vec![restart(), stop()],
+            vec![Some(restart()), (power.poweroff != "restart").then(stop)],
             power.reboot.clone(),
             |p, a| p.reboot = a,
         ),
@@ -1396,9 +1399,9 @@ fn power(view: &MachineView, info: &MachineInfo, config: &MachineConfig) -> adw:
                 "Only a guest with a panic device reports its crash",
             )),
             vec![
-                stop(),
-                restart(),
-                ("preserve".to_owned(), gettext("Keep It Paused, to Inspect")),
+                Some(stop()),
+                Some(restart()),
+                Some(("preserve".to_owned(), gettext("Keep It Paused, to Inspect"))),
             ],
             power.crash.clone(),
             |p, a| p.crash = a,
@@ -1406,6 +1409,7 @@ fn power(view: &MachineView, info: &MachineInfo, config: &MachineConfig) -> adw:
     ];
     for (title, subtitle, choices, current, change) in rows {
         let (set, power) = (set.clone(), power.clone());
+        let choices = choices.into_iter().flatten().collect();
         let row = choice_row(&title, choices, current.clone(), current, move |action| {
             let mut power = power.clone();
             change(&mut power, action);

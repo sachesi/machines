@@ -1664,6 +1664,30 @@ pub struct DiskTuning {
     pub discard: bool,
 }
 
+impl DiskTuning {
+    /// QEMU opens the image for native I/O only with a cache that bypasses the host's.
+    fn allows_native_io(&self) -> bool {
+        matches!(self.cache.as_deref(), Some("none" | "directsync"))
+    }
+
+    /// With the cache `cache`, and the default I/O where it was native and `cache` does
+    /// not allow it.
+    pub fn set_cache(&mut self, cache: Option<String>) {
+        self.cache = cache;
+        if self.io.as_deref() == Some("native") && !self.allows_native_io() {
+            self.io = None;
+        }
+    }
+
+    /// With the I/O `io`, and no cache where it is native and the cache does not allow it.
+    pub fn set_io(&mut self, io: Option<String>) {
+        self.io = io;
+        if self.io.as_deref() == Some("native") && !self.allows_native_io() {
+            self.cache = Some("none".to_owned());
+        }
+    }
+}
+
 /// `xml` with its disk at `target` tuned as `tuning` says. On another bus the disk gets a
 /// name and address there, and a SCSI disk a virtio-scsi controller if there is none.
 pub fn set_disk(xml: &str, target: &str, tuning: &DiskTuning) -> Result<String, String> {
@@ -3453,6 +3477,25 @@ mod tests {
             "{xml}"
         );
         assert!(set_disk(&xml, "vda", &scsi).is_err());
+    }
+
+    #[test]
+    fn native_io_keeps_a_cache_that_allows_it() {
+        let mut tuning = DiskTuning {
+            bus: "virtio".to_owned(),
+            cache: Some("writeback".to_owned()),
+            io: None,
+            discard: false,
+        };
+        tuning.set_io(Some("native".to_owned()));
+        assert_eq!(tuning.cache.as_deref(), Some("none"));
+        tuning.set_cache(Some("directsync".to_owned()));
+        assert_eq!(tuning.io.as_deref(), Some("native"));
+        tuning.set_cache(None);
+        assert_eq!(tuning.io, None);
+        tuning.set_io(Some("io_uring".to_owned()));
+        tuning.set_cache(Some("unsafe".to_owned()));
+        assert_eq!(tuning.io.as_deref(), Some("io_uring"));
     }
 
     #[test]
