@@ -71,6 +71,8 @@ enum Pending {
     /// Taken out of the definition, but the running machine still has it, until the guest
     /// lets go of it or the machine stops.
     Removed,
+    /// In both, with settings in the definition the machine gets at its next start.
+    Changed,
 }
 
 impl Pending {
@@ -79,6 +81,7 @@ impl Pending {
             Self::No => None,
             Self::Added => Some(gettext("Comes with the next start")),
             Self::Removed => Some(gettext("Being removed; the running machine still has it")),
+            Self::Changed => Some(gettext("Its new settings come with the next start")),
         }
     }
 }
@@ -105,6 +108,27 @@ fn with_pending<'a, T>(
         );
     }
     out
+}
+
+/// `marked` from [`with_pending`], with the devices the running machine has otherwise than
+/// the definition, as `differs` tells, marked as changed.
+fn with_changes<'a, T>(
+    marked: Vec<(&'a T, Pending)>,
+    live: Option<&[T]>,
+    same: impl Fn(&T, &T) -> bool,
+    differs: impl Fn(&T, &T) -> bool,
+) -> Vec<(&'a T, Pending)> {
+    marked
+        .into_iter()
+        .map(|(d, pending)| match live {
+            Some(live)
+                if pending == Pending::No && live.iter().any(|l| same(l, d) && differs(l, d)) =>
+            {
+                (d, Pending::Changed)
+            }
+            _ => (d, pending),
+        })
+        .collect()
 }
 
 /// `subtitle`, with what `pending` says under it.
@@ -794,7 +818,15 @@ fn storage(
     ));
     group.set_header_suffix(Some(&add));
     let live = live.map(|l| l.disks.as_slice());
-    for (disk, pending) in with_pending(&config.disks, live, |a, b| a.target == b.target) {
+    // By its image as well, which keeps it on another bus, under another name.
+    let same = |a: &Disk, b: &Disk| {
+        a.target == b.target || a.source.is_some() && a.source == b.source && a.device == b.device
+    };
+    let differs = |a: &Disk, b: &Disk| {
+        (&a.bus, &a.cache, &a.io, a.discard) != (&b.bus, &b.cache, &b.io, b.discard)
+    };
+    let marked = with_changes(with_pending(&config.disks, live, same), live, same, differs);
+    for (disk, pending) in marked {
         group.add(disk_row(view, disk, pending, advanced).widget());
     }
     if config.disks.is_empty() {
@@ -829,7 +861,7 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending, advanced: bool) -
     } else {
         Vec::new()
     };
-    let key = format!("disk {}", disk.target);
+    let key = format!("disk {}", disk.source.as_ref().unwrap_or(&disk.target));
     let row = DeviceRow::new(view, key, &title, &noted(subtitle, pending), settings);
     let remove = remove_button(&gettext("Remove"));
     remove.connect_clicked(glib::clone!(
@@ -856,7 +888,10 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending, advanced: bool) -
         return row;
     }
     if disk.device != DiskDevice::Cdrom || pending == Pending::Added {
-        if disk.device == DiskDevice::Disk && disk.kind == "file" && pending == Pending::No {
+        if disk.device == DiskDevice::Disk
+            && disk.kind == "file"
+            && matches!(pending, Pending::No | Pending::Changed)
+        {
             row.add_suffix(&resize_button(view, disk));
         }
         row.add_suffix(&remove);
@@ -1074,7 +1109,14 @@ fn network(
     group.set_header_suffix(Some(&add));
     let mut rows = Vec::new();
     let live = live.map(|l| l.nics.as_slice());
-    for (nic, pending) in with_pending(&config.nics, live, |a, b| a.mac == b.mac) {
+    let same = |a: &Nic, b: &Nic| a.mac == b.mac;
+    let marked = with_changes(
+        with_pending(&config.nics, live, same),
+        live,
+        same,
+        |a, b| a.model != b.model,
+    );
+    for (nic, pending) in marked {
         let row = nic_row(view, nic, pending, advanced);
         group.add(row.widget());
         rows.push((nic.mac.clone(), row));
@@ -2015,6 +2057,25 @@ mod tests {
             with_pending(&next, None, |a, b| a == b)
                 .iter()
                 .all(|(_, p)| *p == Pending::No)
+        );
+    }
+
+    #[test]
+    fn devices_the_next_start_changes() {
+        // A device by its name, with a setting.
+        let next = [("a", 1), ("b", 2), ("c", 3)];
+        let live = [("a", 1), ("b", 5)];
+        let same = |x: &(&str, i32), y: &(&str, i32)| x.0 == y.0;
+        let marked = with_pending(&next, Some(&live), same);
+        let marked = with_changes(marked, Some(&live), same, |x, y| x.1 != y.1);
+        let marked: Vec<(&str, Pending)> = marked.into_iter().map(|(d, p)| (d.0, p)).collect();
+        assert_eq!(
+            marked,
+            [
+                ("a", Pending::No),
+                ("b", Pending::Changed),
+                ("c", Pending::Added)
+            ]
         );
     }
 
