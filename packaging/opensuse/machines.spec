@@ -83,12 +83,16 @@ target="%{_cargo_target_dir}/release"
 target="target/release"
 %endif
 install -Dpm 0755 "$target/machines" %{buildroot}%{_bindir}/machines
+install -Dpm 0755 "$target/machines-hooks" %{buildroot}%{_libexecdir}/machines-hooks
 
 install -d %{buildroot}%{_datadir}/applications %{buildroot}%{_datadir}/metainfo
 msgfmt --desktop --template=data/%{app_id}.desktop -d po \
   -o %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 msgfmt --xml --template=data/%{app_id}.metainfo.xml -d po \
   -o %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
+install -d %{buildroot}%{_datadir}/polkit-1/actions
+GETTEXTDATADIRS=data msgfmt --xml --template=data/%{app_id}.policy -d po -o - \
+  | sed 's|@LIBEXECDIR@|%{_libexecdir}|' > %{buildroot}%{_datadir}/polkit-1/actions/%{app_id}.policy
 install -Dpm 0644 data/%{app_id}.gschema.xml %{buildroot}%{_datadir}/glib-2.0/schemas/%{app_id}.gschema.xml
 install -Dpm 0644 data/icons/hicolor/scalable/apps/%{app_id}.svg \
   %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/%{app_id}.svg
@@ -108,6 +112,7 @@ if [ -s po/LINGUAS ]; then %find_lang %{name}; fi
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{app_id}.desktop
 appstreamcli validate --no-net %{buildroot}%{_datadir}/metainfo/%{app_id}.metainfo.xml
 test -x %{buildroot}%{_bindir}/machines
+test -x %{buildroot}%{_libexecdir}/machines-hooks
 
 %files -f %{name}.lang
 %license LICENSE
@@ -115,7 +120,9 @@ test -x %{buildroot}%{_bindir}/machines
 %{_datadir}/applications/%{app_id}.desktop
 %{_datadir}/metainfo/%{app_id}.metainfo.xml
 %{_datadir}/glib-2.0/schemas/%{app_id}.gschema.xml
+%{_datadir}/polkit-1/actions/%{app_id}.policy
 %{_datadir}/icons/hicolor/scalable/apps/%{app_id}.svg
 %{_datadir}/icons/hicolor/symbolic/apps/%{app_id}-symbolic.svg
+%{_libexecdir}/machines-hooks
 
 %changelog
