@@ -209,6 +209,10 @@ impl Drop for Hypervisor {
 impl Hypervisor {
     pub fn open(uri: &str) -> Result<Self> {
         let conn = Connect::open(Some(uri)).map_err(message)?;
+        // A daemon that stops answering would otherwise leave every call waiting forever;
+        // with keepalives the connection closes after 5 unanswered ones, 5 seconds apart,
+        // which the window hears of as any lost connection.
+        let _ = conn.set_keep_alive(5, 5);
         Ok(Self {
             conn,
             uri: uri.to_owned(),
