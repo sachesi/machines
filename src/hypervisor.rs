@@ -435,8 +435,15 @@ impl Hypervisor {
                         .map(String::as_str),
                     0,
                 );
-                caps.map(|caps| Capabilities::parse(&caps))
-                    .unwrap_or_default()
+                let mut caps = caps
+                    .map(|caps| Capabilities::parse(&caps))
+                    .unwrap_or_default();
+                caps.machine_types = self
+                    .conn
+                    .get_capabilities()
+                    .map(|host| domain_xml::machine_types(&host, &config.arch, &config.machine))
+                    .unwrap_or_else(|_| vec![config.machine.clone()]);
+                caps
             })
             .clone()
     }
@@ -594,7 +601,7 @@ impl Hypervisor {
 
     /// Redefine the machine with its definition as `edit` changes it; takes effect at the
     /// next start.
-    fn edit_definition(
+    pub fn edit_definition(
         &self,
         uuid: &str,
         edit: impl FnOnce(&str) -> std::result::Result<String, String>,

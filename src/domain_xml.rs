@@ -130,6 +130,12 @@ pub struct Disk {
     pub target: String,
     pub bus: String,
     pub format: Option<String>,
+    /// QEMU's cache mode for it, `none`, `writeback`…, where not its default.
+    pub cache: Option<String>,
+    /// How QEMU does its I/O, `native`, `threads` or `io_uring`, where not its default.
+    pub io: Option<String>,
+    /// Whether the guest's discards free the space in the image.
+    pub discard: bool,
     /// The `<disk>` element as the definition has it, which names it to libvirt.
     pub xml: String,
 }
@@ -203,6 +209,15 @@ pub struct Evdev {
     pub keyboard: bool,
 }
 
+/// What the machine does when the guest powers off, reboots, or crashes, in libvirt's words:
+/// `destroy`, `restart`, `preserve`…
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PowerActions {
+    pub poweroff: String,
+    pub reboot: String,
+    pub crash: String,
+}
+
 /// A device the firmware can boot from, by its place among the machine's devices of its kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BootDevice {
@@ -245,6 +260,23 @@ pub struct MachineConfig {
     /// Whether KVM hides itself from the guest.
     pub hypervisor_hidden: bool,
     pub evdev: Vec<Evdev>,
+    /// Whether the firmware offers a menu of what to boot from.
+    pub boot_menu: bool,
+    pub power: PowerActions,
+    /// Whether the guest's clock keeps the host's local time, as Windows expects, rather
+    /// than UTC.
+    pub local_time: bool,
+    /// Whether the guest is given what it would have on Hyper-V, for Windows to run as fast.
+    pub hyperv: bool,
+    /// Whether the guest sees the host's own system information, its maker and model.
+    pub host_smbios: bool,
+    /// The host processors QEMU's own threads run on, as libvirt writes them, or nothing.
+    pub emulator_cpuset: String,
+    /// The host processors the I/O thread of its virtio disks runs on, or nothing where it
+    /// has no I/O thread of this app's.
+    pub io_thread_cpuset: String,
+    /// Whether its memory stays in the host's memory, never swapped out.
+    pub locked_memory: bool,
 }
 
 const LIBOSINFO_NS: &str = "http://libosinfo.org/xmlns/libvirt/domain/1.0";
@@ -342,6 +374,9 @@ impl MachineConfig {
                             .map(str::to_owned)
                     });
                     let target = sub("target");
+                    let driver = sub("driver");
+                    let driver_attribute =
+                        |name: &str| driver.and_then(|d| d.attribute(name)).map(str::to_owned);
                     boots(BootDevice::Disk(disks.len()));
                     disks.push(Disk {
                         device,
@@ -355,9 +390,10 @@ impl MachineConfig {
                             .and_then(|t| t.attribute("bus"))
                             .unwrap_or_default()
                             .to_owned(),
-                        format: sub("driver")
-                            .and_then(|d| d.attribute("type"))
-                            .map(str::to_owned),
+                        format: driver_attribute("type"),
+                        cache: driver_attribute("cache"),
+                        io: driver_attribute("io"),
+                        discard: driver_attribute("discard").as_deref() == Some("unmap"),
                         xml,
                     });
                 }
@@ -450,6 +486,23 @@ impl MachineConfig {
             }
         }
 
+        let os_child = |name: &str| os.and_then(|os| self::child(os, name));
+        let action = |name: &str, default: &str| {
+            child(name)
+                .and_then(|n| n.text())
+                .map_or(default, str::trim)
+                .to_owned()
+        };
+        let tune = child("cputune");
+        let cpuset = |is: &dyn Fn(roxmltree::Node) -> bool| {
+            tune.iter()
+                .flat_map(|t| t.children())
+                .find(|n| n.is_element() && is(*n))
+                .and_then(|n| n.attribute("cpuset"))
+                .unwrap_or_default()
+                .to_owned()
+        };
+
         boot.sort_by_key(|(order, _)| *order);
         let mut boot: Vec<BootDevice> = boot.into_iter().map(|(_, device)| device).collect();
         if boot.is_empty() {
@@ -488,6 +541,19 @@ impl MachineConfig {
                 .and_then(|k| self::child(k, "hidden"))
                 .is_some_and(|h| h.attribute("state") == Some("on")),
             evdev,
+            boot_menu: os_child("bootmenu").is_some_and(|b| b.attribute("enable") == Some("yes")),
+            power: PowerActions {
+                poweroff: action("on_poweroff", "destroy"),
+                reboot: action("on_reboot", "restart"),
+                crash: action("on_crash", "destroy"),
+            },
+            local_time: child("clock").and_then(|c| c.attribute("offset")) == Some("localtime"),
+            hyperv: child("features").is_some_and(|f| self::child(f, "hyperv").is_some()),
+            host_smbios: os_child("smbios").is_some_and(|s| s.attribute("mode") == Some("host")),
+            emulator_cpuset: cpuset(&|n| n.has_tag_name("emulatorpin")),
+            io_thread_cpuset: cpuset(&is_io_thread_pin),
+            locked_memory: child("memoryBacking")
+                .is_some_and(|m| self::child(m, "locked").is_some()),
         })
     }
 
@@ -1348,6 +1414,395 @@ fn os_firmware(firmware: Firmware) -> String {
     }
 }
 
+type Edit = (std::ops::Range<usize>, String);
+
+/// An edit making `element`, or nothing, the child of `parent` that `is` finds: in place
+/// of the one it has, or after its last child.
+fn put_child(
+    xml: &str,
+    parent: roxmltree::Node,
+    is: impl Fn(roxmltree::Node) -> bool,
+    element: Option<&str>,
+) -> Option<Edit> {
+    match (
+        parent.children().find(|n| n.is_element() && is(*n)),
+        element,
+    ) {
+        (Some(old), element) => Some((old.range(), element.unwrap_or_default().to_owned())),
+        (None, Some(element)) => Some(append_to(xml, parent, element)),
+        (None, None) => None,
+    }
+}
+
+/// Like [`put_child`], for a child of the element `container` of the root, which comes with
+/// its first child and goes with its last.
+fn put_nested(
+    xml: &str,
+    root: roxmltree::Node,
+    container: &str,
+    is: impl Fn(roxmltree::Node) -> bool,
+    element: Option<&str>,
+) -> Option<Edit> {
+    let Some(parent) = child(root, container) else {
+        return element.map(|e| append_to(xml, root, &format!("<{container}>{e}</{container}>")));
+    };
+    let mut children = parent.children().filter(|n| n.is_element());
+    if element.is_none() && children.next().is_some_and(&is) && children.next().is_none() {
+        return Some((parent.range(), String::new()));
+    }
+    put_child(xml, parent, is, element)
+}
+
+/// An edit giving the opening tag of `node`, which is not the root, the attribute `name`
+/// with `value`, or taking it away.
+fn set_attribute(xml: &str, node: roxmltree::Node, name: &str, value: Option<&str>) -> Edit {
+    let start = node.range().start;
+    let text = &xml[node.range()];
+    let end = text.find('>').unwrap_or(text.len() - 1);
+    let mut open = format!("<{}", node.tag_name().name());
+    for attribute in node.attributes().filter(|a| a.name() != name) {
+        let _ = write!(
+            open,
+            " {}='{}'",
+            attribute.name(),
+            escape(attribute.value())
+        );
+    }
+    if let Some(value) = value {
+        let _ = write!(open, " {name}='{}'", escape(value));
+    }
+    open.push_str(if text[..end].ends_with('/') {
+        "/>"
+    } else {
+        ">"
+    });
+    (start..start + end + 1, open)
+}
+
+fn edited(xml: &str, edits: impl IntoIterator<Item = Edit>) -> String {
+    apply_edits(xml, edits.into_iter().collect())
+}
+
+/// `xml` with the firmware offering a menu of what to boot from, or not.
+pub fn set_boot_menu(xml: &str, on: bool) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let os = child(doc.root_element(), "os").ok_or("the domain has no os")?;
+    let menu = on.then_some("<bootmenu enable='yes'/>");
+    Ok(edited(
+        xml,
+        put_child(xml, os, |n| n.has_tag_name("bootmenu"), menu),
+    ))
+}
+
+/// `xml` doing what `power` says when the guest powers off, reboots or crashes.
+pub fn set_power_actions(xml: &str, power: &PowerActions) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let root = doc.root_element();
+    let edits = [
+        ("on_poweroff", &power.poweroff),
+        ("on_reboot", &power.reboot),
+        ("on_crash", &power.crash),
+    ]
+    .into_iter()
+    .filter_map(|(name, action)| {
+        let element = format!("<{name}>{}</{name}>", escape(action));
+        put_child(xml, root, |n| n.has_tag_name(name), Some(&element))
+    });
+    Ok(edited(xml, edits))
+}
+
+/// `xml` with the guest's clock in the host's local time, or in UTC.
+pub fn set_local_time(xml: &str, on: bool) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let root = doc.root_element();
+    let offset = if on { "localtime" } else { "utc" };
+    let edit = match child(root, "clock") {
+        Some(clock) => Some(set_attribute(xml, clock, "offset", Some(offset))),
+        None => on.then(|| append_to(xml, root, "<clock offset='localtime'/>")),
+    };
+    Ok(edited(xml, edit))
+}
+
+/// The Hyper-V enlightenments virt-manager gives Windows, which need the Hyper-V clock.
+const HYPERV_FEATURES: &str = "<relaxed state='on'/><vapic state='on'/>\
+    <spinlocks state='on' retries='8191'/><vpindex state='on'/><runtime state='on'/>\
+    <synic state='on'/><stimer state='on'/><frequencies state='on'/><tlbflush state='on'/>\
+    <ipi state='on'/>";
+
+fn is_hyperv_clock(node: roxmltree::Node) -> bool {
+    node.has_tag_name("timer") && node.attribute("name") == Some("hypervclock")
+}
+
+/// `xml` with the guest given what it would have on Hyper-V, with the vendor a hidden KVM
+/// names, or without any of it.
+pub fn set_hyperv(xml: &str, on: bool) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let root = doc.root_element();
+    let features = child(root, "features");
+    if on && features.and_then(|f| child(f, "hyperv")).is_some() {
+        return Ok(xml.to_owned());
+    }
+    let hidden = MachineConfig::parse(xml)?.hypervisor_hidden;
+    let vendor = if hidden {
+        format!("<vendor_id state='on' value='{HIDDEN_VENDOR_ID}'/>")
+    } else {
+        String::new()
+    };
+    let hyperv = format!("<hyperv mode='custom'>{HYPERV_FEATURES}{vendor}</hyperv>");
+    let timer = "<timer name='hypervclock' present='yes'/>";
+    let mut edits = vec![put_nested(
+        xml,
+        root,
+        "features",
+        |n| n.has_tag_name("hyperv"),
+        on.then_some(hyperv.as_str()),
+    )];
+    edits.push(match child(root, "clock") {
+        Some(clock) => put_child(xml, clock, is_hyperv_clock, on.then_some(timer)),
+        None => on.then(|| append_to(xml, root, &format!("<clock offset='utc'>{timer}</clock>"))),
+    });
+    Ok(edited(xml, edits.into_iter().flatten()))
+}
+
+/// `xml` with the guest seeing the host's own system information, or QEMU's.
+pub fn set_host_smbios(xml: &str, on: bool) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let os = child(doc.root_element(), "os").ok_or("the domain has no os")?;
+    let smbios = on.then_some("<smbios mode='host'/>");
+    Ok(edited(
+        xml,
+        put_child(xml, os, |n| n.has_tag_name("smbios"), smbios),
+    ))
+}
+
+/// `xml` with QEMU's own threads on the host processors `cpus`, or anywhere with none.
+pub fn set_emulator_pins(xml: &str, cpus: &[u32]) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let pin = format!("<emulatorpin cpuset='{}'/>", cpu_list(cpus));
+    let pin = (!cpus.is_empty()).then_some(pin.as_str());
+    let is = |n: roxmltree::Node| n.has_tag_name("emulatorpin");
+    Ok(edited(
+        xml,
+        put_nested(xml, doc.root_element(), "cputune", is, pin),
+    ))
+}
+
+fn is_io_thread_pin(node: roxmltree::Node) -> bool {
+    node.has_tag_name("iothreadpin") && node.attribute("iothread") == Some("1")
+}
+
+/// `xml` with an I/O thread for its virtio disks on the host processors `cpus`, or, with
+/// none, without it.
+pub fn set_io_thread_pins(xml: &str, cpus: &[u32]) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let root = doc.root_element();
+    let on = !cpus.is_empty();
+    let pin = format!("<iothreadpin iothread='1' cpuset='{}'/>", cpu_list(cpus));
+    let mut edits = vec![put_nested(
+        xml,
+        root,
+        "cputune",
+        is_io_thread_pin,
+        on.then_some(pin.as_str()),
+    )];
+    let threads = child(root, "iothreads");
+    let one = threads.and_then(|t| t.text()).map(str::trim) == Some("1");
+    match threads {
+        None if on => edits.push(Some(append_to(xml, root, "<iothreads>1</iothreads>"))),
+        Some(threads) if one && !on => edits.push(Some((threads.range(), String::new()))),
+        _ => {}
+    }
+    let devices = child(root, "devices");
+    let disks = devices.iter().flat_map(|d| d.children()).filter(|d| {
+        d.has_tag_name("disk")
+            && child(*d, "target").and_then(|t| t.attribute("bus")) == Some("virtio")
+    });
+    for disk in disks {
+        edits.push(match child(disk, "driver") {
+            Some(driver) if on && driver.attribute("iothread").is_none() => {
+                Some(set_attribute(xml, driver, "iothread", Some("1")))
+            }
+            Some(driver) if !on && driver.attribute("iothread") == Some("1") => {
+                Some(set_attribute(xml, driver, "iothread", None))
+            }
+            None if on => Some(append_to(xml, disk, "<driver name='qemu' iothread='1'/>")),
+            _ => None,
+        });
+    }
+    Ok(edited(xml, edits.into_iter().flatten()))
+}
+
+/// `xml` with its memory kept in the host's memory, never swapped out, or not.
+pub fn set_locked_memory(xml: &str, on: bool) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let is = |n: roxmltree::Node| n.has_tag_name("locked");
+    let locked = on.then_some("<locked/>");
+    Ok(edited(
+        xml,
+        put_nested(xml, doc.root_element(), "memoryBacking", is, locked),
+    ))
+}
+
+/// `xml` on the machine type `machine`, e.g. `pc-q35-10.2`.
+pub fn set_machine_type(xml: &str, machine: &str) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let kind = child(doc.root_element(), "os")
+        .and_then(|os| child(os, "type"))
+        .ok_or("the domain has no os type")?;
+    Ok(edited(
+        xml,
+        [set_attribute(xml, kind, "machine", Some(machine))],
+    ))
+}
+
+/// How a disk is attached and how QEMU reads and writes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiskTuning {
+    pub bus: String,
+    pub cache: Option<String>,
+    pub io: Option<String>,
+    pub discard: bool,
+}
+
+/// `xml` with its disk at `target` tuned as `tuning` says. On another bus the disk gets a
+/// name and address there, and a SCSI disk a virtio-scsi controller if there is none.
+pub fn set_disk(xml: &str, target: &str, tuning: &DiskTuning) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let devices = child(doc.root_element(), "devices").ok_or("the domain has no devices")?;
+    let targets: Vec<(roxmltree::Node, roxmltree::Node)> = devices
+        .children()
+        .filter(|d| d.has_tag_name("disk"))
+        .filter_map(|d| Some((d, child(d, "target")?)))
+        .collect();
+    let (disk, old_target) = targets
+        .iter()
+        .find(|(_, t)| t.attribute("dev") == Some(target))
+        .copied()
+        .ok_or_else(|| format!("the domain has no disk {target}"))?;
+    let mut edits = Vec::new();
+    let mut driver = "<driver".to_owned();
+    let dropped = ["cache", "io", "discard", "iothread"];
+    for attribute in child(disk, "driver").iter().flat_map(|d| d.attributes()) {
+        let kept = !dropped.contains(&attribute.name())
+            || attribute.name() == "iothread" && tuning.bus == "virtio";
+        if kept {
+            let _ = write!(
+                driver,
+                " {}='{}'",
+                attribute.name(),
+                escape(attribute.value())
+            );
+        }
+    }
+    if driver == "<driver" {
+        driver.push_str(" name='qemu'");
+    }
+    for (name, value) in [
+        ("cache", tuning.cache.as_deref()),
+        ("io", tuning.io.as_deref()),
+        ("discard", tuning.discard.then_some("unmap")),
+    ] {
+        if let Some(value) = value {
+            let _ = write!(driver, " {name}='{}'", escape(value));
+        }
+    }
+    driver.push_str("/>");
+    edits.extend(put_child(
+        xml,
+        disk,
+        |n| n.has_tag_name("driver"),
+        Some(&driver),
+    ));
+    if old_target.attribute("bus") != Some(tuning.bus.as_str()) {
+        let taken: Vec<&str> = targets
+            .iter()
+            .filter(|(d, _)| *d != disk)
+            .filter_map(|(_, t)| t.attribute("dev"))
+            .collect();
+        let dev = next_target(&tuning.bus, &taken);
+        let mut open = format!("<target dev='{dev}' bus='{}'", escape(&tuning.bus));
+        for attribute in old_target
+            .attributes()
+            .filter(|a| !["dev", "bus"].contains(&a.name()))
+        {
+            let _ = write!(
+                open,
+                " {}='{}'",
+                attribute.name(),
+                escape(attribute.value())
+            );
+        }
+        edits.push((old_target.range(), format!("{open}/>")));
+        edits.extend(put_child(xml, disk, |n| n.has_tag_name("address"), None));
+        let scsi = devices
+            .children()
+            .any(|c| c.has_tag_name("controller") && c.attribute("type") == Some("scsi"));
+        if tuning.bus == "scsi" && !scsi {
+            edits.push(append_to(
+                xml,
+                devices,
+                "<controller type='scsi' model='virtio-scsi'/>",
+            ));
+        }
+    }
+    Ok(apply_edits(xml, edits))
+}
+
+/// `xml` with its network interface of the MAC address `mac` on the card `model`. A card
+/// other than virtio goes without the virtio driver's settings.
+pub fn set_nic_model(xml: &str, mac: &str, model: &str) -> Result<String, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let devices = child(doc.root_element(), "devices").ok_or("the domain has no devices")?;
+    let nic = devices
+        .children()
+        .filter(|d| d.has_tag_name("interface"))
+        .find(|d| {
+            child(*d, "mac")
+                .and_then(|m| m.attribute("address"))
+                .is_some_and(|a| a.eq_ignore_ascii_case(mac))
+        })
+        .ok_or_else(|| format!("the domain has no network interface {mac}"))?;
+    let element = format!("<model type='{}'/>", escape(model));
+    let mut edits: Vec<Edit> = put_child(xml, nic, |n| n.has_tag_name("model"), Some(&element))
+        .into_iter()
+        .collect();
+    if model != "virtio" {
+        edits.extend(put_child(xml, nic, |n| n.has_tag_name("driver"), None));
+    }
+    Ok(apply_edits(xml, edits))
+}
+
+/// The versions of the machine type `current` QEMU has for `arch`, by the host's
+/// capabilities `caps`, newest first: for `pc-q35-9.1`, the other `pc-q35-…`.
+pub fn machine_types(caps: &str, arch: &str, current: &str) -> Vec<String> {
+    let version =
+        |name: &str| -> Option<Vec<u32>> { name.split('.').map(|n| n.parse().ok()).collect() };
+    let Some((family, _)) = current
+        .rsplit_once('-')
+        .filter(|(_, v)| version(v).is_some())
+    else {
+        return vec![current.to_owned()];
+    };
+    let mut types: Vec<(Vec<u32>, String)> = roxmltree::Document::parse(caps)
+        .iter()
+        .flat_map(|doc| doc.descendants())
+        .filter(|n| n.has_tag_name("arch") && n.attribute("name") == Some(arch))
+        .flat_map(|a| a.children())
+        .filter(|m| m.has_tag_name("machine") && m.attribute("canonical").is_none())
+        .filter_map(|m| m.text())
+        .filter_map(|name| {
+            let (f, v) = name.rsplit_once('-')?;
+            Some((version(v).filter(|_| f == family)?, name.to_owned()))
+        })
+        .collect();
+    if !types.iter().any(|(_, name)| name == current) {
+        types.extend(version(&current[family.len() + 1..]).map(|v| (v, current.to_owned())));
+    }
+    types.sort();
+    types.dedup();
+    types.into_iter().rev().map(|(_, name)| name).collect()
+}
+
 fn child<'a, 'i>(parent: roxmltree::Node<'a, 'i>, name: &str) -> Option<roxmltree::Node<'a, 'i>> {
     parent.children().find(|n| n.has_tag_name(name))
 }
@@ -1687,6 +2142,9 @@ pub struct Capabilities {
     pub host_model: bool,
     /// The CPU models QEMU can give the machine on this host.
     pub cpu_models: Vec<String>,
+    /// The versions of the machine's type QEMU has, newest first, from the host's
+    /// capabilities.
+    pub machine_types: Vec<String>,
 }
 
 impl Capabilities {
@@ -1744,6 +2202,7 @@ impl Capabilities {
             host_passthrough: supported("host-passthrough"),
             host_model: supported("host-model"),
             cpu_models,
+            machine_types: Vec::new(),
         }
     }
 
@@ -2866,6 +3325,164 @@ mod tests {
             MachineConfig::parse(&secure).unwrap().firmware,
             Firmware::UefiSecureBoot
         );
+    }
+
+    #[test]
+    fn advanced_settings_come_and_go() {
+        let on = set_boot_menu(VIRT_MANAGER, true).unwrap();
+        let on = set_power_actions(
+            &on,
+            &PowerActions {
+                poweroff: "destroy".to_owned(),
+                reboot: "destroy".to_owned(),
+                crash: "preserve".to_owned(),
+            },
+        )
+        .unwrap();
+        let on = set_local_time(&on, true).unwrap();
+        let on = set_host_smbios(&on, true).unwrap();
+        let on = set_locked_memory(&on, true).unwrap();
+        let on = set_emulator_pins(&on, &[0, 1]).unwrap();
+        let on = set_machine_type(&on, "pc-q35-10.2").unwrap();
+        let c = MachineConfig::parse(&on).unwrap();
+        assert!(
+            c.boot_menu && c.local_time && c.host_smbios && c.locked_memory,
+            "{on}"
+        );
+        assert_eq!(
+            (c.power.reboot.as_str(), c.power.crash.as_str()),
+            ("destroy", "preserve")
+        );
+        assert_eq!(c.emulator_cpuset, "0,1");
+        assert_eq!(c.machine, "pc-q35-10.2");
+        assert!(
+            on.contains("<type arch='x86_64' machine='pc-q35-10.2'>hvm</type>"),
+            "{on}"
+        );
+
+        let off = set_boot_menu(&on, false).unwrap();
+        let off = set_local_time(&off, false).unwrap();
+        let off = set_host_smbios(&off, false).unwrap();
+        let off = set_locked_memory(&off, false).unwrap();
+        let off = set_emulator_pins(&off, &[]).unwrap();
+        let c = MachineConfig::parse(&off).unwrap();
+        assert!(!c.boot_menu && !c.local_time && !c.host_smbios && !c.locked_memory);
+        assert!(
+            !off.contains("memoryBacking") && !off.contains("cputune"),
+            "{off}"
+        );
+        assert!(off.contains("<clock offset='utc'/>"), "{off}");
+
+        // Locked memory goes beside huge pages, and leaves them when it goes.
+        let both = set_locked_memory(&set_hugepages(VIRT_MANAGER, true).unwrap(), true).unwrap();
+        assert!(
+            both.contains("<memoryBacking><hugepages/><locked/></memoryBacking>"),
+            "{both}"
+        );
+        let pages = set_locked_memory(&both, false).unwrap();
+        assert!(
+            pages.contains("<memoryBacking><hugepages/></memoryBacking>"),
+            "{pages}"
+        );
+    }
+
+    #[test]
+    fn hyperv_brings_its_clock_and_hides_with_kvm() {
+        let on = set_hyperv(VIRT_MANAGER, true).unwrap();
+        assert!(MachineConfig::parse(&on).unwrap().hyperv);
+        assert!(
+            on.contains("<timer name='hypervclock' present='yes'/>"),
+            "{on}"
+        );
+        assert!(!on.contains("vendor_id"), "{on}");
+        assert_eq!(set_hyperv(&on, true).unwrap(), on);
+        let off = set_hyperv(&on, false).unwrap();
+        assert!(!MachineConfig::parse(&off).unwrap().hyperv);
+        assert!(
+            !off.contains("hypervclock") && !off.contains("<features>"),
+            "{off}"
+        );
+
+        let hidden = set_hypervisor_hidden(VIRT_MANAGER, true).unwrap();
+        let on = set_hyperv(&hidden, true).unwrap();
+        assert!(
+            on.contains("<vendor_id state='on' value='0123456789ab'/></hyperv>"),
+            "{on}"
+        );
+        assert!(on.contains("<kvm><hidden state='on'/></kvm>"), "{on}");
+    }
+
+    #[test]
+    fn an_io_thread_takes_the_virtio_disks() {
+        let on = set_io_thread_pins(VIRT_MANAGER, &[2, 3]).unwrap();
+        assert!(on.contains("<iothreads>1</iothreads>"), "{on}");
+        assert!(on.contains("discard='unmap' iothread='1'/>"), "{on}");
+        assert_eq!(MachineConfig::parse(&on).unwrap().io_thread_cpuset, "2,3");
+        assert_eq!(set_io_thread_pins(&on, &[]).unwrap(), VIRT_MANAGER);
+    }
+
+    #[test]
+    fn disks_change_bus_and_tuning() {
+        let tuning = DiskTuning {
+            bus: "sata".to_owned(),
+            cache: Some("none".to_owned()),
+            io: Some("native".to_owned()),
+            discard: false,
+        };
+        let xml = set_disk(VIRT_MANAGER, "vda", &tuning).unwrap();
+        let disk = &MachineConfig::parse(&xml).unwrap().disks[0];
+        // sda is the CD-ROM's.
+        assert_eq!((disk.target.as_str(), disk.bus.as_str()), ("sdb", "sata"));
+        assert_eq!(
+            (disk.cache.as_deref(), disk.io.as_deref()),
+            (Some("none"), Some("native"))
+        );
+        assert!(
+            !disk.discard && disk.format.as_deref() == Some("qcow2"),
+            "{xml}"
+        );
+        assert!(!xml.contains("<controller"), "{xml}");
+
+        let scsi = DiskTuning {
+            bus: "scsi".to_owned(),
+            ..tuning
+        };
+        let xml = set_disk(&xml, "sdb", &scsi).unwrap();
+        assert!(
+            xml.contains("<controller type='scsi' model='virtio-scsi'/>"),
+            "{xml}"
+        );
+        assert!(set_disk(&xml, "vda", &scsi).is_err());
+    }
+
+    #[test]
+    fn network_cards_change_model() {
+        let xml = set_nic_model(VIRT_MANAGER, "52:54:00:12:34:56", "e1000e").unwrap();
+        assert_eq!(
+            MachineConfig::parse(&xml).unwrap().nics[0].model.as_deref(),
+            Some("e1000e")
+        );
+    }
+
+    #[test]
+    fn machine_types_are_the_versions_of_the_current_one() {
+        let caps = "<capabilities><guest><arch name='x86_64'>\
+            <machine maxCpus='4096'>pc-q35-10.2</machine>\
+            <machine canonical='pc-q35-10.2' maxCpus='4096'>q35</machine>\
+            <machine maxCpus='255'>pc-i440fx-10.2</machine>\
+            <machine maxCpus='288'>pc-q35-9.1</machine>\
+            <machine maxCpus='288'>pc-q35-10.0</machine>\
+            </arch></guest><guest><arch name='aarch64'><machine>virt-10.2</machine>\
+            </arch></guest></capabilities>";
+        assert_eq!(
+            machine_types(caps, "x86_64", "pc-q35-9.1"),
+            ["pc-q35-10.2", "pc-q35-10.0", "pc-q35-9.1"]
+        );
+        assert_eq!(
+            machine_types(caps, "x86_64", "pc-q35-8.0"),
+            ["pc-q35-10.2", "pc-q35-10.0", "pc-q35-9.1", "pc-q35-8.0"]
+        );
+        assert_eq!(machine_types(caps, "x86_64", "q35"), ["q35"]);
     }
 
     #[test]

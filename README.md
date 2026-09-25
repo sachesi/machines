@@ -31,6 +31,12 @@ manages the connection's storage pools (directories, NFS shares, LVM volume grou
 iSCSI targets) with the volumes in them, which it creates, grows, deletes and uploads
 files into, and its virtual networks: NAT, routed, isolated, or on a bridge of the host.
 
+Advanced Settings, in the machine's menu, adds what few machines need to the page: the
+version of the machine type, a boot menu, what happens when the guest powers off, reboots
+or crashes, the clock in local time as Windows keeps it, Hyper-V enlightenments, the host's
+own system information, host processors for QEMU's emulator and disk I/O threads, locked
+memory, and each disk's bus, cache, I/O mode and discard, and each network card's model.
+
 The console reaches a machine's display through libvirt rather than over the network, so
 new machines have a display with no listening socket at all: SPICE where
 QEMU has it, which carries sound and, with the SPICE agent in the guest, sizes the guest's

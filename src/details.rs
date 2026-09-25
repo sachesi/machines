@@ -11,14 +11,15 @@ use gettextrs::{gettext, ngettext};
 use crate::adw::prelude::*;
 use crate::dialogs::{self, add_button, hardware, remove_button};
 use crate::domain_xml::{
-    Cpu, CpuModel, Disk, DiskDevice, Display, Firmware, Gadget, GadgetDevice, HostDev,
-    MachineConfig, Nic, Protocol, Snapshot, Topology, cpu_list, parse_cpu_list,
+    self, Cpu, CpuModel, Disk, DiskDevice, DiskTuning, Display, Firmware, Gadget, GadgetDevice,
+    HostDev, MachineConfig, Nic, PowerActions, Protocol, Snapshot, Topology, cpu_list,
+    parse_cpu_list,
 };
 use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
-use crate::{adw, glib, gtk, passthrough, usage};
+use crate::{adw, glib, gtk, passthrough, prefs, usage};
 
 /// How long a spin row has to rest before its value is saved.
 const SETTLE: Duration = Duration::from_millis(700);
@@ -36,17 +37,22 @@ pub fn fill(view: &MachineView, info: &MachineInfo, start: &gtk::Box, end: &gtk:
         return;
     };
     let live = info.live.as_ref();
-    start.append(&overview(view, info, config));
+    let advanced = prefs::settings().boolean("show-advanced-settings");
+    start.append(&overview(view, info, config, advanced));
     if info.state.is_active() {
         start.append(&usage::group(view, &info.uuid, &view.usage_history()));
     }
-    start.append(&resources(view, info, config));
+    start.append(&resources(view, info, config, advanced));
     start.append(&display(view, info, config));
     if let Some(group) = passthrough(view, info, config) {
         start.append(&group);
     }
-    end.append(&storage(view, config, live));
-    end.append(&network(view, info, config, live));
+    if advanced {
+        start.append(&power(view, info, config));
+        start.append(&features(view, info, config));
+    }
+    end.append(&storage(view, config, live, advanced));
+    end.append(&network(view, info, config, live, advanced));
     end.append(&host_devices(view, config, live));
     end.append(&gadgets(view, config, live));
     end.append(&snapshots(view, info));
@@ -126,6 +132,155 @@ fn window(view: &MachineView) -> Option<MachinesWindow> {
     view.root().and_downcast()
 }
 
+/// Redefine the machine with its definition as `edit` changes it.
+fn edit(view: &MachineView, edit: impl FnOnce(&str) -> Result<String, String> + Send + 'static) {
+    view.run(move |hv, uuid| hv.edit_definition(uuid, edit));
+}
+
+/// A row of `choices`, values and their labels, with `current` selected, and added as
+/// `other` where it is not among them, which calls `set` with each value chosen.
+fn choice_row<T: Clone + PartialEq + 'static>(
+    title: &str,
+    mut choices: Vec<(T, String)>,
+    current: T,
+    other: String,
+    set: impl Fn(T) + 'static,
+) -> adw::ComboRow {
+    if !choices.iter().any(|(value, _)| *value == current) {
+        choices.push((current.clone(), other));
+    }
+    let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
+    let row = adw::ComboRow::builder()
+        .title(title)
+        .model(&gtk::StringList::new(&labels))
+        .selected(choices.iter().position(|(v, _)| *v == current).unwrap_or(0) as u32)
+        .build();
+    row.connect_selected_notify(move |row| {
+        if let Some((value, _)) = choices.get(row.selected() as usize) {
+            set(value.clone());
+        }
+    });
+    row
+}
+
+fn switch_row(
+    title: &str,
+    subtitle: &str,
+    active: bool,
+    set: impl Fn(bool) + 'static,
+) -> adw::SwitchRow {
+    let row = adw::SwitchRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .active(active)
+        .build();
+    row.connect_active_notify(move |row| set(row.is_active()));
+    row
+}
+
+/// A row for a list of host processors, `text`, which calls `set` with the ones typed in,
+/// none for an empty row.
+fn cpus_row(
+    view: &MachineView,
+    title: &str,
+    text: &str,
+    set: impl Fn(Vec<u32>) + 'static,
+) -> adw::EntryRow {
+    let row = adw::EntryRow::builder()
+        .title(title)
+        .text(text)
+        .show_apply_button(true)
+        .build();
+    row.connect_apply(glib::clone!(
+        #[weak]
+        view,
+        move |row| match parse_cpu_list(&row.text()) {
+            Some(cpus) => set(cpus),
+            None => not_cpus(&view, &row.text()),
+        }
+    ));
+    row
+}
+
+fn not_cpus(view: &MachineView, text: &str) {
+    if let Some(win) = window(view) {
+        win.toast(
+            &gettext("“{text}” is not a list of processors, like “2-5,8”").replace("{text}", text),
+        );
+    }
+}
+
+/// A device's row, which in the advanced settings expands to the device's own.
+enum DeviceRow {
+    Plain(adw::ActionRow),
+    Expanding(adw::ExpanderRow),
+}
+
+impl DeviceRow {
+    /// `key` names the device among the machine's, for the row to stay expanded as the
+    /// details are filled again.
+    fn new(
+        view: &MachineView,
+        key: String,
+        title: &str,
+        subtitle: &str,
+        settings: Vec<adw::PreferencesRow>,
+    ) -> Self {
+        if settings.is_empty() {
+            let row = adw::ActionRow::builder()
+                .subtitle_selectable(true)
+                .css_classes(["property"])
+                .build();
+            dialogs::set_plain_text(&row, title, subtitle);
+            return Self::Plain(row);
+        }
+        let row = adw::ExpanderRow::builder()
+            .use_markup(false)
+            .title(title)
+            .subtitle(subtitle)
+            .expanded(view.is_expanded(&key))
+            .build();
+        row.add_css_class("property");
+        for setting in &settings {
+            row.add_row(setting);
+        }
+        row.connect_expanded_notify(glib::clone!(
+            #[weak]
+            view,
+            move |row| view.set_expanded(&key, row.is_expanded())
+        ));
+        Self::Expanding(row)
+    }
+
+    fn add_suffix(&self, widget: &impl IsA<gtk::Widget>) {
+        match self {
+            Self::Plain(row) => row.add_suffix(widget),
+            Self::Expanding(row) => row.add_suffix(widget),
+        }
+    }
+
+    fn subtitle(&self) -> String {
+        match self {
+            Self::Plain(row) => row.subtitle().unwrap_or_default().into(),
+            Self::Expanding(row) => row.subtitle().into(),
+        }
+    }
+
+    fn set_subtitle(&self, subtitle: &str) {
+        match self {
+            Self::Plain(row) => row.set_subtitle(subtitle),
+            Self::Expanding(row) => row.set_subtitle(subtitle),
+        }
+    }
+
+    fn widget(&self) -> &adw::PreferencesRow {
+        match self {
+            Self::Plain(row) => row.upcast_ref(),
+            Self::Expanding(row) => row.upcast_ref(),
+        }
+    }
+}
+
 pub fn info_row(title: &str, subtitle: &str) -> adw::ActionRow {
     let row = adw::ActionRow::builder()
         .subtitle_selectable(true)
@@ -139,6 +294,7 @@ fn overview(
     view: &MachineView,
     info: &MachineInfo,
     config: &MachineConfig,
+    advanced: bool,
 ) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Overview"))
@@ -156,10 +312,32 @@ fn overview(
         "qemu" => gettext("QEMU (emulated)"),
         other => other.to_owned(),
     };
-    group.add(&info_row(
-        &gettext("Machine"),
-        &format!("{hypervisor} · {} · {}", config.machine, config.arch),
-    ));
+    let types = &info.capabilities.machine_types;
+    if advanced && types.len() > 1 {
+        let choices = types.iter().map(|t| (t.clone(), t.clone())).collect();
+        let row = choice_row(
+            &gettext("Machine Type"),
+            choices,
+            config.machine.clone(),
+            config.machine.clone(),
+            glib::clone!(
+                #[weak]
+                view,
+                move |machine: String| {
+                    edit(&view, move |xml| {
+                        domain_xml::set_machine_type(xml, &machine)
+                    });
+                }
+            ),
+        );
+        row.set_subtitle(&format!("{hypervisor} · {}", config.arch));
+        group.add(&row);
+    } else {
+        group.add(&info_row(
+            &gettext("Machine"),
+            &format!("{hypervisor} · {} · {}", config.machine, config.arch),
+        ));
+    }
     if info.persistent {
         let autostart = adw::SwitchRow::builder()
             .title(gettext("Start With the Host"))
@@ -192,6 +370,18 @@ fn overview(
             move |_| dialogs::machine::boot_order(&view, &config, running)
         ));
         group.add(&boot);
+        if advanced {
+            group.add(&switch_row(
+                &gettext("Boot Menu"),
+                &gettext("The firmware offers what to boot from as the machine starts"),
+                config.boot_menu,
+                glib::clone!(
+                    #[weak]
+                    view,
+                    move |on| edit(&view, move |xml| domain_xml::set_boot_menu(xml, on))
+                ),
+            ));
+        }
     }
     group
 }
@@ -254,6 +444,7 @@ fn resources(
     view: &MachineView,
     info: &MachineInfo,
     config: &MachineConfig,
+    advanced: bool,
 ) -> adw::PreferencesGroup {
     let host = window(view).map(|w| w.host()).unwrap_or_default();
     let group = adw::PreferencesGroup::builder()
@@ -291,6 +482,28 @@ fn resources(
     }
     if let Some(row) = pins_row(view, config) {
         group.add(&row);
+    }
+    if advanced {
+        group.add(&cpus_row(
+            view,
+            &gettext("Emulator’s Host Processors, Like “0,1”"),
+            &config.emulator_cpuset,
+            glib::clone!(
+                #[weak]
+                view,
+                move |cpus| edit(&view, move |xml| domain_xml::set_emulator_pins(xml, &cpus))
+            ),
+        ));
+        group.add(&cpus_row(
+            view,
+            &gettext("Disk I/O Thread’s Host Processors, Like “0,1”"),
+            &config.io_thread_cpuset,
+            glib::clone!(
+                #[weak]
+                view,
+                move |cpus| edit(&view, move |xml| domain_xml::set_io_thread_pins(xml, &cpus))
+            ),
+        ));
     }
 
     let gib = |mib: u64| mib as f64 / 1024.0;
@@ -336,6 +549,18 @@ fn resources(
         }
     ));
     group.add(&hugepages);
+    if advanced {
+        group.add(&switch_row(
+            &gettext("Locked Memory"),
+            &gettext("Never swapped out on the host"),
+            config.locked_memory,
+            glib::clone!(
+                #[weak]
+                view,
+                move |on| edit(&view, move |xml| domain_xml::set_locked_memory(xml, on))
+            ),
+        ));
+    }
     group
 }
 
@@ -485,14 +710,7 @@ fn pins_row(view: &MachineView, config: &MachineConfig) -> Option<adw::EntryRow>
                     ..cpu.clone()
                 },
             ),
-            None => {
-                if let Some(win) = window(&view) {
-                    win.toast(
-                        &gettext("“{text}” is not a list of processors, like “2-5,8”")
-                            .replace("{text}", &row.text()),
-                    );
-                }
-            }
+            None => not_cpus(&view, &row.text()),
         }
     ));
     Some(row)
@@ -543,6 +761,7 @@ fn storage(
     view: &MachineView,
     config: &MachineConfig,
     live: Option<&MachineConfig>,
+    advanced: bool,
 ) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Storage"))
@@ -556,7 +775,7 @@ fn storage(
     group.set_header_suffix(Some(&add));
     let live = live.map(|l| l.disks.as_slice());
     for (disk, pending) in with_pending(&config.disks, live, |a, b| a.target == b.target) {
-        group.add(&disk_row(view, disk, pending));
+        group.add(disk_row(view, disk, pending, advanced).widget());
     }
     if config.disks.is_empty() {
         group.set_description(Some(&gettext("No disks")));
@@ -564,7 +783,7 @@ fn storage(
     group
 }
 
-fn disk_row(view: &MachineView, disk: &Disk, pending: Pending) -> adw::ActionRow {
+fn disk_row(view: &MachineView, disk: &Disk, pending: Pending, advanced: bool) -> DeviceRow {
     let title = match disk.device {
         DiskDevice::Cdrom => gettext("CD/DVD Drive"),
         DiskDevice::Floppy => gettext("Floppy Drive"),
@@ -585,11 +804,13 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending) -> adw::ActionRow
     if !bus.is_empty() {
         subtitle = format!("{subtitle}\n{bus}");
     }
-    let row = adw::ActionRow::builder()
-        .subtitle_selectable(true)
-        .css_classes(["property"])
-        .build();
-    dialogs::set_plain_text(&row, &title, &noted(subtitle, pending));
+    let settings = if advanced && disk.device == DiskDevice::Disk && pending != Pending::Removed {
+        disk_settings(view, disk)
+    } else {
+        Vec::new()
+    };
+    let key = format!("disk {}", disk.target);
+    let row = DeviceRow::new(view, key, &title, &noted(subtitle, pending), settings);
     let remove = remove_button(&gettext("Remove"));
     remove.connect_clicked(glib::clone!(
         #[weak]
@@ -674,6 +895,91 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending) -> adw::ActionRow
     row
 }
 
+/// How the disk is attached, and how QEMU reads and writes it.
+fn disk_settings(view: &MachineView, disk: &Disk) -> Vec<adw::PreferencesRow> {
+    let tuning = DiskTuning {
+        bus: disk.bus.clone(),
+        cache: disk.cache.clone(),
+        io: disk.io.clone(),
+        discard: disk.discard,
+    };
+    let target = disk.target.clone();
+    let set = glib::clone!(
+        #[weak]
+        view,
+        move |tuning: DiskTuning| {
+            let target = target.clone();
+            edit(&view, move |xml| {
+                domain_xml::set_disk(xml, &target, &tuning)
+            });
+        }
+    );
+    let set = Rc::new(set);
+    let with = |change: fn(&mut DiskTuning, Option<String>)| {
+        let (set, tuning) = (set.clone(), tuning.clone());
+        move |value: Option<String>| {
+            let mut tuning = tuning.clone();
+            change(&mut tuning, value);
+            set(tuning);
+        }
+    };
+    let some = |value: &str, label: String| (Some(value.to_owned()), label);
+    let bus = choice_row(
+        &gettext("Bus"),
+        vec![
+            some("virtio", "Virtio".to_owned()),
+            some("sata", "SATA".to_owned()),
+            some("scsi", "SCSI".to_owned()),
+        ],
+        Some(disk.bus.clone()),
+        disk.bus.clone(),
+        with(|t, bus| t.bus = bus.unwrap_or_default()),
+    );
+    bus.set_subtitle(&gettext(
+        "The guest needs a driver for the bus it boots from; Windows has none for Virtio of its \
+         own",
+    ));
+    let cache = choice_row(
+        &gettext("Cache"),
+        vec![
+            (None, gettext("QEMU’s Default")),
+            some("none", gettext("None")),
+            some("writeback", gettext("Write Back")),
+            some("writethrough", gettext("Write Through")),
+            some("directsync", gettext("Direct Sync")),
+            some("unsafe", gettext("Unsafe")),
+        ],
+        disk.cache.clone(),
+        disk.cache.clone().unwrap_or_default(),
+        with(|t, cache| t.cache = cache),
+    );
+    let io = choice_row(
+        &gettext("I/O"),
+        vec![
+            (None, gettext("QEMU’s Default")),
+            some("io_uring", "io_uring".to_owned()),
+            some("native", gettext("Native")),
+            some("threads", gettext("Threads")),
+        ],
+        disk.io.clone(),
+        disk.io.clone().unwrap_or_default(),
+        with(|t, io| t.io = io),
+    );
+    io.set_subtitle(&gettext("Native needs the cache None or Direct Sync"));
+    let discard = switch_row(
+        &gettext("Discard"),
+        &gettext("Space the guest frees is freed in the image too"),
+        disk.discard,
+        move |on| {
+            set(DiskTuning {
+                discard: on,
+                ..tuning.clone()
+            })
+        },
+    );
+    vec![bus.upcast(), cache.upcast(), io.upcast(), discard.upcast()]
+}
+
 /// Grows the image of `disk`, which has to be a volume of a storage pool.
 fn resize_button(view: &MachineView, disk: &Disk) -> gtk::Button {
     let button = gtk::Button::builder()
@@ -730,6 +1036,7 @@ fn network(
     info: &MachineInfo,
     config: &MachineConfig,
     live: Option<&MachineConfig>,
+    advanced: bool,
 ) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
         .title(gettext("Network"))
@@ -746,8 +1053,8 @@ fn network(
     let mut rows = Vec::new();
     let live = live.map(|l| l.nics.as_slice());
     for (nic, pending) in with_pending(&config.nics, live, |a, b| a.mac == b.mac) {
-        let row = nic_row(view, nic, pending);
-        group.add(&row);
+        let row = nic_row(view, nic, pending, advanced);
+        group.add(row.widget());
         rows.push((nic.mac.clone(), row));
     }
     if config.nics.is_empty() {
@@ -771,11 +1078,7 @@ fn network(
                     .flat_map(|a| a.addresses.clone())
                     .collect();
                 if !addresses.is_empty() {
-                    row.set_subtitle(&format!(
-                        "{}\n{}",
-                        row.subtitle().unwrap_or_default(),
-                        addresses.join(", ")
-                    ));
+                    row.set_subtitle(&format!("{}\n{}", row.subtitle(), addresses.join(", ")));
                 }
             }
         });
@@ -783,7 +1086,7 @@ fn network(
     group
 }
 
-fn nic_row(view: &MachineView, nic: &Nic, pending: Pending) -> adw::ActionRow {
+fn nic_row(view: &MachineView, nic: &Nic, pending: Pending, advanced: bool) -> DeviceRow {
     let source = nic.source.clone().unwrap_or_default();
     let title = match nic.kind.as_str() {
         "network" => gettext("Virtual Network “{name}”").replace("{name}", &source),
@@ -797,11 +1100,39 @@ fn nic_row(view: &MachineView, nic: &Nic, pending: Pending) -> adw::ActionRow {
         .flatten()
         .collect::<Vec<_>>()
         .join(" · ");
-    let row = adw::ActionRow::builder()
-        .subtitle_selectable(true)
-        .css_classes(["property"])
-        .build();
-    dialogs::set_plain_text(&row, &title, &noted(subtitle, pending));
+    let settings = match &nic.mac {
+        Some(mac) if advanced && pending != Pending::Removed => {
+            let model = nic.model.clone().unwrap_or_default();
+            let mac = mac.clone();
+            let row = choice_row(
+                &gettext("Model"),
+                vec![
+                    ("virtio".to_owned(), "Virtio".to_owned()),
+                    ("e1000e".to_owned(), "Intel E1000E".to_owned()),
+                    ("rtl8139".to_owned(), "Realtek RTL8139".to_owned()),
+                ],
+                model.clone(),
+                model,
+                glib::clone!(
+                    #[weak]
+                    view,
+                    move |model: String| {
+                        let mac = mac.clone();
+                        edit(&view, move |xml| {
+                            domain_xml::set_nic_model(xml, &mac, &model)
+                        });
+                    }
+                ),
+            );
+            row.set_subtitle(&gettext(
+                "The guest needs a driver for Virtio; Windows has none of its own",
+            ));
+            vec![row.upcast()]
+        }
+        _ => Vec::new(),
+    };
+    let key = format!("nic {}", nic.mac.as_deref().unwrap_or_default());
+    let row = DeviceRow::new(view, key, &title, &noted(subtitle, pending), settings);
     if pending != Pending::Removed {
         row.add_suffix(&detach_button(view, &nic.xml));
     }
@@ -1018,6 +1349,116 @@ fn snapshot_row(view: &MachineView, snapshot: &Snapshot) -> adw::ActionRow {
     ));
     row.add_suffix(&delete);
     row
+}
+
+/// What the machine does when the guest powers off, reboots or crashes.
+fn power(view: &MachineView, info: &MachineInfo, config: &MachineConfig) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Power"))
+        .build();
+    if let Some(note) = deferred(info) {
+        group.set_description(Some(&note));
+    }
+    let power = config.power.clone();
+    let set = glib::clone!(
+        #[weak]
+        view,
+        move |power: PowerActions| edit(&view, move |xml| domain_xml::set_power_actions(
+            xml, &power
+        ))
+    );
+    let set = Rc::new(set);
+    let stop = || ("destroy".to_owned(), gettext("Stop"));
+    let restart = || ("restart".to_owned(), gettext("Restart"));
+    let rows = [
+        (
+            gettext("When the Guest Powers Off"),
+            None,
+            vec![stop(), restart()],
+            power.poweroff.clone(),
+            (|p: &mut PowerActions, a| p.poweroff = a) as fn(&mut PowerActions, String),
+        ),
+        (
+            gettext("When the Guest Reboots"),
+            None,
+            vec![restart(), stop()],
+            power.reboot.clone(),
+            |p, a| p.reboot = a,
+        ),
+        (
+            gettext("When the Guest Crashes"),
+            Some(gettext(
+                "Only a guest with a panic device reports its crash",
+            )),
+            vec![
+                stop(),
+                restart(),
+                ("preserve".to_owned(), gettext("Keep It Paused, to Inspect")),
+            ],
+            power.crash.clone(),
+            |p, a| p.crash = a,
+        ),
+    ];
+    for (title, subtitle, choices, current, change) in rows {
+        let (set, power) = (set.clone(), power.clone());
+        let row = choice_row(&title, choices, current.clone(), current, move |action| {
+            let mut power = power.clone();
+            change(&mut power, action);
+            set(power);
+        });
+        if let Some(subtitle) = subtitle {
+            row.set_subtitle(&subtitle);
+        }
+        group.add(&row);
+    }
+    group
+}
+
+/// What the guest is told of the machine it runs on.
+fn features(
+    view: &MachineView,
+    info: &MachineInfo,
+    config: &MachineConfig,
+) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Features"))
+        .build();
+    if let Some(note) = deferred(info) {
+        group.set_description(Some(&note));
+    }
+    group.add(&switch_row(
+        &gettext("Clock in Local Time"),
+        &gettext("As Windows keeps it; other systems keep UTC"),
+        config.local_time,
+        glib::clone!(
+            #[weak]
+            view,
+            move |on| edit(&view, move |xml| domain_xml::set_local_time(xml, on))
+        ),
+    ));
+    if config.virt_type == "kvm" || config.hyperv {
+        group.add(&switch_row(
+            &gettext("Hyper-V Enlightenments"),
+            &gettext("Windows runs faster, as it does on Hyper-V"),
+            config.hyperv,
+            glib::clone!(
+                #[weak]
+                view,
+                move |on| edit(&view, move |xml| domain_xml::set_hyperv(xml, on))
+            ),
+        ));
+    }
+    group.add(&switch_row(
+        &gettext("Host’s System Information"),
+        &gettext("The guest sees the maker, model and serial number of the host"),
+        config.host_smbios,
+        glib::clone!(
+            #[weak]
+            view,
+            move |on| edit(&view, move |xml| domain_xml::set_host_smbios(xml, on))
+        ),
+    ));
+    group
 }
 
 fn display(

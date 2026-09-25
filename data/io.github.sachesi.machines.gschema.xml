@@ -21,5 +21,10 @@
       <summary>Definition editor size</summary>
       <description>The width and height of the window a machine’s XML definition is edited in.</description>
     </key>
+    <key name="show-advanced-settings" type="b">
+      <default>false</default>
+      <summary>Show advanced settings</summary>
+      <description>Whether a machine’s details show the settings few machines need: disk and network card models, clock, power actions, and pinning.</description>
+    </key>
   </schema>
 </schemalist>

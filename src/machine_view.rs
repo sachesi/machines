@@ -98,6 +98,9 @@ mod imp {
         pub(super) was_active: Cell<Option<bool>>,
         /// The machines on their way to running, by UUID.
         pub(super) starting: RefCell<HashSet<String>>,
+        /// The rows of the details left expanded, by a key of their device, so they stay
+        /// so as the details are filled again after each change.
+        pub(super) expanded: RefCell<HashSet<String>>,
         /// Bumped whenever the machine changes, so a display socket that arrives for the
         /// previous one is closed rather than shown.
         pub(super) generation: Cell<u64>,
@@ -228,6 +231,19 @@ mod imp {
                 ));
             obj.connect_map(|view| view.update());
             obj.connect_unmap(|view| view.update());
+
+            let settings = crate::prefs::settings();
+            let details = gio::SimpleActionGroup::new();
+            details.add_action(&settings.create_action("show-advanced-settings"));
+            obj.insert_action_group("details", Some(&details));
+            settings.connect_changed(
+                Some("show-advanced-settings"),
+                glib::clone!(
+                    #[weak(rename_to = view)]
+                    obj,
+                    move |_, _| view.refresh_details()
+                ),
+            );
             obj.update();
         }
     }
@@ -483,6 +499,7 @@ impl MachineView {
         imp.console.close();
         imp.shown.take();
         imp.was_active.take();
+        imp.expanded.take();
         imp.details_scroller.vadjustment().set_value(0.0);
         if let Some(win) = self.window().filter(|w| w.is_fullscreen()) {
             win.unfullscreen();
@@ -785,6 +802,25 @@ impl MachineView {
         if let Some(wanted) = wanted.filter(|w| page.as_deref() != Some(w)) {
             imp.view_stack.set_visible_child_name(wanted);
         }
+    }
+
+    pub fn is_expanded(&self, key: &str) -> bool {
+        self.imp().expanded.borrow().contains(key)
+    }
+
+    pub fn set_expanded(&self, key: &str, expanded: bool) {
+        let mut keys = self.imp().expanded.borrow_mut();
+        if expanded {
+            keys.insert(key.to_owned());
+        } else {
+            keys.remove(key);
+        }
+    }
+
+    /// Fill the details again, for what they show beside the machine's own information.
+    pub fn refresh_details(&self) {
+        self.imp().shown.take();
+        self.update();
     }
 
     fn clear_details(&self) {
