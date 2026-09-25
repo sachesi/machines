@@ -37,6 +37,16 @@
     <color type="primary" scheme_preference="light">#99c1f1</color>
     <color type="primary" scheme_preference="dark">#1a5fb4</color>
   </branding>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/sachesi/machines/9be616ff9a56eb39d93bc285978083aa975e3f9a/data/screenshots/details.png</image>
+      <caption>Follow what a running machine uses, and change its hardware</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/sachesi/machines/9be616ff9a56eb39d93bc285978083aa975e3f9a/data/screenshots/new-machine.png</image>
+      <caption>Create a machine from an installation image</caption>
+    </screenshot>
+  </screenshots>
   <releases>
     <release version="0.1.1" date="2026-09-25">
       <description>
