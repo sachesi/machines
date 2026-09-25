@@ -1205,6 +1205,15 @@ fn passthrough(
                 gettext("This machine has no SPICE display for the client to connect to")
             );
         }
+        // The screen is only seen through the client, so it is no use turned on without.
+        let client = glib::find_program_in_path("looking-glass-client").is_some();
+        if !client {
+            subtitle = format!(
+                "{subtitle}\n{}",
+                gettext("The Looking Glass client, looking-glass-client, is not installed")
+            );
+        }
+        let target = target.filter(|_| client);
         let row = adw::SwitchRow::builder()
             .title("Looking Glass")
             .subtitle(subtitle)
@@ -1215,7 +1224,8 @@ fn passthrough(
             #[weak]
             view,
             move |row| {
-                // Once off, it only comes back on with a device to share through.
+                // Once off, it only comes back on with a device to share through, and the
+                // client to see it with.
                 row.set_sensitive(row.is_active() || target.is_some());
                 let device = target
                     .as_ref()
