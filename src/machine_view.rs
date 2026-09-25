@@ -20,8 +20,12 @@ use crate::{adw, details, dialogs, gio, glib, gtk, keymap, usage};
 /// How close to the top edge the pointer has to come, in fullscreen, to bring up the
 /// console's controls.
 const REVEAL_EDGE: f64 = 4.0;
+/// How close to the top edge a touch has to land, in fullscreen, for the same.
+const TOUCH_REVEAL_EDGE: f64 = 24.0;
 /// How long the console says how to give the keyboard back, once it takes it.
 const GRAB_HINT_TIME: std::time::Duration = std::time::Duration::from_secs(3);
+/// How long the controls stay when they come down by themselves or for a touch.
+const CONTROLS_PEEK_TIME: std::time::Duration = std::time::Duration::from_secs(3);
 
 mod imp {
     use super::*;
@@ -115,6 +119,8 @@ mod imp {
         /// is.
         pub(super) console_actions: gio::SimpleActionGroup,
         pub(super) grab_hint_timeout: RefCell<Option<glib::SourceId>>,
+        /// While set, the controls stay down wherever the pointer goes.
+        pub(super) controls_timeout: RefCell<Option<glib::SourceId>>,
     }
 
     #[glib::object_subclass]
@@ -493,10 +499,23 @@ impl MachineView {
         imp.fullscreen.set(fullscreen);
         imp.toolbar.set_reveal_top_bars(!fullscreen);
         imp.toolbar.set_extend_content_to_top_edge(fullscreen);
-        imp.console_controls.set_reveal_child(false);
+        self.follow_console_fullscreen(fullscreen);
         if fullscreen {
             self.show_console();
             imp.console.grab_focus();
+        }
+    }
+
+    /// Show the controls for a moment as the display goes fullscreen, for them to be
+    /// found where they come down, and take them away as it leaves.
+    fn follow_console_fullscreen(&self, fullscreen: bool) {
+        if fullscreen {
+            self.peek_console_controls();
+        } else {
+            if let Some(timeout) = self.imp().controls_timeout.take() {
+                timeout.remove();
+            }
+            self.imp().console_controls.set_reveal_child(false);
         }
     }
 
@@ -536,6 +555,21 @@ impl MachineView {
         ));
         imp.console_overlay.add_controller(motion);
 
+        // A touch screen has no pointer to come to the edge, so a tap there does.
+        let touch = gtk::GestureClick::new();
+        touch.set_touch_only(true);
+        touch.set_propagation_phase(gtk::PropagationPhase::Capture);
+        touch.connect_pressed(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            move |_, _, _, y| {
+                if y <= TOUCH_REVEAL_EDGE && view.console_is_fullscreen() {
+                    view.peek_console_controls();
+                }
+            }
+        ));
+        imp.console_overlay.add_controller(touch);
+
         imp.console.connect_grab_changed(glib::clone!(
             #[weak(rename_to = view)]
             self,
@@ -548,19 +582,50 @@ impl MachineView {
     fn reveal_console_controls(&self, y: f64) {
         let imp = self.imp();
         let controls = &imp.console_controls;
-        let fullscreen = imp
-            .console_overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .is_some_and(|w| w.is_fullscreen());
-        if !fullscreen {
+        if !self.console_is_fullscreen() {
             controls.set_reveal_child(false);
         } else if y <= REVEAL_EDGE {
             controls.set_reveal_child(true);
             imp.grab_hint.set_reveal_child(false);
-        } else if y > f64::from(controls.height()) + REVEAL_EDGE {
+        } else if y > f64::from(controls.height()) + REVEAL_EDGE
+            && imp.controls_timeout.borrow().is_none()
+        {
             controls.set_reveal_child(false);
         }
+    }
+
+    /// Bring the controls down for [`CONTROLS_PEEK_TIME`], and longer while the pointer
+    /// is on them.
+    fn peek_console_controls(&self) {
+        let imp = self.imp();
+        if let Some(timeout) = imp.controls_timeout.take() {
+            timeout.remove();
+        }
+        imp.console_controls.set_reveal_child(true);
+        imp.grab_hint.set_reveal_child(false);
+        let timeout = glib::timeout_add_local_once(
+            CONTROLS_PEEK_TIME,
+            glib::clone!(
+                #[weak(rename_to = view)]
+                self,
+                move || {
+                    let controls = &view.imp().console_controls;
+                    view.imp().controls_timeout.take();
+                    if !controls.state_flags().contains(gtk::StateFlags::PRELIGHT) {
+                        controls.set_reveal_child(false);
+                    }
+                }
+            ),
+        );
+        imp.controls_timeout.replace(Some(timeout));
+    }
+
+    fn console_is_fullscreen(&self) -> bool {
+        self.imp()
+            .console_overlay
+            .root()
+            .and_downcast::<gtk::Window>()
+            .is_some_and(|w| w.is_fullscreen())
     }
 
     fn show_grab_hint(&self, shown: bool) {
@@ -819,13 +884,13 @@ impl MachineView {
             toolbar,
             #[weak]
             fullscreen,
-            #[weak(rename_to = controls)]
-            imp.console_controls,
+            #[weak(rename_to = view)]
+            self,
             move |window| {
                 let on = window.is_fullscreen();
                 toolbar.set_reveal_top_bars(!on);
                 toolbar.set_extend_content_to_top_edge(on);
-                controls.set_reveal_child(false);
+                view.follow_console_fullscreen(on);
                 fullscreen.set_icon_name(if on {
                     "view-restore-symbolic"
                 } else {
