@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gettextrs::gettext;
+use gettextrs::{gettext, ngettext};
 use sourceview5::prelude::*;
 
 use crate::adw::prelude::*;
@@ -534,12 +534,24 @@ pub fn edit_xml(view: &MachineView) {
             .build();
         header.pack_start(&cancel);
         header.pack_end(&save);
+        let find = FindBar::new(&text, &buffer);
+        let find_button = gtk::ToggleButton::builder()
+            .icon_name("edit-find-symbolic")
+            .tooltip_text(gettext("Find and Replace"))
+            .build();
+        find_button
+            .bind_property("active", &find.bar, "search-mode-enabled")
+            .bidirectional()
+            .sync_create()
+            .build();
+        header.pack_end(&find_button);
         let toolbar = adw::ToolbarView::builder()
             .top_bar_style(adw::ToolbarStyle::Raised)
             .content(&scroller)
             .build();
         toolbar.add_top_bar(&header);
         toolbar.add_top_bar(&error);
+        toolbar.add_top_bar(&find.bar);
         // A window rather than a dialog, so it can be made as large as the definition is
         // long; it opens as it was last left, but no larger than the main window.
         let settings = crate::prefs::settings();
@@ -556,12 +568,66 @@ pub fn edit_xml(view: &MachineView) {
             .content(&toolbar)
             .build();
         dialog.set_application(win.application().as_ref());
-        let escape = gtk::ShortcutController::new();
-        escape.add_shortcut(gtk::Shortcut::new(
-            gtk::ShortcutTrigger::parse_string("Escape"),
-            Some(gtk::NamedAction::new("window.close")),
-        ));
-        dialog.add_controller(escape);
+        let shortcuts = gtk::ShortcutController::new();
+        let add = |trigger: &str, f: Box<dyn Fn()>| {
+            shortcuts.add_shortcut(gtk::Shortcut::new(
+                gtk::ShortcutTrigger::parse_string(trigger),
+                Some(gtk::CallbackAction::new(move |_, _| {
+                    f();
+                    glib::Propagation::Stop
+                })),
+            ));
+        };
+        add(
+            "<Control>f",
+            Box::new(glib::clone!(
+                #[strong]
+                find,
+                move || find.open(false)
+            )),
+        );
+        add(
+            "<Control>h",
+            Box::new(glib::clone!(
+                #[strong]
+                find,
+                move || find.open(true)
+            )),
+        );
+        add(
+            "<Control>g",
+            Box::new(glib::clone!(
+                #[strong]
+                find,
+                move || find.step(true)
+            )),
+        );
+        add(
+            "<Shift><Control>g",
+            Box::new(glib::clone!(
+                #[strong]
+                find,
+                move || find.step(false)
+            )),
+        );
+        // The find bar first, then the window.
+        add(
+            "Escape",
+            Box::new(glib::clone!(
+                #[strong]
+                find,
+                #[weak]
+                dialog,
+                move || {
+                    if find.bar.is_search_mode() {
+                        find.bar.set_search_mode(false);
+                    } else {
+                        dialog.close();
+                    }
+                }
+            )),
+        );
+        dialog.add_controller(shortcuts);
         dialog.connect_close_request(glib::clone!(
             #[weak]
             buffer,
@@ -646,6 +712,378 @@ pub fn edit_xml(view: &MachineView) {
         ));
         dialog.present();
     });
+}
+
+/// Find, and find and replace, in the definition editor.
+#[derive(Clone)]
+struct FindBar {
+    bar: gtk::SearchBar,
+    find: gtk::SearchEntry,
+    replacing: gtk::ToggleButton,
+    view: sourceview5::View,
+    context: sourceview5::SearchContext,
+}
+
+/// A [`FindBar`] for its own handlers to hold, which would otherwise keep it, and the
+/// editor with it, alive for good. The editor's shortcuts hold the bar itself.
+#[derive(Clone)]
+struct WeakFindBar {
+    bar: glib::WeakRef<gtk::SearchBar>,
+    find: glib::WeakRef<gtk::SearchEntry>,
+    replacing: glib::WeakRef<gtk::ToggleButton>,
+    view: glib::WeakRef<sourceview5::View>,
+    context: glib::WeakRef<sourceview5::SearchContext>,
+}
+
+impl WeakFindBar {
+    fn upgrade(&self) -> Option<FindBar> {
+        Some(FindBar {
+            bar: self.bar.upgrade()?,
+            find: self.find.upgrade()?,
+            replacing: self.replacing.upgrade()?,
+            view: self.view.upgrade()?,
+            context: self.context.upgrade()?,
+        })
+    }
+}
+
+impl FindBar {
+    fn new(view: &sourceview5::View, buffer: &sourceview5::Buffer) -> Self {
+        let settings = sourceview5::SearchSettings::new();
+        settings.set_wrap_around(true);
+        let context = sourceview5::SearchContext::new(buffer, Some(&settings));
+        context.set_highlight(false);
+
+        let find = gtk::SearchEntry::builder()
+            .placeholder_text(gettext("Find"))
+            .hexpand(true)
+            .build();
+        // As wide as "13 matches" whatever it says, so the entry does not move as it changes.
+        let count = gtk::Label::builder()
+            .width_chars(10)
+            .xalign(1.0)
+            .css_classes(["dim-label", "numeric"])
+            .build();
+        let previous = gtk::Button::builder()
+            .icon_name("go-up-symbolic")
+            .tooltip_text(gettext("Previous Match"))
+            .build();
+        let next = gtk::Button::builder()
+            .icon_name("go-down-symbolic")
+            .tooltip_text(gettext("Next Match"))
+            .build();
+        let steps = gtk::Box::builder().css_classes(["linked"]).build();
+        steps.append(&previous);
+        steps.append(&next);
+        let replacing = gtk::ToggleButton::builder()
+            .icon_name("edit-find-replace-symbolic")
+            .tooltip_text(gettext("Replace"))
+            .build();
+        let options = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(6)
+            .build();
+        for (label, property) in [
+            (gettext("_Match Case"), "case-sensitive"),
+            (gettext("Match _Whole Words"), "at-word-boundaries"),
+            (gettext("_Regular Expression"), "regex-enabled"),
+        ] {
+            let check = gtk::CheckButton::with_mnemonic(&label);
+            check
+                .bind_property("active", &settings, property)
+                .sync_create()
+                .build();
+            options.append(&check);
+        }
+        let options_button = gtk::MenuButton::builder()
+            .icon_name("emblem-system-symbolic")
+            .tooltip_text(gettext("Search Options"))
+            .popover(&gtk::Popover::builder().child(&options).build())
+            .build();
+        let find_row = gtk::Box::builder().spacing(6).build();
+        find_row.append(&find);
+        find_row.append(&count);
+        find_row.append(&steps);
+        find_row.append(&replacing);
+        find_row.append(&options_button);
+
+        let replace = gtk::Entry::builder()
+            .placeholder_text(gettext("Replace"))
+            .hexpand(true)
+            .build();
+        let replace_one = gtk::Button::builder()
+            .label(gettext("_Replace"))
+            .use_underline(true)
+            .build();
+        let replace_all = gtk::Button::builder()
+            .label(gettext("Replace _All"))
+            .use_underline(true)
+            .build();
+        let replace_row = gtk::Box::builder().spacing(6).build();
+        replace_row.append(&replace);
+        replace_row.append(&replace_one);
+        replace_row.append(&replace_all);
+        replacing
+            .bind_property("active", &replace_row, "visible")
+            .sync_create()
+            .build();
+
+        let rows = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(6)
+            .build();
+        rows.append(&find_row);
+        rows.append(&replace_row);
+        let bar = gtk::SearchBar::builder()
+            .child(&adw::Clamp::builder().maximum_size(720).child(&rows).build())
+            .build();
+        bar.connect_entry(&find);
+
+        let this = Self {
+            bar,
+            find: find.clone(),
+            replacing,
+            view: view.clone(),
+            context: context.clone(),
+        };
+        let weak = WeakFindBar {
+            bar: this.bar.downgrade(),
+            find: find.downgrade(),
+            replacing: this.replacing.downgrade(),
+            view: view.downgrade(),
+            context: context.downgrade(),
+        };
+
+        let update = glib::clone!(
+            #[strong]
+            weak,
+            #[weak]
+            count,
+            #[weak]
+            replace_one,
+            #[weak]
+            replace_all,
+            move || {
+                let Some(this) = weak.upgrade() else {
+                    return;
+                };
+                let total = this.context.occurrences_count();
+                let searching = this.context.settings().search_text().is_some();
+                let error = this.context.regex_error();
+                let text = if !searching || total < 0 {
+                    String::new()
+                } else if error.is_some() || total == 0 {
+                    gettext("No results")
+                } else {
+                    let buffer = this.view.buffer();
+                    let at = buffer
+                        .selection_bounds()
+                        .map_or(0, |(s, e)| this.context.occurrence_position(&s, &e));
+                    if at > 0 {
+                        gettext("{n} of {total}")
+                            .replace("{n}", &at.to_string())
+                            .replace("{total}", &total.to_string())
+                    } else {
+                        ngettext("{total} match", "{total} matches", total as u32)
+                            .replace("{total}", &total.to_string())
+                    }
+                };
+                count.set_label(&text);
+                this.find
+                    .set_tooltip_text(error.as_ref().map(|e| e.message()));
+                if searching && (error.is_some() || total == 0) {
+                    this.find.add_css_class("error");
+                } else {
+                    this.find.remove_css_class("error");
+                }
+                replace_one.set_sensitive(total > 0);
+                replace_all.set_sensitive(total > 0);
+            }
+        );
+        let update = Rc::new(update);
+        context.connect_occurrences_count_notify(glib::clone!(
+            #[strong]
+            update,
+            move |_| update()
+        ));
+        context.connect_notify_local(
+            Some("regex-error"),
+            glib::clone!(
+                #[strong]
+                update,
+                move |_, _| update()
+            ),
+        );
+        buffer.connect_mark_set(glib::clone!(
+            #[strong]
+            update,
+            move |buffer, _, mark| {
+                if *mark == buffer.get_insert() {
+                    update();
+                }
+            }
+        ));
+
+        find.connect_search_changed(glib::clone!(
+            #[strong]
+            weak,
+            move |find| {
+                let Some(this) = weak.upgrade() else {
+                    return;
+                };
+                let text = find.text();
+                this.context
+                    .settings()
+                    .set_search_text(Some(text.as_str()).filter(|t| !t.is_empty()));
+                // From where the current match starts, so it stays as long as it matches.
+                let buffer = this.view.buffer();
+                let from = buffer
+                    .selection_bounds()
+                    .map_or_else(|| buffer.iter_at_mark(&buffer.get_insert()), |(s, _)| s);
+                this.select(this.context.forward(&from));
+            }
+        ));
+        find.connect_activate(glib::clone!(
+            #[strong]
+            weak,
+            move |_| {
+                if let Some(this) = weak.upgrade() {
+                    this.step(true);
+                }
+            }
+        ));
+        let back = gtk::ShortcutController::new();
+        back.add_shortcut(gtk::Shortcut::new(
+            gtk::ShortcutTrigger::parse_string("<Shift>Return"),
+            Some(gtk::CallbackAction::new(glib::clone!(
+                #[strong]
+                weak,
+                move |_, _| {
+                    if let Some(this) = weak.upgrade() {
+                        this.step(false);
+                    }
+                    glib::Propagation::Stop
+                }
+            ))),
+        ));
+        find.add_controller(back);
+        previous.connect_clicked(glib::clone!(
+            #[strong]
+            weak,
+            move |_| {
+                if let Some(this) = weak.upgrade() {
+                    this.step(false);
+                }
+            }
+        ));
+        next.connect_clicked(glib::clone!(
+            #[strong]
+            weak,
+            move |_| {
+                if let Some(this) = weak.upgrade() {
+                    this.step(true);
+                }
+            }
+        ));
+        replace_one.connect_clicked(glib::clone!(
+            #[strong]
+            weak,
+            #[weak]
+            replace,
+            move |_| {
+                if let Some(this) = weak.upgrade() {
+                    this.replace(&replace.text());
+                }
+            }
+        ));
+        replace.connect_activate(glib::clone!(
+            #[strong]
+            weak,
+            move |replace| {
+                if let Some(this) = weak.upgrade() {
+                    this.replace(&replace.text());
+                }
+            }
+        ));
+        replace_all.connect_clicked(glib::clone!(
+            #[strong]
+            weak,
+            #[weak]
+            replace,
+            move |_| {
+                if let Some(this) = weak.upgrade() {
+                    let _ = this.context.replace_all(&replace.text());
+                }
+            }
+        ));
+        this.bar.connect_search_mode_enabled_notify(glib::clone!(
+            #[strong]
+            weak,
+            move |bar| {
+                let Some(this) = weak.upgrade() else {
+                    return;
+                };
+                let on = bar.is_search_mode();
+                this.context.set_highlight(on);
+                if !on {
+                    this.view.grab_focus();
+                }
+            }
+        ));
+        update();
+        this
+    }
+
+    /// Show the bar, with the replace row if `replace`, to find the selected text if a line
+    /// or less is selected.
+    fn open(&self, replace: bool) {
+        let buffer = self.view.buffer();
+        if let Some((start, end)) = buffer.selection_bounds() {
+            let selected = buffer.text(&start, &end, false);
+            if !selected.contains('\n') {
+                self.find.set_text(&selected);
+            }
+        }
+        if replace {
+            self.replacing.set_active(true);
+        }
+        self.bar.set_search_mode(true);
+        self.find.grab_focus();
+    }
+
+    /// Select the next match after the selection, or with `forward` false, the one before.
+    fn step(&self, forward: bool) {
+        let buffer = self.view.buffer();
+        let insert = buffer.iter_at_mark(&buffer.get_insert());
+        let (start, end) = buffer.selection_bounds().unwrap_or((insert, insert));
+        self.select(if forward {
+            self.context.forward(&end)
+        } else {
+            self.context.backward(&start)
+        });
+    }
+
+    fn select(&self, found: Option<(gtk::TextIter, gtk::TextIter, bool)>) {
+        if let Some((start, end, _)) = found {
+            let buffer = self.view.buffer();
+            buffer.select_range(&start, &end);
+            self.view
+                .scroll_to_mark(&buffer.get_insert(), 0.25, false, 0.0, 0.0);
+        }
+    }
+
+    /// Replace the selected match with `text` and select the next one; with no match
+    /// selected, only select the next.
+    fn replace(&self, text: &str) {
+        let buffer = self.view.buffer();
+        if let Some((mut start, mut end)) = buffer.selection_bounds()
+            && self.context.occurrence_position(&start, &end) > 0
+            && self.context.replace(&mut start, &mut end, text).is_ok()
+        {
+            buffer.place_cursor(&end);
+        }
+        self.step(true);
+    }
 }
 
 /// Colour the buffer with GtkSourceView's Adwaita scheme, light or dark as the rest of the

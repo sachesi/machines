@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.2\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-25 21:33+0300\n"
+"POT-Creation-Date: 2026-09-25 21:47+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1224,34 +1224,106 @@ msgstr ""
 msgid "_Save"
 msgstr ""
 
-#: src/dialogs/machine.rs:549
+#: src/dialogs/machine.rs:540 ui/shortcuts-dialog.ui:68
+#, no-c-format
+msgid "Find and Replace"
+msgstr ""
+
+#: src/dialogs/machine.rs:561
 #, no-c-format
 msgid "Definition of “{name}”"
 msgstr ""
 
-#: src/dialogs/machine.rs:583
+#: src/dialogs/machine.rs:649
 #, no-c-format
 msgid "Discard Changes?"
 msgstr ""
 
-#: src/dialogs/machine.rs:584
+#: src/dialogs/machine.rs:650
 #, no-c-format
 msgid "The changes to the definition have not been saved."
 msgstr ""
 
-#: src/dialogs/machine.rs:585 src/machine_view.rs:257
+#: src/dialogs/machine.rs:651 src/machine_view.rs:257
 #, no-c-format
 msgid "_Discard"
 msgstr ""
 
-#: src/dialogs/machine.rs:631
+#: src/dialogs/machine.rs:697
 #, no-c-format
 msgid ""
 "The change takes effect the next time the "
 "virtual                                              machine starts"
 msgstr ""
 
-#: src/dialogs/machine.rs:698
+#: src/dialogs/machine.rs:758 ui/shortcuts-dialog.ui:62
+#, no-c-format
+msgid "Find"
+msgstr ""
+
+#: src/dialogs/machine.rs:769 ui/shortcuts-dialog.ui:80
+#, no-c-format
+msgid "Previous Match"
+msgstr ""
+
+#: src/dialogs/machine.rs:773 ui/shortcuts-dialog.ui:74
+#, no-c-format
+msgid "Next Match"
+msgstr ""
+
+#: src/dialogs/machine.rs:780 src/dialogs/machine.rs:811
+#, no-c-format
+msgid "Replace"
+msgstr ""
+
+#: src/dialogs/machine.rs:787
+#, no-c-format
+msgid "_Match Case"
+msgstr ""
+
+#: src/dialogs/machine.rs:788
+#, no-c-format
+msgid "Match _Whole Words"
+msgstr ""
+
+#: src/dialogs/machine.rs:789
+#, no-c-format
+msgid "_Regular Expression"
+msgstr ""
+
+#: src/dialogs/machine.rs:800
+#, no-c-format
+msgid "Search Options"
+msgstr ""
+
+#: src/dialogs/machine.rs:815
+#, no-c-format
+msgid "_Replace"
+msgstr ""
+
+#: src/dialogs/machine.rs:819
+#, no-c-format
+msgid "Replace _All"
+msgstr ""
+
+#: src/dialogs/machine.rs:876
+#, no-c-format
+msgid "No results"
+msgstr ""
+
+#: src/dialogs/machine.rs:883
+#, no-c-format
+msgid "{n} of {total}"
+msgstr ""
+
+#: src/dialogs/machine.rs:887
+#, no-c-format
+msgid "{total} match"
+msgid_plural "{total} matches"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/dialogs/machine.rs:1136
 #, no-c-format
 msgid "Save Screenshot"
 msgstr ""
@@ -2237,6 +2309,10 @@ msgstr ""
 
 #: ui/shortcuts-dialog.ui:51
 msgid "Press both together, then let go"
+msgstr ""
+
+#: ui/shortcuts-dialog.ui:59
+msgid "Definition Editor"
 msgstr ""
 
 #: ui/window.ui:27 ui/window.ui:35

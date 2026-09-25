@@ -40,4 +40,28 @@ Adw.ShortcutsDialog shortcuts_dialog {
       accelerator: "Control_L&Alt_L";
     }
   }
+
+  Adw.ShortcutsSection {
+    title: _("Definition Editor");
+
+    Adw.ShortcutsItem {
+      title: _("Find");
+      accelerator: "<Control>f";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Find and Replace");
+      accelerator: "<Control>h";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Next Match");
+      accelerator: "<Control>g Return";
+    }
+
+    Adw.ShortcutsItem {
+      title: _("Previous Match");
+      accelerator: "<Shift><Control>g <Shift>Return";
+    }
+  }
 }
