@@ -553,7 +553,8 @@ fn resources(
         }
     ));
     group.add(&hugepages);
-    if advanced {
+    // A session's QEMU may not lift its limit on locked memory, and does not start.
+    if advanced && (!window(view).is_some_and(|w| w.is_session()) || config.locked_memory) {
         group.add(&switch_row(
             &gettext("Locked Memory"),
             &gettext("Never swapped out on the host"),
@@ -1452,16 +1453,19 @@ fn features(
             ),
         ));
     }
-    group.add(&switch_row(
-        &gettext("Host’s System Information"),
-        &gettext("The guest sees the maker, model and serial number of the host"),
-        config.host_smbios,
-        glib::clone!(
-            #[weak]
-            view,
-            move |on| edit(&view, move |xml| domain_xml::set_host_smbios(xml, on))
-        ),
-    ));
+    // Only root reads the host's, so a session's machine with it does not start.
+    if !window(view).is_some_and(|w| w.is_session()) || config.host_smbios {
+        group.add(&switch_row(
+            &gettext("Host’s System Information"),
+            &gettext("The guest sees the maker, model and serial number of the host"),
+            config.host_smbios,
+            glib::clone!(
+                #[weak]
+                view,
+                move |on| edit(&view, move |xml| domain_xml::set_host_smbios(xml, on))
+            ),
+        ));
+    }
     group
 }
 

@@ -33,10 +33,10 @@ files into, and its virtual networks: NAT, routed, isolated, or on a bridge of t
 
 Advanced Settings, in the machine's menu, adds what few machines need to the page: the
 version of the machine type, a boot menu, what happens when the guest powers off, reboots
-or crashes, the clock in local time as Windows keeps it, Hyper-V enlightenments, the host's
-own system information, host processors for QEMU's emulator and disk I/O threads, locked
-memory, and each disk's bus, cache, I/O mode and discard, and each network card's model.
-On the system connection it also edits the scripts libvirt runs as root before the machine
+or crashes, the clock in local time as Windows keeps it, Hyper-V enlightenments, host
+processors for QEMU's emulator and disk I/O threads, and each disk's bus, cache, I/O mode
+and discard, and each network card's model. On the system connection, whose QEMU may, it
+also offers the host's own system information and locked memory, and edits the scripts libvirt runs as root before the machine
 starts and after it stops, to set huge pages aside or hand a graphics card over, say. A
 helper writes them through pkexec, so saving one asks for an administrator's password.
 
