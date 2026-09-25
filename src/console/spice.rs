@@ -12,9 +12,10 @@ use std::time::Duration;
 use spice_client_glib as spice;
 use spice_client_glib::prelude::*;
 
-use super::{BYTES_PER_PIXEL, Console, button_bit};
+use super::{BYTES_PER_PIXEL, Console, TextureUpdate, button_bit, memory_texture};
 use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
+use crate::gtk::cairo;
 use crate::{gdk, glib};
 
 /// Asks libvirt for another socket to the machine's display, and hands it to the callback,
@@ -294,17 +295,15 @@ impl Console {
                 #[weak(rename_to = console)]
                 self,
                 move |_| {
-                    console.imp().dirty.set(true);
-                    console.queue_draw();
+                    console.invalidate(None);
                     console.emit_by_name::<()>("connected", &[]);
                 }
             ));
             display.connect_display_invalidate(glib::clone!(
                 #[weak(rename_to = console)]
                 self,
-                move |_, _, _, _, _| {
-                    console.imp().dirty.set(true);
-                    console.queue_draw();
+                move |_, x, y, width, height| {
+                    console.invalidate(Some(cairo::RectangleInt::new(x, y, width, height)));
                 }
             ));
             display.connect_display_primary_destroy(glib::clone!(
@@ -349,7 +348,7 @@ impl Console {
     }
 
     /// The surface in memory, as a texture.
-    pub(super) fn copy_spice_surface(&self) -> Option<gdk::Texture> {
+    pub(super) fn copy_spice_surface(&self, update: Option<TextureUpdate>) -> Option<gdk::Texture> {
         let display = self.imp().spice.borrow().display.clone()?;
         let primary = display.primary(0)?;
         let format = match primary.format() {
@@ -361,16 +360,14 @@ impl Console {
         if width == 0 || height == 0 || primary.stride() < width * BYTES_PER_PIXEL {
             return None;
         }
-        Some(
-            gdk::MemoryTexture::new(
-                i32::try_from(width).ok()?,
-                i32::try_from(height).ok()?,
-                format,
-                &glib::Bytes::from(primary.data()),
-                primary.stride(),
-            )
-            .upcast(),
-        )
+        Some(memory_texture(
+            i32::try_from(width).ok()?,
+            i32::try_from(height).ok()?,
+            format,
+            &glib::Bytes::from(primary.data()),
+            primary.stride(),
+            update,
+        ))
     }
 
     /// A frame the host GPU rendered: shown as it is, and QEMU told once it is on screen.

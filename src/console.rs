@@ -20,7 +20,35 @@ use crate::adw::subclass::prelude::*;
 use crate::glib::translate::{FromGlibPtrFull, IntoGlib, ToGlibPtr};
 use crate::keymap;
 use crate::{gdk, glib, gtk};
-use gtk::graphene;
+use gtk::{cairo, graphene};
+
+/// What changed of the desktop, and the texture it was in before.
+type TextureUpdate = (cairo::Region, gdk::Texture);
+
+/// A texture of the desktop in `bytes`, for which GTK uploads only what `update` says
+/// changed from the texture before, when there is one of the same size.
+fn memory_texture(
+    width: i32,
+    height: i32,
+    format: gdk::MemoryFormat,
+    bytes: &glib::Bytes,
+    stride: usize,
+    update: Option<TextureUpdate>,
+) -> gdk::Texture {
+    let builder = gdk::MemoryTextureBuilder::new()
+        .set_bytes(Some(bytes))
+        .set_width(width)
+        .set_height(height)
+        .set_format(format)
+        .set_stride(stride);
+    match update.filter(|(_, before)| before.width() == width && before.height() == height) {
+        Some((region, before)) => builder
+            .set_update_texture(Some(&before))
+            .set_update_region(Some(&region))
+            .build(),
+        None => builder.build(),
+    }
+}
 
 const BYTES_PER_PIXEL: usize = 4;
 
@@ -46,6 +74,9 @@ mod imp {
         pub(super) framebuffer: RefCell<Option<gvnc::BaseFramebuffer>>,
         pub(super) texture: RefCell<Option<gdk::Texture>>,
         pub(super) dirty: Cell<bool>,
+        /// What of the desktop changed since the texture was made, while it is dirty; `None`
+        /// when all of it may have.
+        pub(super) damage: RefCell<Option<cairo::Region>>,
         /// Whether the next incremental update request is already scheduled.
         pub(super) update_requested: Cell<bool>,
         pub(super) buttons: Cell<u8>,
@@ -121,10 +152,17 @@ mod imp {
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let obj = self.obj();
             if self.dirty.replace(false) {
+                // A GL frame is upside down next to the desktop in memory, so nothing of it
+                // carries over.
+                let update = self
+                    .damage
+                    .take()
+                    .zip(self.texture.borrow().clone())
+                    .filter(|_| !self.flipped.get());
                 let texture = if obj.spice_is_open() {
-                    obj.copy_spice_surface()
+                    obj.copy_spice_surface(update)
                 } else {
-                    obj.copy_framebuffer()
+                    obj.copy_framebuffer(update)
                 };
                 self.texture.replace(texture);
                 self.flipped.set(false);
@@ -217,9 +255,8 @@ impl Console {
         conn.connect_vnc_framebuffer_update(glib::clone!(
             #[weak(rename_to = console)]
             self,
-            move |_, _, _, _, _| {
-                console.imp().dirty.set(true);
-                console.queue_draw();
+            move |_, x, y, width, height| {
+                console.invalidate(Some(cairo::RectangleInt::new(x, y, width, height)));
                 console.request_update();
             }
         ));
@@ -364,7 +401,23 @@ impl Console {
         }
         let _ = conn.framebuffer_update_request(false, 0, 0, width, height);
         self.imp().framebuffer.replace(Some(framebuffer));
-        self.imp().dirty.set(true);
+        self.invalidate(None);
+    }
+
+    /// Have the texture follow `area` of the desktop, or all of it, at the next redraw.
+    pub(super) fn invalidate(&self, area: Option<cairo::RectangleInt>) {
+        let imp = self.imp();
+        let was_dirty = imp.dirty.replace(true);
+        let mut damage = imp.damage.borrow_mut();
+        match (area, damage.as_ref()) {
+            (Some(area), _) if !was_dirty => *damage = Some(cairo::Region::create_rectangle(&area)),
+            (Some(area), Some(region)) => {
+                let _ = region.union_rectangle(&area);
+            }
+            (Some(_), None) => {}
+            (None, _) => *damage = None,
+        }
+        drop(damage);
         self.queue_draw();
     }
 
@@ -395,19 +448,17 @@ impl Console {
         ));
     }
 
-    fn copy_framebuffer(&self) -> Option<gdk::Texture> {
+    fn copy_framebuffer(&self, update: Option<TextureUpdate>) -> Option<gdk::Texture> {
         let fb = self.imp().framebuffer.borrow().clone()?;
         let bytes = glib::Bytes::from(gvnc::FramebufferManualExt::buffer(&fb));
-        Some(
-            gdk::MemoryTexture::new(
-                i32::from(FramebufferExt::width(&fb)),
-                i32::from(FramebufferExt::height(&fb)),
-                gdk::MemoryFormat::B8g8r8x8,
-                &bytes,
-                usize::from(FramebufferExt::width(&fb)) * BYTES_PER_PIXEL,
-            )
-            .upcast(),
-        )
+        Some(memory_texture(
+            i32::from(FramebufferExt::width(&fb)),
+            i32::from(FramebufferExt::height(&fb)),
+            gdk::MemoryFormat::B8g8r8x8,
+            &bytes,
+            usize::from(FramebufferExt::width(&fb)) * BYTES_PER_PIXEL,
+            update,
+        ))
     }
 
     /// Where a desktop of `width`×`height` goes in the widget: its offset and scale, as
