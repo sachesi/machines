@@ -75,6 +75,9 @@ mod imp {
 
         fn class_init(klass: &mut Self::Class) {
             klass.set_css_name("machines-console");
+            // ARIA's role for a region that handles every key itself, which screen readers
+            // pass keys through to.
+            klass.set_accessible_role(gtk::AccessibleRole::Application);
         }
     }
 

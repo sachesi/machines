@@ -660,6 +660,8 @@ impl MachineView {
         imp.title.set_title(&info.name);
         imp.title.set_subtitle(&info.status());
         imp.controls_title.set_label(&info.name);
+        imp.console
+            .update_property(&[gtk::accessible::Property::Label(&info.name)]);
         if let Some((window, title)) = &*imp.detached.borrow() {
             window.set_title(Some(&info.name));
             title.set_title(&info.name);
