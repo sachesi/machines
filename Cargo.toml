@@ -13,6 +13,7 @@ gtk4 = { version = "0.11", features = ["v4_22"] }
 libadwaita = { version = "0.9", features = ["v1_9"] }
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 gvnc = "0.7"
+libc = "0.2"
 roxmltree = "0.21"
 virt = "0.4.3"
 sourceview5 = "0.11"

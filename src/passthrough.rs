@@ -5,6 +5,8 @@
 //! on this computer.
 
 use std::fs;
+use std::io;
+use std::os::fd::AsRawFd;
 
 use crate::host_xml::PciAddress;
 
@@ -24,7 +26,12 @@ pub struct Kvmfr {
     pub bytes: Result<u64, String>,
 }
 
-/// The kvmfr devices, with the size the module gives each in sysfs.
+/// The kvmfr module's `KVMFR_DMABUF_GETSIZE` request, `_IO('u', 0x44)`.
+const KVMFR_DMABUF_GETSIZE: libc::Ioctl = 0x7544;
+
+/// The kvmfr devices, with the size each has, which the module gives only through an
+/// ioctl on the device, as the Looking Glass client reads it. Reading it takes opening
+/// the device, which this user may not be allowed.
 pub fn kvmfr_devices() -> Vec<Kvmfr> {
     let Ok(entries) = fs::read_dir("/dev") else {
         return Vec::new();
@@ -37,18 +44,21 @@ pub fn kvmfr_devices() -> Vec<Kvmfr> {
     numbers
         .into_iter()
         .map(|n| {
-            let size = format!("/sys/class/kvmfr/kvmfr{n}/size");
-            let bytes = fs::read_to_string(&size)
-                .map_err(|e| format!("{size}: {e}"))
-                .and_then(|text| match text.trim().parse() {
-                    Ok(0) => Err("it has no memory".to_owned()),
+            let path = format!("/dev/kvmfr{n}");
+            let bytes = fs::File::open(&path)
+                .and_then(|f| {
+                    // SAFETY: the request takes no argument and only returns the size.
+                    match unsafe { libc::ioctl(f.as_raw_fd(), KVMFR_DMABUF_GETSIZE, 0) } {
+                        -1 => Err(io::Error::last_os_error()),
+                        size => Ok(size),
+                    }
+                })
+                .map_err(|e| e.to_string())
+                .and_then(|size| match u64::try_from(size) {
+                    Ok(0) | Err(_) => Err("it has no memory".to_owned()),
                     Ok(bytes) => Ok(bytes),
-                    Err(_) => Err(format!("{size} does not hold a size")),
                 });
-            Kvmfr {
-                path: format!("/dev/kvmfr{n}"),
-                bytes,
-            }
+            Kvmfr { path, bytes }
         })
         .collect()
 }
