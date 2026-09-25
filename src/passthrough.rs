@@ -5,7 +5,6 @@
 //! on this computer.
 
 use std::fs;
-use std::io::{Seek, SeekFrom};
 
 use crate::host_xml::PciAddress;
 
@@ -25,9 +24,7 @@ pub struct Kvmfr {
     pub bytes: Result<u64, String>,
 }
 
-/// The kvmfr devices, with the size each has, which the module does not show anywhere
-/// but on the device: at its end, where the Looking Glass client finds it too. Reading it
-/// takes opening the device, which this user may not be allowed.
+/// The kvmfr devices, with the size the module gives each in sysfs.
 pub fn kvmfr_devices() -> Vec<Kvmfr> {
     let Ok(entries) = fs::read_dir("/dev") else {
         return Vec::new();
@@ -40,15 +37,18 @@ pub fn kvmfr_devices() -> Vec<Kvmfr> {
     numbers
         .into_iter()
         .map(|n| {
-            let path = format!("/dev/kvmfr{n}");
-            let bytes = fs::File::open(&path)
-                .and_then(|mut f| f.seek(SeekFrom::End(0)))
-                .map_err(|e| e.to_string())
-                .and_then(|b| match b {
-                    0 => Err("it has no memory".to_owned()),
-                    b => Ok(b),
+            let size = format!("/sys/class/kvmfr/kvmfr{n}/size");
+            let bytes = fs::read_to_string(&size)
+                .map_err(|e| format!("{size}: {e}"))
+                .and_then(|text| match text.trim().parse() {
+                    Ok(0) => Err("it has no memory".to_owned()),
+                    Ok(bytes) => Ok(bytes),
+                    Err(_) => Err(format!("{size} does not hold a size")),
                 });
-            Kvmfr { path, bytes }
+            Kvmfr {
+                path: format!("/dev/kvmfr{n}"),
+                bytes,
+            }
         })
         .collect()
 }

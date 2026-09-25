@@ -1216,7 +1216,7 @@ fn passthrough(
         {
             subtitle = format!(
                 "{subtitle}\n{}",
-                gettext("{path} cannot be read: {error}")
+                gettext("The size of {path} cannot be read: {error}")
                     .replace("{path}", path)
                     .replace("{error}", e)
             );
