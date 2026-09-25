@@ -32,6 +32,7 @@ Depends: ${shlibs:Depends},
 Recommends: libvirt-daemon-system,
             osinfo-db,
             ovmf,
+            pkexec,
             qemu-system-modules-spice,
             swtpm,
             virtiofsd

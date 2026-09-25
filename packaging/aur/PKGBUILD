@@ -15,6 +15,7 @@ optdepends=('qemu-desktop: run machines on this computer'
             'dnsmasq: virtual networks'
             'osinfo-db: recognize the system on an installation ISO'
             'edk2-ovmf: UEFI firmware'
+            'polkit: edit the scripts libvirt runs as machines start and stop'
             'swtpm: emulated TPM'
             'virtiofsd: folders shared with a machine')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver/$pkgname-$pkgver.tar.gz")
