@@ -39,6 +39,8 @@ Requires:       hicolor-icon-theme
 # The daemons and QEMU for machines on this computer; a remote connection needs neither.
 Recommends:     libvirt-daemon-qemu
 Recommends:     libvirt-daemon-config-network
+# The SPICE display, its agent's channel, USB redirection and sound.
+Recommends:     qemu-spice
 # Recognizing the system on an installation ISO.
 Recommends:     osinfo-db
 # UEFI firmware, an emulated TPM, and folders shared with a machine.
