@@ -34,7 +34,7 @@ jobs:
           dnf install -y --setopt=install_weak_deps=False
           git-core rust cargo rustfmt clippy cargo-deny just blueprint-compiler
           gtk4-devel libadwaita-devel libvirt-devel gvnc-devel spice-glib-devel
-          libusb1-devel vte291-gtk4-devel glib2-devel
+          libusb1-devel vte291-gtk4-devel gtksourceview5-devel glib2-devel
           desktop-file-utils appstream gettext
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # just check runs cargo deny too, against the advisories as they are today.

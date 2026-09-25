@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gettextrs::gettext;
+use sourceview5::prelude::*;
 
 use crate::adw::prelude::*;
 use crate::domain_xml::{BootDevice, DiskDevice, MachineConfig};
@@ -478,108 +479,157 @@ pub fn edit_xml(view: &MachineView) {
     let (Some(win), Some(info)) = (window(view), view.info()) else {
         return;
     };
-    glib::spawn_future_local(glib::clone!(
-        #[weak]
-        view,
-        async move {
-            let uuid = info.uuid.clone();
-            let xml = match win.call(move |hv| hv.xml(&uuid)).await {
-                Some(Ok(xml)) => xml,
-                Some(Err(e)) => return win.toast(&e),
-                None => return,
-            };
-            let buffer = gtk::TextBuffer::new(None);
-            buffer.set_text(&xml);
-            let text = gtk::TextView::builder()
-                .buffer(&buffer)
-                .monospace(true)
-                .top_margin(12)
-                .bottom_margin(12)
-                .left_margin(12)
-                .right_margin(12)
-                .build();
-            let scroller = gtk::ScrolledWindow::builder()
-                .child(&text)
-                .vexpand(true)
-                .build();
-            let error = adw::Banner::builder().use_markup(false).build();
-            let save = gtk::Button::builder()
-                .label(gettext("_Save"))
-                .use_underline(true)
-                .css_classes(["suggested-action"])
-                .build();
-            let cancel = gtk::Button::builder()
-                .label(gettext("_Cancel"))
-                .use_underline(true)
-                .build();
-            let header = adw::HeaderBar::builder()
-                .show_start_title_buttons(false)
-                .show_end_title_buttons(false)
-                .build();
-            header.pack_start(&cancel);
-            header.pack_end(&save);
-            let toolbar = adw::ToolbarView::builder()
-                .top_bar_style(adw::ToolbarStyle::Raised)
-                .content(&scroller)
-                .build();
-            toolbar.add_top_bar(&header);
-            toolbar.add_top_bar(&error);
-            let dialog = adw::Dialog::builder()
-                .title(gettext("Definition of “{name}”").replace("{name}", &info.name))
-                .content_width(720)
-                .content_height(640)
-                .child(&toolbar)
-                .build();
-            cancel.connect_clicked(glib::clone!(
-                #[weak]
-                dialog,
-                move |_| {
-                    dialog.close();
-                }
-            ));
-            save.connect_clicked(glib::clone!(
-                #[weak]
-                dialog,
-                #[weak]
-                win,
-                #[weak]
-                error,
-                move |save| {
-                    let xml = buffer
-                        .text(&buffer.start_iter(), &buffer.end_iter(), false)
-                        .to_string();
-                    let uuid = info.uuid.clone();
-                    save.set_sensitive(false);
-                    glib::spawn_future_local(glib::clone!(
-                        #[weak]
-                        save,
-                        async move {
-                            let defined = win.call(move |hv| hv.define(&uuid, &xml)).await;
-                            save.set_sensitive(true);
-                            match defined {
-                                Some(Ok(change)) => {
-                                    dialog.close();
-                                    if change == Change::AtNextStart {
-                                        win.toast(&gettext(
-                                            "The change takes effect the next time the virtual \
+    glib::spawn_future_local(async move {
+        let uuid = info.uuid.clone();
+        let xml = match win.call(move |hv| hv.xml(&uuid)).await {
+            Some(Ok(xml)) => xml,
+            Some(Err(e)) => return win.toast(&e),
+            None => return,
+        };
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(sourceview5::init);
+        let buffer = sourceview5::Buffer::new(None);
+        buffer.set_language(
+            sourceview5::LanguageManager::default()
+                .language("xml")
+                .as_ref(),
+        );
+        follow_style(&buffer);
+        buffer.set_text(&xml);
+        let text = sourceview5::View::builder()
+            .buffer(&buffer)
+            .monospace(true)
+            .show_line_numbers(true)
+            .highlight_current_line(true)
+            .auto_indent(true)
+            .tab_width(2)
+            .indent_width(2)
+            .insert_spaces_instead_of_tabs(true)
+            .top_margin(12)
+            .bottom_margin(12)
+            .left_margin(12)
+            .right_margin(12)
+            .build();
+        let scroller = gtk::ScrolledWindow::builder()
+            .child(&text)
+            .vexpand(true)
+            .build();
+        let error = adw::Banner::builder().use_markup(false).build();
+        let save = gtk::Button::builder()
+            .label(gettext("_Save"))
+            .use_underline(true)
+            .css_classes(["suggested-action"])
+            .build();
+        let cancel = gtk::Button::builder()
+            .label(gettext("_Cancel"))
+            .use_underline(true)
+            .build();
+        let header = adw::HeaderBar::builder()
+            .show_start_title_buttons(false)
+            .show_end_title_buttons(false)
+            .build();
+        header.pack_start(&cancel);
+        header.pack_end(&save);
+        let toolbar = adw::ToolbarView::builder()
+            .top_bar_style(adw::ToolbarStyle::Raised)
+            .content(&scroller)
+            .build();
+        toolbar.add_top_bar(&header);
+        toolbar.add_top_bar(&error);
+        // A window rather than a dialog, so it can be made as large as the definition is
+        // long.
+        let dialog = adw::Window::builder()
+            .title(gettext("Definition of “{name}”").replace("{name}", &info.name))
+            .default_width(720)
+            .default_height(640)
+            .width_request(360)
+            .height_request(294)
+            .modal(true)
+            .transient_for(&win)
+            .content(&toolbar)
+            .build();
+        dialog.set_application(win.application().as_ref());
+        let escape = gtk::ShortcutController::new();
+        escape.add_shortcut(gtk::Shortcut::new(
+            gtk::ShortcutTrigger::parse_string("Escape"),
+            Some(gtk::NamedAction::new("window.close")),
+        ));
+        dialog.add_controller(escape);
+        cancel.connect_clicked(glib::clone!(
+            #[weak]
+            dialog,
+            move |_| {
+                dialog.close();
+            }
+        ));
+        save.connect_clicked(glib::clone!(
+            #[weak]
+            dialog,
+            #[weak]
+            win,
+            #[weak]
+            error,
+            move |save| {
+                let xml = buffer
+                    .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                    .to_string();
+                let uuid = info.uuid.clone();
+                save.set_sensitive(false);
+                glib::spawn_future_local(glib::clone!(
+                    #[weak]
+                    save,
+                    async move {
+                        let defined = win.call(move |hv| hv.define(&uuid, &xml)).await;
+                        save.set_sensitive(true);
+                        match defined {
+                            Some(Ok(change)) => {
+                                dialog.close();
+                                if change == Change::AtNextStart {
+                                    win.toast(&gettext(
+                                        "The change takes effect the next time the virtual \
                                              machine starts",
-                                        ));
-                                    }
-                                    win.refresh();
+                                    ));
                                 }
-                                Some(Err(e)) => {
-                                    error.set_title(&e);
-                                    error.set_revealed(true);
-                                }
-                                None => {}
+                                win.refresh();
                             }
+                            Some(Err(e)) => {
+                                error.set_title(&e);
+                                error.set_revealed(true);
+                            }
+                            None => {}
                         }
-                    ));
-                }
-            ));
-            dialog.present(Some(&view));
-        }
+                    }
+                ));
+            }
+        ));
+        dialog.present();
+    });
+}
+
+/// Colour the buffer with GtkSourceView's Adwaita scheme, light or dark as the rest of the
+/// app is, for as long as the buffer is around.
+fn follow_style(buffer: &sourceview5::Buffer) {
+    let style = adw::StyleManager::default();
+    let apply = |buffer: &sourceview5::Buffer, dark: bool| {
+        let name = if dark { "Adwaita-dark" } else { "Adwaita" };
+        buffer.set_style_scheme(
+            sourceview5::StyleSchemeManager::default()
+                .scheme(name)
+                .as_ref(),
+        );
+    };
+    apply(buffer, style.is_dark());
+    let handler = style.connect_dark_notify(glib::clone!(
+        #[weak]
+        buffer,
+        move |style| apply(&buffer, style.is_dark())
     ));
+    let handler = RefCell::new(Some(handler));
+    buffer.add_weak_ref_notify_local(move || {
+        if let Some(handler) = handler.take() {
+            adw::StyleManager::default().disconnect(handler);
+        }
+    });
 }
 
 /// Save what the machine's screen shows as a PNG file the user picks.

@@ -16,7 +16,8 @@ Build-Depends: debhelper-compat (= 13),
                libgvnc-1.0-dev,
                libspice-client-glib-2.0-dev,
                libusb-1.0-0-dev,
-               libvte-2.91-gtk4-dev
+               libvte-2.91-gtk4-dev,
+               libgtksourceview-5-dev
 Standards-Version: 4.7.2
 Homepage: https://github.com/sachesi/machines
 Rules-Requires-Root: no

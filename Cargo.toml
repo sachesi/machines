@@ -15,6 +15,7 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 gvnc = "0.7"
 roxmltree = "0.21"
 virt = "0.4.3"
+sourceview5 = "0.11"
 spice-client-glib = "0.8"
 vte4 = "0.10"
 

@@ -139,7 +139,8 @@ jobs:
           apt-get install -y --no-install-recommends ca-certificates git cargo rustc just \
             dpkg-dev pkg-config blueprint-compiler gettext \
             libgtk-4-dev libadwaita-1-dev libglib2.0-dev libvirt-dev libgvnc-1.0-dev \
-            libspice-client-glib-2.0-dev libusb-1.0-0-dev libvte-2.91-gtk4-dev
+            libspice-client-glib-2.0-dev libusb-1.0-0-dev libvte-2.91-gtk4-dev \
+            libgtksourceview-5-dev
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}

@@ -9,7 +9,7 @@ arch=('x86_64' 'aarch64')
 url='https://github.com/sachesi/machines'
 license=('GPL-3.0-or-later')
 depends=('gtk4>=1:4.22' 'libadwaita>=1:1.9' 'glib2' 'libvirt' 'gtk-vnc' 'spice-gtk' 'vte4'
-         'hicolor-icon-theme' 'libgcc' 'glibc')
+         'gtksourceview5' 'hicolor-icon-theme' 'libgcc' 'glibc')
 makedepends=('cargo' 'blueprint-compiler' 'just' 'gettext')
 optdepends=('qemu-desktop: run machines on this computer'
             'dnsmasq: virtual networks'

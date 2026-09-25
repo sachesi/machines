@@ -55,7 +55,7 @@ the memory, disk and firmware that system recommends.
 On Fedora the build needs:
 
     sudo dnf install cargo blueprint-compiler gtk4-devel libadwaita-devel libvirt-devel \
-        gvnc-devel spice-glib-devel libusb1-devel vte291-gtk4-devel
+        gvnc-devel spice-glib-devel libusb1-devel vte291-gtk4-devel gtksourceview5-devel
 
 Then:
 

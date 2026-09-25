@@ -32,6 +32,7 @@ BuildRequires:  pkgconfig(spice-client-glib-2.0) >= 0.39
 # spice-client-glib-2.0.pc names libusb among the libraries it links with.
 BuildRequires:  pkgconfig(libusb-1.0)
 BuildRequires:  pkgconfig(vte-2.91-gtk4)
+BuildRequires:  pkgconfig(gtksourceview-5)
 
 Requires:       libgtk-4-1 >= 4.22
 Requires:       libadwaita-1-0 >= 1.9
