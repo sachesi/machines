@@ -2,6 +2,7 @@
 //! `machine.*` actions that drive it.
 
 use std::cell::{Cell, OnceCell, RefCell};
+use std::collections::HashSet;
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::rc::Rc;
 
@@ -92,6 +93,11 @@ mod imp {
         pub(super) changed_handler: RefCell<Option<glib::SignalHandlerId>>,
         /// What the details page was last built from.
         pub(super) shown: RefCell<Option<MachineInfo>>,
+        /// Whether the machine was running when last seen, for the page to follow it as
+        /// it starts and stops.
+        pub(super) was_active: Cell<Option<bool>>,
+        /// The machines on their way to running, by UUID.
+        pub(super) starting: RefCell<HashSet<String>>,
         /// Bumped whenever the machine changes, so a display socket that arrives for the
         /// previous one is closed rather than shown.
         pub(super) generation: Cell<u64>,
@@ -237,9 +243,7 @@ glib::wrapper! {
 }
 
 fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
-    klass.install_action("machine.start", None, |view, _, _| {
-        view.run(|hv, uuid| hv.start(uuid));
-    });
+    klass.install_action("machine.start", None, |view, _, _| view.start());
     klass.install_action("machine.shut-down", None, |view, _, _| {
         view.run(|hv, uuid| hv.shut_down(uuid));
     });
@@ -357,6 +361,19 @@ fn stopped(info: &MachineInfo) -> (Option<String>, String) {
     }
 }
 
+/// Whether the running machine has a screen for the console to show: a display it can
+/// connect to, and a video card to draw it, which Looking Glass and a passed-through
+/// graphics card do without.
+fn has_screen(info: &MachineInfo) -> bool {
+    info.live
+        .as_ref()
+        .or(info.config.as_ref())
+        .is_some_and(|c| {
+            c.graphics.iter().any(|g| g == "vnc" || g == "spice")
+                && c.video.as_deref() != Some("none")
+        })
+}
+
 impl MachineView {
     fn window(&self) -> Option<MachinesWindow> {
         self.root().and_downcast()
@@ -407,6 +424,41 @@ impl MachineView {
         });
     }
 
+    /// Start the machine, which can take a while, as QEMU sets up its memory and takes
+    /// its devices; its start button spins until then.
+    fn start(&self) {
+        let (Some(win), Some(machine)) = (self.window(), self.machine()) else {
+            return;
+        };
+        let uuid = machine.uuid();
+        if !self.imp().starting.borrow_mut().insert(uuid.clone()) {
+            return;
+        }
+        self.update();
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            async move {
+                let id = uuid.clone();
+                let started = win
+                    .call(move |hv| {
+                        hv.start(&id)?;
+                        Ok(hv.machine(&id).ok())
+                    })
+                    .await;
+                view.imp().starting.borrow_mut().remove(&uuid);
+                match started {
+                    // Running now, not only once the machines are next listed.
+                    Some(Ok(Some(info))) => machine.update(info),
+                    Some(Err(e)) => win.toast(&e),
+                    _ => {}
+                }
+                view.update();
+                win.refresh();
+            }
+        ));
+    }
+
     pub fn set_machine(&self, machine: Option<&Machine>) {
         let imp = self.imp();
         if imp.machine.borrow().as_ref() == machine {
@@ -430,6 +482,7 @@ impl MachineView {
         imp.console_error.take();
         imp.console.close();
         imp.shown.take();
+        imp.was_active.take();
         imp.details_scroller.vadjustment().set_value(0.0);
         if let Some(win) = self.window().filter(|w| w.is_fullscreen()) {
             win.unfullscreen();
@@ -669,17 +722,28 @@ impl MachineView {
         }
         let resumable =
             matches!(info.state, MachineState::Paused | MachineState::Suspended) || info.saved;
+        let starting = imp.starting.borrow().contains(&info.uuid);
         imp.start_button
             .set_visible(!info.state.is_active() || resumable);
-        imp.start_button.set_tooltip_text(Some(&if resumable {
-            gettext("Resume")
+        if starting {
+            imp.title.set_subtitle(&gettext("Starting…"));
+            imp.start_button.set_child(Some(&adw::Spinner::new()));
+            imp.start_button
+                .set_tooltip_text(Some(&gettext("Starting…")));
         } else {
-            gettext("Start")
-        }));
+            imp.start_button
+                .set_icon_name("media-playback-start-symbolic");
+            imp.start_button.set_tooltip_text(Some(&if resumable {
+                gettext("Resume")
+            } else {
+                gettext("Start")
+            }));
+        }
         imp.power_button.set_visible(info.state.is_active());
         if !info.state.is_active() {
             imp.console_error.take();
         }
+        self.follow_state(&info);
         self.update_actions();
         self.update_console(&info);
         self.update_serial(&info);
@@ -699,6 +763,30 @@ impl MachineView {
         }
     }
 
+    /// Show the details of a machine that is not running, and its screen once it starts,
+    /// where it has one to show.
+    fn follow_state(&self, info: &MachineInfo) {
+        let imp = self.imp();
+        let active = info.state.is_active();
+        let was_active = imp.was_active.replace(Some(active));
+        if was_active == Some(active) || imp.fullscreen.get() {
+            return;
+        }
+        let page = imp.view_stack.visible_child_name();
+        let details = page.as_deref() == Some("details");
+        let wanted = if active && has_screen(info) {
+            // Only from the details, not to take the serial console away from its boot.
+            (was_active.is_none() || details).then_some("console")
+        } else if active {
+            was_active.is_none().then_some("details")
+        } else {
+            Some("details")
+        };
+        if let Some(wanted) = wanted.filter(|w| page.as_deref() != Some(w)) {
+            imp.view_stack.set_visible_child_name(wanted);
+        }
+    }
+
     fn clear_details(&self) {
         let imp = self.imp();
         for column in [&*imp.details_start, &*imp.details_end] {
@@ -713,9 +801,12 @@ impl MachineView {
         let state = info.as_ref().map(|i| i.state);
         let running = state == Some(MachineState::Running);
         let active = state.is_some_and(MachineState::is_active);
+        let starting = info
+            .as_ref()
+            .is_some_and(|i| self.imp().starting.borrow().contains(&i.uuid));
         self.action_set_enabled(
             "machine.start",
-            state.is_some() && !running && state != Some(MachineState::ShuttingDown),
+            state.is_some() && !running && state != Some(MachineState::ShuttingDown) && !starting,
         );
         self.action_set_enabled("machine.shut-down", running);
         self.action_set_enabled("machine.pause", running);
@@ -755,14 +846,16 @@ impl MachineView {
         self.action_set_enabled("machine.edit-xml", persistent);
         let imp = self.imp();
         let detached = imp.detached.borrow().is_some();
+        // The console is all fullscreen and a window of its own are for.
+        let screen = active && info.as_ref().is_some_and(has_screen);
         self.action_set_enabled(
             "machine.fullscreen",
-            active || detached || imp.fullscreen.get(),
+            screen || detached || imp.fullscreen.get(),
         );
-        imp.fullscreen_button.set_visible(active && !detached);
+        imp.fullscreen_button.set_visible(screen && !detached);
         self.action_set_enabled(
             "machine.detach-console",
-            active && !detached && !imp.fullscreen.get(),
+            screen && !detached && !imp.fullscreen.get(),
         );
         self.action_set_enabled("machine.attach-console", detached);
     }

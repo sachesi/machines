@@ -594,7 +594,6 @@ impl MachinesWindow {
                     };
                     if let Some(uuid) = uuid {
                         win.imp().pending_select.replace(Some(uuid));
-                        win.imp().machine_view.show_console();
                     }
                     win.refresh();
                 }

@@ -366,6 +366,10 @@ impl Hypervisor {
         Ok(domains.iter().filter_map(|d| self.info(d).ok()).collect())
     }
 
+    pub fn machine(&self, uuid: &str) -> Result<MachineInfo> {
+        self.info(&self.domain(uuid)?)
+    }
+
     fn info(&self, dom: &Domain) -> Result<MachineInfo> {
         let (state, _) = dom.get_state().map_err(message)?;
         let state = MachineState::from_raw(state);
