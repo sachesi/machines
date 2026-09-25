@@ -76,7 +76,7 @@ pot:
         --add-comments=Translators --sort-by-file --directory={{pot_dir}} -o po/machines.pot $(cd {{pot_dir}} && find src -name '*.rs' | sort)
     xgettext -j --from-code=UTF-8 --package-name=machines --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/machines/issues --add-comments=Translators --sort-by-file --directory={{pot_dir}} -o po/machines.pot $(cd {{pot_dir}} && ls ui/*.ui)
     xgettext -j --from-code=UTF-8 --package-name=machines --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/machines/issues --language=Desktop --sort-by-file -o po/machines.pot data/{{app_id}}.desktop
-    xgettext -j --from-code=UTF-8 --package-name=machines --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/machines/issues --sort-by-file -o po/machines.pot data/{{app_id}}.metainfo.xml data/{{app_id}}.gschema.xml data/{{app_id}}.policy
+    GETTEXTDATADIRS=data xgettext -j --from-code=UTF-8 --package-name=machines --package-version={{version}} --msgid-bugs-address=https://github.com/sachesi/machines/issues --sort-by-file -o po/machines.pot data/{{app_id}}.metainfo.xml data/{{app_id}}.gschema.xml data/{{app_id}}.policy
 
 # Merge the current template into every po/<lang>.po.
 po: pot
@@ -91,7 +91,7 @@ install:
     # Without it, pkexec still runs the helper, asking in its own words.
     if [ -n "{{destdir}}" ] || [ -w /usr/share/polkit-1/actions ]; then \
         install -d {{polkitdir}}; \
-        msgfmt --xml --template=data/{{app_id}}.policy -d po -o - | sed 's|@LIBEXECDIR@|{{libexecdir}}|' > {{polkitdir}}/{{app_id}}.policy; \
+        GETTEXTDATADIRS=data msgfmt --xml --template=data/{{app_id}}.policy -d po -o - | sed 's|@LIBEXECDIR@|{{libexecdir}}|' > {{polkitdir}}/{{app_id}}.policy; \
     else echo "note: the polkit policy goes to /usr/share/polkit-1/actions, which takes root" >&2; fi
     mkdir -p {{datadir}}/applications {{datadir}}/metainfo
     msgfmt --desktop --template=data/{{app_id}}.desktop -d po -o {{datadir}}/applications/{{app_id}}.desktop

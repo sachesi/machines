@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!-- Where msgfmt and xgettext find the translatable text of the polkit policy, for hosts
+     without polkit's own rules, which come with its development files. -->
+<locatingRules>
+  <locatingRule name="polkit policy" pattern="*.policy">
+    <documentRule localName="policyconfig" target="polkit.its"/>
+  </locatingRule>
+</locatingRules>
