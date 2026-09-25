@@ -18,7 +18,7 @@ use crate::host_xml::HostDeviceId;
 use crate::hypervisor::MachineInfo;
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
-use crate::{adw, glib, gtk, usage};
+use crate::{adw, glib, gtk, passthrough, usage};
 
 /// How long a spin row has to rest before its value is saved.
 const SETTLE: Duration = Duration::from_millis(700);
@@ -42,6 +42,9 @@ pub fn fill(view: &MachineView, info: &MachineInfo, start: &gtk::Box, end: &gtk:
     }
     start.append(&resources(view, info, config));
     start.append(&display(view, info, config));
+    if let Some(group) = passthrough(view, info, config) {
+        start.append(&group);
+    }
     end.append(&storage(view, config, live));
     end.append(&network(view, info, config, live));
     end.append(&host_devices(view, config, live));
@@ -1146,6 +1149,179 @@ fn display(
     ));
     group.add(&accel);
     group
+}
+
+/// Settings for a machine a graphics card is passed through to, where the host has a card
+/// to spare or the machine has one of them on already.
+fn passthrough(
+    view: &MachineView,
+    info: &MachineInfo,
+    config: &MachineConfig,
+) -> Option<adw::PreferencesGroup> {
+    let local = window(view).is_none_or(|w| w.host().local);
+    let in_use = config.looking_glass.is_some()
+        || !config.balloon
+        || config.hypervisor_hidden
+        || !config.evdev.is_empty();
+    if !(in_use || local && passthrough::graphics_cards() >= 2) {
+        return None;
+    }
+    let group = adw::PreferencesGroup::builder()
+        .title(gettext("Passthrough"))
+        .build();
+    if let Some(note) = deferred(info) {
+        group.set_description(Some(&note));
+    }
+
+    let kvmfr = if local {
+        passthrough::kvmfr_devices()
+    } else {
+        Vec::new()
+    };
+    let shared = config
+        .looking_glass
+        .clone()
+        .or_else(|| kvmfr.first().map(|k| k.path.clone()));
+    if let Some(path) = shared {
+        let row = adw::SwitchRow::builder()
+            .title("Looking Glass")
+            .subtitle(
+                gettext("Shares the guest’s screen with the Looking Glass client through {path}")
+                    .replace("{path}", &path),
+            )
+            .active(config.looking_glass.is_some())
+            .sensitive(config.looking_glass.is_some() || !kvmfr.is_empty())
+            .build();
+        row.connect_active_notify(glib::clone!(
+            #[weak]
+            view,
+            move |row| {
+                let device = kvmfr
+                    .first()
+                    .filter(|_| row.is_active())
+                    .map(|k| (k.path.clone(), k.bytes));
+                view.run(move |hv, uuid| {
+                    hv.set_looking_glass(uuid, device.as_ref().map(|(p, b)| (p.as_str(), *b)))
+                });
+            }
+        ));
+        group.add(&row);
+    }
+
+    let balloon = adw::SwitchRow::builder()
+        .title(gettext("Memory Balloon"))
+        .subtitle(gettext(
+            "Lets the host take back memory the guest does not use, which passed-through PCI \
+             devices prevent",
+        ))
+        .active(config.balloon)
+        .build();
+    balloon.connect_active_notify(glib::clone!(
+        #[weak]
+        view,
+        move |row| {
+            let on = row.is_active();
+            view.run(move |hv, uuid| hv.set_balloon(uuid, on));
+        }
+    ));
+    group.add(&balloon);
+
+    if config.virt_type == "kvm" || config.hypervisor_hidden {
+        let hidden = adw::SwitchRow::builder()
+            .title(gettext("Hide the Hypervisor"))
+            .subtitle(gettext(
+                "For drivers and games that refuse to run in a virtual machine",
+            ))
+            .active(config.hypervisor_hidden)
+            .build();
+        hidden.connect_active_notify(glib::clone!(
+            #[weak]
+            view,
+            move |row| {
+                let on = row.is_active();
+                view.run(move |hv, uuid| hv.set_hypervisor_hidden(uuid, on));
+            }
+        ));
+        group.add(&hidden);
+    }
+
+    let (keyboards, mice) = if local {
+        passthrough::input_devices()
+    } else {
+        Default::default()
+    };
+    for (keyboard, devices) in [(true, keyboards), (false, mice)] {
+        if let Some(row) = evdev_row(view, config, keyboard, devices) {
+            group.add(&row);
+        }
+    }
+    Some(group)
+}
+
+/// The host keyboard, or mouse, the guest takes over.
+fn evdev_row(
+    view: &MachineView,
+    config: &MachineConfig,
+    keyboard: bool,
+    devices: Vec<passthrough::InputDevice>,
+) -> Option<adw::ComboRow> {
+    let current = config
+        .evdev
+        .iter()
+        .find(|e| e.keyboard == keyboard)
+        .map(|e| e.dev.clone());
+    if devices.is_empty() && current.is_none() {
+        return None;
+    }
+    let mut choices: Vec<(Option<String>, String)> = vec![(None, gettext("None"))];
+    for device in &devices {
+        // A receiver has a node for each of its interfaces, all of one name.
+        let name = if devices.iter().filter(|d| d.name == device.name).count() > 1 {
+            device
+                .path
+                .rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .to_owned()
+        } else {
+            device.name.clone()
+        };
+        choices.push((Some(device.path.clone()), name));
+    }
+    if let Some(current) = &current
+        && !choices.iter().any(|(p, _)| p.as_ref() == Some(current))
+    {
+        choices.push((Some(current.clone()), current.clone()));
+    }
+    let (title, subtitle) = if keyboard {
+        (
+            gettext("Host Keyboard"),
+            gettext("Both Ctrl keys switch it, and the mouse, between the host and the guest"),
+        )
+    } else {
+        (
+            gettext("Host Mouse"),
+            gettext("Goes between the host and the guest with the keyboard"),
+        )
+    };
+    let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
+    let row = adw::ComboRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .model(&gtk::StringList::new(&labels))
+        .selected(choices.iter().position(|(p, _)| *p == current).unwrap_or(0) as u32)
+        .build();
+    row.connect_selected_notify(glib::clone!(
+        #[weak]
+        view,
+        move |row| {
+            if let Some((dev, _)) = choices.get(row.selected() as usize) {
+                let dev = dev.clone();
+                view.run(move |hv, uuid| hv.set_evdev(uuid, keyboard, dev.as_deref()));
+            }
+        }
+    ));
+    Some(row)
 }
 
 /// "qxl" as "QXL", with the ones worth a word said what they are for.

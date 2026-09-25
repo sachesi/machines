@@ -10,6 +10,7 @@ mod keymap;
 mod machine;
 mod machine_view;
 mod osinfo;
+mod passthrough;
 mod prefs;
 mod usage;
 mod window;

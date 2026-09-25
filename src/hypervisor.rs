@@ -59,6 +59,20 @@ fn start_error(e: virt::error::Error) -> String {
              display to VNC in the details.",
         );
     }
+    if let Some(path) = e
+        .split("can't open backing store ")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .filter(|path| path.starts_with("/dev/kvmfr"))
+    {
+        return gettext(
+            "QEMU may not open {path}, which Looking Glass shares the screen through. On the \
+             system connection, libvirt lets QEMU open only the devices that \
+             “cgroup_device_acl” in /etc/libvirt/qemu.conf lists, and SELinux or AppArmor \
+             have to allow it too.",
+        )
+        .replace("{path}", path);
+    }
     e
 }
 
@@ -510,6 +524,25 @@ impl Hypervisor {
 
     pub fn set_hugepages(&self, uuid: &str, on: bool) -> Result<()> {
         self.edit_definition(uuid, |xml| domain_xml::set_hugepages(xml, on))
+    }
+
+    /// Share the guest's screen through the kvmfr device `device`, a path and its size in
+    /// bytes, or stop sharing it.
+    pub fn set_looking_glass(&self, uuid: &str, device: Option<(&str, u64)>) -> Result<()> {
+        self.edit_definition(uuid, |xml| domain_xml::set_looking_glass(xml, device))
+    }
+
+    pub fn set_balloon(&self, uuid: &str, on: bool) -> Result<()> {
+        self.edit_definition(uuid, |xml| domain_xml::set_balloon(xml, on))
+    }
+
+    pub fn set_hypervisor_hidden(&self, uuid: &str, on: bool) -> Result<()> {
+        self.edit_definition(uuid, |xml| domain_xml::set_hypervisor_hidden(xml, on))
+    }
+
+    /// Pass the host's keyboard, or mouse, at `dev` through, or none.
+    pub fn set_evdev(&self, uuid: &str, keyboard: bool, dev: Option<&str>) -> Result<()> {
+        self.edit_definition(uuid, |xml| domain_xml::set_evdev(xml, keyboard, dev))
     }
 
     /// Boot with `firmware` from the next start. Between UEFI with and without Secure Boot,
