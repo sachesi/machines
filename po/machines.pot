@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.1\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-25 00:40+0300\n"
+"POT-Creation-Date: 2026-09-25 09:49+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -47,8 +47,16 @@ msgstr ""
 msgid "Window size"
 msgstr ""
 
-#: data/io.github.sachesi.machines.gschema.xml:15
+#: data/io.github.sachesi.machines.gschema.xml:12
+msgid "The width and height of the main window when it is not maximized."
+msgstr ""
+
+#: data/io.github.sachesi.machines.gschema.xml:16
 msgid "Window maximized"
+msgstr ""
+
+#: data/io.github.sachesi.machines.gschema.xml:17
+msgid "Whether the main window was maximized the last time it closed."
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:7
@@ -129,11 +137,11 @@ msgstr ""
 msgid "Machines made with virt-manager"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:30
+#: data/io.github.sachesi.machines.metainfo.xml:34
 msgid "sachesi"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:35
+#: data/io.github.sachesi.machines.metainfo.xml:43
 msgid ""
 "New virtual machines boot with the firmware chosen for them: BIOS, UEFI, or "
 "UEFI with Secure Boot, which is the default where the host's firmware has "
@@ -142,7 +150,7 @@ msgid ""
 "socket, so that Windows uses all of them."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:36
+#: data/io.github.sachesi.machines.metainfo.xml:44
 msgid ""
 "The serial console is offered only to machines with a serial port, which is "
 "added and removed with the other devices. The sidebar selects a machine on a "
@@ -152,7 +160,7 @@ msgid ""
 "a keyboard shortcuts dialog lists what the keyboard does."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:40
+#: data/io.github.sachesi.machines.metainfo.xml:48
 msgid "First release."
 msgstr ""
 
@@ -166,11 +174,11 @@ msgstr ""
 msgid "translator-credits"
 msgstr ""
 
-#: src/console.rs:86
+#: src/console.rs:123
 #, no-c-format
 msgid ""
-"Takes every key for the virtual machine; press and let go of Ctrl+Alt "
-"to                  leave it"
+"Takes every key for the virtual machine; press Ctrl+Alt to release "
+"the                  keyboard"
 msgstr ""
 
 #: src/details.rs:32
@@ -1661,42 +1669,50 @@ msgstr ""
 msgid "{sent} of {total}"
 msgstr ""
 
-#: src/hypervisor.rs:77
+#: src/hypervisor.rs:57
+#, no-c-format
+msgid ""
+"QEMU cannot make the SPICE channels of this virtual machine’s display: "
+"its              SPICE character device module is not installed. Install it, "
+"or switch the              display to VNC in the details."
+msgstr ""
+
+#: src/hypervisor.rs:91
 #, no-c-format
 msgid "Shut Off"
 msgstr ""
 
-#: src/hypervisor.rs:78
+#: src/hypervisor.rs:92
 #, no-c-format
 msgid "Running"
 msgstr ""
 
-#: src/hypervisor.rs:79
+#: src/hypervisor.rs:93
 #, no-c-format
 msgid "Paused"
 msgstr ""
 
-#: src/hypervisor.rs:80
+#: src/hypervisor.rs:94
 #, no-c-format
 msgid "Shutting Down"
 msgstr ""
 
-#: src/hypervisor.rs:81
+#: src/hypervisor.rs:95
 #, no-c-format
 msgid "Crashed"
 msgstr ""
 
-#: src/hypervisor.rs:82
+#: src/hypervisor.rs:96
 #, no-c-format
 msgid "Suspended"
 msgstr ""
 
-#: src/hypervisor.rs:118
+#: src/hypervisor.rs:132
 #, no-c-format
 msgid "Saved"
 msgstr ""
 
-#: src/hypervisor.rs:343
+#: src/hypervisor.rs:361
 #, no-c-format
 msgid ""
 "The host’s devices cannot be listed, as libvirt’s node device service "
@@ -1704,17 +1720,17 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:550
+#: src/hypervisor.rs:568
 #, no-c-format
 msgid "The definition has a NUL character in it"
 msgstr ""
 
-#: src/hypervisor.rs:560
+#: src/hypervisor.rs:578
 #, no-c-format
 msgid "The definition has to keep the UUID {uuid}"
 msgstr ""
 
-#: src/hypervisor.rs:608
+#: src/hypervisor.rs:626
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""
@@ -1729,153 +1745,154 @@ msgstr ""
 msgid "libvirt stopped taking the file"
 msgstr ""
 
-#: src/machine_view.rs:142
+#: src/machine_view.rs:166
 #, no-c-format
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:247
+#: src/machine_view.rs:252
 #, no-c-format
 msgid "Discard Saved State?"
 msgstr ""
 
-#: src/machine_view.rs:249
+#: src/machine_view.rs:254
 #, no-c-format
 msgid ""
 "The virtual machine starts afresh next time instead of resuming where "
 "it                  was saved. Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:252
+#: src/machine_view.rs:257
 #, no-c-format
 msgid "_Discard"
 msgstr ""
 
-#: src/machine_view.rs:271
+#: src/machine_view.rs:276
 #, no-c-format
 msgid "Force Reset?"
 msgstr ""
 
-#: src/machine_view.rs:273
+#: src/machine_view.rs:278
 #, no-c-format
 msgid ""
 "The virtual machine restarts at once, as if its reset button were "
 "pressed.                  Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:276
+#: src/machine_view.rs:281
 #, no-c-format
 msgid "Force _Reset"
 msgstr ""
 
-#: src/machine_view.rs:286
+#: src/machine_view.rs:291
 #, no-c-format
 msgid "Force Off?"
 msgstr ""
 
-#: src/machine_view.rs:288
+#: src/machine_view.rs:293
 #, no-c-format
 msgid ""
 "The virtual machine stops at once, as if its power were cut. Work not "
 "saved                  in it is lost, and its disks may be left inconsistent."
 msgstr ""
 
-#: src/machine_view.rs:291
+#: src/machine_view.rs:296
 #, no-c-format
 msgid "Force _Off"
 msgstr ""
 
-#: src/machine_view.rs:359
+#: src/machine_view.rs:352
 #, no-c-format
 msgid "It resumes where it was saved."
 msgstr ""
 
-#: src/machine_view.rs:360 ui/machine_view.ui:284
+#: src/machine_view.rs:353 ui/machine_view.ui:366
 #, no-c-format
 msgid "_Resume"
 msgstr ""
 
-#: src/machine_view.rs:363
+#: src/machine_view.rs:356
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:408
+#: src/machine_view.rs:401
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
 
-#: src/machine_view.rs:533
+#: src/machine_view.rs:675
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:535 ui/machine_view.ui:84
+#: src/machine_view.rs:677 ui/machine_view.ui:81
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:666
+#: src/machine_view.rs:816
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:668 src/machine_view.rs:920
+#: src/machine_view.rs:818 src/machine_view.rs:1069
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:676
+#: src/machine_view.rs:826
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:678
+#: src/machine_view.rs:828
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:685
+#: src/machine_view.rs:835
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:686
+#: src/machine_view.rs:836
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:713 src/machine_view.rs:751 ui/shortcuts-dialog.ui:44
+#: src/machine_view.rs:863 src/machine_view.rs:904 ui/machine_view.ui:88
+#: ui/shortcuts-dialog.ui:44
 #, no-c-format
 msgid "Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:749 ui/machine_view.ui:91
+#: src/machine_view.rs:902 ui/machine_view.ui:218
 #, no-c-format
 msgid "Leave Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:900
+#: src/machine_view.rs:1049
 #, no-c-format
 msgid "No Serial Console"
 msgstr ""
 
-#: src/machine_view.rs:901
+#: src/machine_view.rs:1050
 #, no-c-format
 msgid "The serial port comes with the next start."
 msgstr ""
 
-#: src/machine_view.rs:918
+#: src/machine_view.rs:1067
 #, no-c-format
 msgid "Serial Console Closed"
 msgstr ""
 
-#: src/machine_view.rs:986
+#: src/machine_view.rs:1136
 #, no-c-format
 msgid "The serial console closed."
 msgstr ""
 
-#: src/machine_view.rs:1072
+#: src/machine_view.rs:1222
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -1940,103 +1957,140 @@ msgstr ""
 msgid "User Session"
 msgstr ""
 
-#: ui/machine_view.ui:48 ui/machine_view.ui:109 ui/shortcuts-dialog.ui:41
+#: ui/machine_view.ui:45 ui/machine_view.ui:105 ui/shortcuts-dialog.ui:41
 msgid "Console"
 msgstr ""
 
-#: ui/machine_view.ui:55
+#: ui/machine_view.ui:52
 msgid "Serial Console"
 msgstr ""
 
-#: ui/machine_view.ui:62 ui/machine_view.ui:237
+#: ui/machine_view.ui:59 ui/machine_view.ui:319
 msgid "Details"
 msgstr ""
 
-#: ui/machine_view.ui:71
+#: ui/machine_view.ui:68
 msgid "Machine Menu"
 msgstr ""
 
-#: ui/machine_view.ui:78
+#: ui/machine_view.ui:75
 msgid "Power"
 msgstr ""
 
-#: ui/machine_view.ui:176
+#: ui/machine_view.ui:173
+msgid "Press Ctrl+Alt to release the keyboard"
+msgstr ""
+
+#: ui/machine_view.ui:211
+msgid "Send Key"
+msgstr ""
+
+#: ui/machine_view.ui:238
 msgid "Display in Its Own Window"
 msgstr ""
 
-#: ui/machine_view.ui:179
+#: ui/machine_view.ui:241
 msgid "_Bring Back"
 msgstr ""
 
-#: ui/machine_view.ui:199
+#: ui/machine_view.ui:261
 msgid "Serial"
 msgstr ""
 
-#: ui/machine_view.ui:289
+#: ui/machine_view.ui:275
+msgid "Nothing received yet. The guest may not use its serial port."
+msgstr ""
+
+#: ui/machine_view.ui:371
 msgid "_Pause"
 msgstr ""
 
-#: ui/machine_view.ui:294
+#: ui/machine_view.ui:376
 msgid "Sa_ve"
 msgstr ""
 
-#: ui/machine_view.ui:300
+#: ui/machine_view.ui:382
 msgid "_Shut Down"
 msgstr ""
 
-#: ui/machine_view.ui:304
+#: ui/machine_view.ui:386
 msgid "_Reboot"
 msgstr ""
 
-#: ui/machine_view.ui:310
+#: ui/machine_view.ui:392
 msgid "Force _Reset…"
 msgstr ""
 
-#: ui/machine_view.ui:314
+#: ui/machine_view.ui:396
 msgid "Force _Off…"
 msgstr ""
 
-#: ui/machine_view.ui:322
+#: ui/machine_view.ui:404
 msgid "_Fullscreen"
 msgstr ""
 
-#: ui/machine_view.ui:326
+#: ui/machine_view.ui:408
 msgid "Open Display in New _Window"
 msgstr ""
 
-#: ui/machine_view.ui:330
+#: ui/machine_view.ui:412
 msgid "Take _Screenshot…"
 msgstr ""
 
-#: ui/machine_view.ui:336
+#: ui/machine_view.ui:418
 msgid "_USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:340
+#: ui/machine_view.ui:422
 msgid "_Redirect USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:344
+#: ui/machine_view.ui:426
 msgid "Send _Key"
 msgstr ""
 
-#: ui/machine_view.ui:374
+#: ui/machine_view.ui:428
+msgctxt "shortcut"
+msgid "Ctrl+Alt+Del"
+msgstr ""
+
+#: ui/machine_view.ui:433
+msgctxt "shortcut"
+msgid "Ctrl+Alt+Backspace"
+msgstr ""
+
+#: ui/machine_view.ui:438
+msgctxt "shortcut"
+msgid "Ctrl+Alt+F1"
+msgstr ""
+
+#: ui/machine_view.ui:443
+msgctxt "shortcut"
+msgid "Ctrl+Alt+F2"
+msgstr ""
+
+#: ui/machine_view.ui:448
+msgctxt "shortcut"
+msgid "Ctrl+Alt+F7"
+msgstr ""
+
+#: ui/machine_view.ui:456
 msgid "Re_name…"
 msgstr ""
 
-#: ui/machine_view.ui:378
+#: ui/machine_view.ui:460
 msgid "_Clone…"
 msgstr ""
 
-#: ui/machine_view.ui:382
+#: ui/machine_view.ui:464
 msgid "Edit _XML…"
 msgstr ""
 
-#: ui/machine_view.ui:386
+#: ui/machine_view.ui:468
 msgid "Discard _Saved State…"
 msgstr ""
 
-#: ui/machine_view.ui:391
+#: ui/machine_view.ui:473
 msgid "_Delete…"
 msgstr ""
 
@@ -2057,7 +2111,7 @@ msgid "Quit"
 msgstr ""
 
 #: ui/shortcuts-dialog.ui:50
-msgid "Give Back the Keyboard"
+msgid "Release the Keyboard"
 msgstr ""
 
 #: ui/shortcuts-dialog.ui:51
