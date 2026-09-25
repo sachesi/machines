@@ -32,10 +32,6 @@ template $MachinesMachineView: Adw.BreakpointBin {
   }
 
   child: Adw.ToolbarView toolbar {
-    styles [
-      "console",
-    ]
-
     [top]
     Adw.HeaderBar {
       title-widget: Adw.WindowTitle title {};
@@ -84,10 +80,9 @@ template $MachinesMachineView: Adw.BreakpointBin {
 
       [end]
       Button fullscreen_button {
-        icon-name: "view-restore-symbolic";
-        tooltip-text: _("Leave Fullscreen");
+        icon-name: "view-fullscreen-symbolic";
+        tooltip-text: _("Fullscreen");
         action-name: "machine.fullscreen";
-        visible: false;
       }
     }
 
@@ -109,42 +104,104 @@ template $MachinesMachineView: Adw.BreakpointBin {
             name: "here";
 
             child: Adw.Bin console_bin {
-              child: Stack console_stack {
-                transition-type: crossfade;
+              child: Overlay console_overlay {
+                child: Stack console_stack {
+                  transition-type: crossfade;
 
-                StackPage {
-                  name: "display";
+                  StackPage {
+                    name: "display";
 
-                  child: $MachinesConsole console {
-                    hexpand: true;
-                    vexpand: true;
-                  };
-                }
+                    child: $MachinesConsole console {
+                      hexpand: true;
+                      vexpand: true;
+                    };
+                  }
 
-                StackPage {
-                  name: "connecting";
+                  StackPage {
+                    name: "connecting";
 
-                  child: Adw.Spinner {
-                    halign: center;
-                    valign: center;
-                    width-request: 32;
-                    height-request: 32;
-                  };
-                }
-
-                StackPage {
-                  name: "message";
-
-                  child: Adw.StatusPage console_message {
-                    child: Button console_button {
-                      use-underline: true;
+                    child: Adw.Spinner {
                       halign: center;
+                      valign: center;
+                      width-request: 32;
+                      height-request: 32;
+                    };
+                  }
+
+                  StackPage {
+                    name: "message";
+
+                    child: Adw.StatusPage console_message {
+                      child: Button console_button {
+                        use-underline: true;
+                        halign: center;
+
+                        styles [
+                          "pill",
+                          "suggested-action",
+                        ]
+                      };
+                    };
+                  }
+                };
+
+                [overlay]
+                Revealer grab_hint {
+                  halign: center;
+                  valign: start;
+                  margin-top: 12;
+                  transition-type: crossfade;
+                  can-target: false;
+
+                  child: Label {
+                    label: _("Press Ctrl+Alt to release the keyboard");
+
+                    styles [
+                      "osd",
+                      "console-osd",
+                    ]
+                  };
+                }
+
+                [overlay]
+                Revealer console_controls {
+                  halign: center;
+                  valign: start;
+                  transition-type: slide_down;
+
+                  child: Box {
+                    margin-top: 6;
+                    spacing: 6;
+
+                    styles [
+                      "osd",
+                      "toolbar",
+                      "console-osd",
+                    ]
+
+                    Label controls_title {
+                      margin-start: 6;
+                      margin-end: 6;
+                      ellipsize: end;
+                      max-width-chars: 30;
 
                       styles [
-                        "pill",
-                        "suggested-action",
+                        "heading",
                       ]
-                    };
+                    }
+
+                    MenuButton {
+                      icon-name: "input-keyboard-symbolic";
+                      focus-on-click: false;
+                      tooltip-text: _("Send Key");
+                      menu-model: send_keys_menu;
+                    }
+
+                    Button leave_fullscreen_button {
+                      icon-name: "view-restore-symbolic";
+                      tooltip-text: _("Leave Fullscreen");
+                      focus-on-click: false;
+                    }
                   };
                 }
               };
@@ -334,36 +391,36 @@ menu machine_menu {
       action: "machine.redirect-usb";
     }
 
-    submenu {
+    submenu send_keys_menu {
       label: _("Send _Key");
 
       item {
         label: "Ctrl+Alt+Del";
-        action: "machine.send-keys";
+        action: "console.send-keys";
         target: "ctrl-alt-delete";
       }
 
       item {
         label: "Ctrl+Alt+Backspace";
-        action: "machine.send-keys";
+        action: "console.send-keys";
         target: "ctrl-alt-backspace";
       }
 
       item {
         label: "Ctrl+Alt+F1";
-        action: "machine.send-keys";
+        action: "console.send-keys";
         target: "ctrl-alt-f1";
       }
 
       item {
         label: "Ctrl+Alt+F2";
-        action: "machine.send-keys";
+        action: "console.send-keys";
         target: "ctrl-alt-f2";
       }
 
       item {
         label: "Ctrl+Alt+F7";
-        action: "machine.send-keys";
+        action: "console.send-keys";
         target: "ctrl-alt-f7";
       }
     }

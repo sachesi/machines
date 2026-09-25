@@ -3,11 +3,14 @@ machines-console {
   background-color: black;
 }
 
-/* In fullscreen the display runs under the header bar, which would otherwise be see-through
-   over it. */
-toolbarview.console > .top-bar {
-  background-color: var(--headerbar-bg-color);
-  color: var(--headerbar-fg-color);
+/* The controls and the hint that float over the display. */
+.console-osd {
+  padding: 6px;
+  border-radius: 12px;
+}
+
+label.console-osd {
+  padding: 6px 12px;
 }
 
 /* The serial console is light on black, whatever the theme. */

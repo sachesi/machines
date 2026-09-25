@@ -58,6 +58,9 @@ mod imp {
         pub(super) release_armed: Cell<bool>,
         /// Application shortcuts put aside while the console has the keyboard.
         pub(super) accels: RefCell<Vec<(String, Vec<glib::GString>)>>,
+        /// The window whose system shortcuts (Super, Alt+Tab…) go to the guest, from a click
+        /// in the console until it loses the focus.
+        pub(super) grabbed: RefCell<Option<gdk::Toplevel>>,
         pub(super) error: RefCell<Option<String>>,
         pub(super) spice: RefCell<spice::Spice>,
         /// Whether the texture has its first row at the bottom, as GL frames can.
@@ -94,6 +97,10 @@ mod imp {
             SIGNALS.get_or_init(|| {
                 vec![
                     glib::subclass::Signal::builder("connected").build(),
+                    // Whether the console now has the system shortcuts too.
+                    glib::subclass::Signal::builder("grab-changed")
+                        .param_types([bool::static_type()])
+                        .build(),
                     // The reason, empty when the machine simply went away.
                     glib::subclass::Signal::builder("disconnected")
                         .param_types([String::static_type()])
@@ -250,6 +257,7 @@ impl Console {
             conn.shutdown();
         }
         self.close_spice();
+        self.ungrab_shortcuts();
         imp.framebuffer.take();
         imp.texture.take();
         imp.pressed.borrow_mut().clear();
@@ -265,6 +273,17 @@ impl Console {
     pub fn connect_connected<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_local("connected", false, move |args| {
             f(&args[0].get().expect("a Console"));
+            None
+        })
+    }
+
+    pub fn connect_grab_changed<F: Fn(&Self, bool) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("grab-changed", false, move |args| {
+            let grabbed: bool = args[1].get().expect("a bool");
+            f(&args[0].get().expect("a Console"), grabbed);
             None
         })
     }
@@ -471,6 +490,7 @@ impl Console {
             self,
             move |gesture, _, x, y| {
                 console.grab_focus();
+                console.grab_shortcuts(gesture.current_event());
                 let imp = console.imp();
                 imp.buttons
                     .set(imp.buttons.get() | button_bit(gesture.current_button()));
@@ -562,6 +582,7 @@ impl Console {
             move |_| {
                 console.release_keys();
                 console.hold_shortcuts(false);
+                console.ungrab_shortcuts();
             }
         ));
         self.add_controller(focus);
@@ -639,6 +660,31 @@ impl Console {
                 let accels: Vec<&str> = accels.iter().map(|a| a.as_str()).collect();
                 app.set_accels_for_action(&action, &accels);
             }
+        }
+    }
+
+    /// Hand the guest the shortcuts the desktop would otherwise take. The desktop may ask
+    /// the user first.
+    fn grab_shortcuts(&self, event: Option<gdk::Event>) {
+        if !self.is_open() || self.imp().grabbed.borrow().is_some() {
+            return;
+        }
+        let Some(toplevel) = self
+            .native()
+            .and_then(|n| n.surface())
+            .and_downcast::<gdk::Toplevel>()
+        else {
+            return;
+        };
+        toplevel.inhibit_system_shortcuts(event);
+        self.imp().grabbed.replace(Some(toplevel));
+        self.emit_by_name::<()>("grab-changed", &[&true]);
+    }
+
+    fn ungrab_shortcuts(&self) {
+        if let Some(toplevel) = self.imp().grabbed.take() {
+            toplevel.restore_system_shortcuts();
+            self.emit_by_name::<()>("grab-changed", &[&false]);
         }
     }
 }

@@ -15,11 +15,13 @@ use crate::domain_xml::{DiskDevice, MachineConfig};
 use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result, SerialStream};
 use crate::machine::Machine;
 use crate::window::MachinesWindow;
-use crate::{adw, details, dialogs, glib, gtk, keymap, usage};
+use crate::{adw, details, dialogs, gio, glib, gtk, keymap, usage};
 
-/// How close to the top edge the pointer has to come, in fullscreen, to bring back the
-/// header bar.
+/// How close to the top edge the pointer has to come, in fullscreen, to bring up the
+/// console's controls.
 const REVEAL_EDGE: f64 = 4.0;
+/// How long the console says how to give the keyboard back, once it takes it.
+const GRAB_HINT_TIME: std::time::Duration = std::time::Duration::from_secs(3);
 
 mod imp {
     use super::*;
@@ -48,7 +50,17 @@ mod imp {
         #[template_child]
         pub console_bin: TemplateChild<adw::Bin>,
         #[template_child]
+        pub console_overlay: TemplateChild<gtk::Overlay>,
+        #[template_child]
         pub console_stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub grab_hint: TemplateChild<gtk::Revealer>,
+        #[template_child]
+        pub console_controls: TemplateChild<gtk::Revealer>,
+        #[template_child]
+        pub controls_title: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub leave_fullscreen_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub console: TemplateChild<Console>,
         #[template_child]
@@ -99,6 +111,10 @@ mod imp {
         /// group leaves it out.
         pub(super) view_toggles: OnceCell<Vec<adw::Toggle>>,
         pub(super) view_toggle_binding: RefCell<Option<glib::Binding>>,
+        /// `console.*`: the actions of the controls that go with the display, wherever it
+        /// is.
+        pub(super) console_actions: gio::SimpleActionGroup,
+        pub(super) grab_hint_timeout: RefCell<Option<glib::SourceId>>,
     }
 
     #[glib::object_subclass]
@@ -171,12 +187,8 @@ mod imp {
             self.serial_bin.set_child(Some(&terminal));
             let _ = self.terminal.set(terminal);
 
-            let view = obj.downgrade();
-            reveal_at_top_edge(&self.toolbar, move || {
-                view.upgrade().is_some_and(|v| v.imp().fullscreen.get())
-            });
-            // Not an action name on the button: the button goes with the display when that
-            // moves to a window of its own, out of reach of the view's actions.
+            // Not action names on the buttons: they go with the display when that moves to
+            // a window of its own, out of reach of the view's actions.
             self.console_button.connect_clicked(glib::clone!(
                 #[weak(rename_to = view)]
                 obj,
@@ -185,6 +197,14 @@ mod imp {
                     let _ = view.activate_action(&action, None);
                 }
             ));
+            self.leave_fullscreen_button.connect_clicked(glib::clone!(
+                #[weak(rename_to = view)]
+                obj,
+                move |_| {
+                    let _ = view.activate_action("machine.fullscreen", None);
+                }
+            ));
+            obj.setup_console_controls();
 
             // The display is connected only while it is on screen, so nothing holds it
             // while the details show or the window is gone.
@@ -208,29 +228,6 @@ glib::wrapper! {
     pub struct MachineView(ObjectSubclass<imp::MachineView>)
         @extends adw::BreakpointBin, gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
-}
-
-/// While `hidden` says so, as in fullscreen, `toolbar`'s header bar stays hidden, and
-/// comes back while the pointer is at the top edge or over the bar itself.
-fn reveal_at_top_edge(toolbar: &adw::ToolbarView, hidden: impl Fn() -> bool + 'static) {
-    let motion = gtk::EventControllerMotion::new();
-    motion.set_propagation_phase(gtk::PropagationPhase::Capture);
-    motion.connect_motion(glib::clone!(
-        #[weak]
-        toolbar,
-        move |_, _, y| {
-            if !hidden() {
-                return;
-            }
-            let bar = f64::from(toolbar.top_bar_height());
-            if y <= REVEAL_EDGE {
-                toolbar.set_reveal_top_bars(true);
-            } else if y > bar + REVEAL_EDGE {
-                toolbar.set_reveal_top_bars(false);
-            }
-        }
-    ));
-    toolbar.add_controller(motion);
 }
 
 fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
@@ -301,25 +298,13 @@ fn install_actions(klass: &mut <imp::MachineView as ObjectSubclass>::Class) {
         view.imp().console_error.take();
         view.update();
     });
-    klass.install_action(
-        "machine.send-keys",
-        Some(glib::VariantTy::STRING),
-        |view, _, target| {
-            use keymap::*;
-            let keys = match target.and_then(|t| t.str()) {
-                Some("ctrl-alt-delete") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_DELETE],
-                Some("ctrl-alt-backspace") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_BACKSPACE],
-                Some("ctrl-alt-f1") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_F1],
-                Some("ctrl-alt-f2") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_F2],
-                Some("ctrl-alt-f7") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_F7],
-                _ => return,
-            };
-            view.run(move |hv, uuid| hv.send_keys(uuid, &keys));
-        },
-    );
     klass.install_action("machine.fullscreen", None, |view, _, _| {
-        if let Some(win) = view.window() {
-            win.set_fullscreened(!win.is_fullscreen());
+        let window = match &*view.imp().detached.borrow() {
+            Some((window, _)) => Some(window.clone().upcast::<gtk::Window>()),
+            None => view.window().map(Cast::upcast),
+        };
+        if let Some(window) = window {
+            window.set_fullscreened(!window.is_fullscreen());
         }
     });
     klass.install_action("machine.detach-console", None, |view, _, _| {
@@ -508,10 +493,96 @@ impl MachineView {
         imp.fullscreen.set(fullscreen);
         imp.toolbar.set_reveal_top_bars(!fullscreen);
         imp.toolbar.set_extend_content_to_top_edge(fullscreen);
-        imp.fullscreen_button.set_visible(fullscreen);
+        imp.console_controls.set_reveal_child(false);
         if fullscreen {
             self.show_console();
             imp.console.grab_focus();
+        }
+    }
+
+    /// The controls over the display: the keys to send, and in fullscreen the bar that
+    /// comes down while the pointer is at the top edge.
+    fn setup_console_controls(&self) {
+        let imp = self.imp();
+        let send_keys = gio::SimpleAction::new("send-keys", Some(glib::VariantTy::STRING));
+        send_keys.connect_activate(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            move |_, target| {
+                use keymap::*;
+                let keys = match target.and_then(|t| t.str()) {
+                    Some("ctrl-alt-delete") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_DELETE],
+                    Some("ctrl-alt-backspace") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_BACKSPACE],
+                    Some("ctrl-alt-f1") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_F1],
+                    Some("ctrl-alt-f2") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_F2],
+                    Some("ctrl-alt-f7") => [KEY_LEFTCTRL, KEY_LEFTALT, KEY_F7],
+                    _ => return,
+                };
+                view.run(move |hv, uuid| hv.send_keys(uuid, &keys));
+            }
+        ));
+        imp.console_actions.add_action(&send_keys);
+        // The view's own for its menu, and the display's for wherever it goes.
+        self.insert_action_group("console", Some(&imp.console_actions));
+        imp.console_overlay
+            .insert_action_group("console", Some(&imp.console_actions));
+
+        let motion = gtk::EventControllerMotion::new();
+        motion.set_propagation_phase(gtk::PropagationPhase::Capture);
+        motion.connect_motion(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            move |_, _, y| view.reveal_console_controls(y)
+        ));
+        imp.console_overlay.add_controller(motion);
+
+        imp.console.connect_grab_changed(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            move |_, grabbed| view.show_grab_hint(grabbed)
+        ));
+    }
+
+    /// Bring the controls down while the pointer, at `y` over the display, is at the top
+    /// edge of a fullscreen window, and keep them until it goes below them.
+    fn reveal_console_controls(&self, y: f64) {
+        let imp = self.imp();
+        let controls = &imp.console_controls;
+        let fullscreen = imp
+            .console_overlay
+            .root()
+            .and_downcast::<gtk::Window>()
+            .is_some_and(|w| w.is_fullscreen());
+        if !fullscreen {
+            controls.set_reveal_child(false);
+        } else if y <= REVEAL_EDGE {
+            controls.set_reveal_child(true);
+            imp.grab_hint.set_reveal_child(false);
+        } else if y > f64::from(controls.height()) + REVEAL_EDGE {
+            controls.set_reveal_child(false);
+        }
+    }
+
+    fn show_grab_hint(&self, shown: bool) {
+        let imp = self.imp();
+        if let Some(timeout) = imp.grab_hint_timeout.take() {
+            timeout.remove();
+        }
+        imp.grab_hint
+            .set_reveal_child(shown && !imp.console_controls.reveals_child());
+        if shown {
+            let timeout = glib::timeout_add_local_once(
+                GRAB_HINT_TIME,
+                glib::clone!(
+                    #[weak(rename_to = view)]
+                    self,
+                    move || {
+                        view.imp().grab_hint_timeout.take();
+                        view.imp().grab_hint.set_reveal_child(false);
+                    }
+                ),
+            );
+            imp.grab_hint_timeout.replace(Some(timeout));
         }
     }
 
@@ -523,6 +594,7 @@ impl MachineView {
         };
         imp.title.set_title(&info.name);
         imp.title.set_subtitle(&info.status());
+        imp.controls_title.set_label(&info.name);
         if let Some((window, title)) = &*imp.detached.borrow() {
             window.set_title(Some(&info.name));
             title.set_title(&info.name);
@@ -594,7 +666,14 @@ impl MachineView {
         self.action_set_enabled("machine.reboot", running);
         self.action_set_enabled("machine.reset", active);
         self.action_set_enabled("machine.force-off", active);
-        self.action_set_enabled("machine.send-keys", running);
+        if let Some(keys) = self
+            .imp()
+            .console_actions
+            .lookup_action("send-keys")
+            .and_downcast::<gio::SimpleAction>()
+        {
+            keys.set_enabled(running);
+        }
         self.action_set_enabled("machine.screenshot", running);
         self.action_set_enabled("machine.usb-devices", running);
         self.action_set_enabled(
@@ -611,8 +690,9 @@ impl MachineView {
         let detached = imp.detached.borrow().is_some();
         self.action_set_enabled(
             "machine.fullscreen",
-            active && !detached || imp.fullscreen.get(),
+            active || detached || imp.fullscreen.get(),
         );
+        imp.fullscreen_button.set_visible(active && !detached);
         self.action_set_enabled(
             "machine.detach-console",
             active && !detached && !imp.fullscreen.get(),
@@ -717,11 +797,11 @@ impl MachineView {
             .build();
         let header = adw::HeaderBar::builder().title_widget(&title).build();
         header.pack_end(&fullscreen);
-        let toolbar = adw::ToolbarView::builder().css_classes(["console"]).build();
+        let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&header);
         let (width, height) = (imp.console.width(), imp.console.height());
         imp.console_bin.set_child(gtk::Widget::NONE);
-        toolbar.set_content(Some(&*imp.console_stack));
+        toolbar.set_content(Some(&*imp.console_overlay));
         let window = adw::Window::builder()
             .title(&info.name)
             .content(&toolbar)
@@ -739,10 +819,13 @@ impl MachineView {
             toolbar,
             #[weak]
             fullscreen,
+            #[weak(rename_to = controls)]
+            imp.console_controls,
             move |window| {
                 let on = window.is_fullscreen();
                 toolbar.set_reveal_top_bars(!on);
                 toolbar.set_extend_content_to_top_edge(on);
+                controls.set_reveal_child(false);
                 fullscreen.set_icon_name(if on {
                     "view-restore-symbolic"
                 } else {
@@ -755,10 +838,6 @@ impl MachineView {
                 }));
             }
         ));
-        let weak = window.downgrade();
-        reveal_at_top_edge(&toolbar, move || {
-            weak.upgrade().is_some_and(|w| w.is_fullscreen())
-        });
         window.connect_close_request(glib::clone!(
             #[weak(rename_to = view)]
             self,
@@ -792,7 +871,7 @@ impl MachineView {
         if let Some(toolbar) = window.content().and_downcast::<adw::ToolbarView>() {
             toolbar.set_content(gtk::Widget::NONE);
         }
-        imp.console_bin.set_child(Some(&*imp.console_stack));
+        imp.console_bin.set_child(Some(&*imp.console_overlay));
         imp.console_place.set_visible_child_name("here");
         window.destroy();
         true
