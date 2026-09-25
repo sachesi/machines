@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.2\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-25 22:38+0300\n"
+"POT-Creation-Date: 2026-09-25 23:15+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -66,6 +66,17 @@ msgstr ""
 #: data/io.github.sachesi.machines.gschema.xml:22
 msgid ""
 "The width and height of the window a machine’s XML definition is edited in."
+msgstr ""
+
+#: data/io.github.sachesi.machines.gschema.xml:26
+msgid "Show advanced settings"
+msgstr ""
+
+#: data/io.github.sachesi.machines.gschema.xml:27
+msgid ""
+"Whether a machine’s details show the settings few machines need: disk and "
+"network card models, clock, power actions, pinning, and the scripts run as "
+"it starts and stops."
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:7
@@ -202,6 +213,16 @@ msgstr ""
 msgid "First release."
 msgstr ""
 
+#: data/io.github.sachesi.machines.policy:9
+msgid "Change the scripts virtual machines run as they start and stop"
+msgstr ""
+
+#: data/io.github.sachesi.machines.policy:10
+msgid ""
+"Authentication is required to change the scripts libvirt runs as root when a "
+"virtual machine starts or stops"
+msgstr ""
+
 #: src/application.rs:79
 #, no-c-format
 msgid "Create and run libvirt virtual machines."
@@ -219,473 +240,724 @@ msgid ""
 "the                  keyboard"
 msgstr ""
 
-#: src/details.rs:32
+#: src/details.rs:34
 #, no-c-format
 msgid "The definition of this virtual machine cannot be read."
 msgstr ""
 
-#: src/details.rs:70
+#: src/details.rs:80
 #, no-c-format
 msgid "Comes with the next start"
 msgstr ""
 
-#: src/details.rs:71
+#: src/details.rs:81
 #, no-c-format
 msgid "Being removed; the running machine still has it"
 msgstr ""
 
-#: src/details.rs:112
+#: src/details.rs:122
 #, no-c-format
 msgid "Changes take effect the next time the virtual machine starts."
 msgstr ""
 
-#: src/details.rs:117
+#: src/details.rs:127
 #, no-c-format
 msgid ""
 "It resumes with the settings it was saved with. Changes take effect when "
 "it              next starts afresh."
 msgstr ""
 
-#: src/details.rs:144
+#: src/details.rs:212
+#, no-c-format
+msgid "“{text}” is not a list of processors, like “2-5,8”"
+msgstr ""
+
+#: src/details.rs:304
 #, no-c-format
 msgid "Overview"
 msgstr ""
 
-#: src/details.rs:151
+#: src/details.rs:311
 #, no-c-format
 msgid "Operating System"
 msgstr ""
 
-#: src/details.rs:156
+#: src/details.rs:316
 #, no-c-format
 msgid "QEMU (emulated)"
 msgstr ""
 
-#: src/details.rs:160
+#: src/details.rs:323
+#, no-c-format
+msgid "Machine Type"
+msgstr ""
+
+#: src/details.rs:341
 #, no-c-format
 msgid "Machine"
 msgstr ""
 
-#: src/details.rs:165 src/dialogs/networks.rs:232 src/dialogs/storage.rs:297
+#: src/details.rs:347 src/dialogs/networks.rs:232 src/dialogs/storage.rs:297
 #, no-c-format
 msgid "Start With the Host"
 msgstr ""
 
-#: src/details.rs:167
+#: src/details.rs:349
 #, no-c-format
 msgid "Start when libvirt starts, at boot for the system connection"
 msgstr ""
 
-#: src/details.rs:181 src/dialogs/machine.rs:388
+#: src/details.rs:363 src/dialogs/machine.rs:388
 #, no-c-format
 msgid "Boot Order"
 msgstr ""
 
-#: src/details.rs:205 src/dialogs/new_machine.rs:254
+#: src/details.rs:379
+#, no-c-format
+msgid "Boot Menu"
+msgstr ""
+
+#: src/details.rs:380
+#, no-c-format
+msgid "The firmware offers what to boot from as the machine starts"
+msgstr ""
+
+#: src/details.rs:399 src/dialogs/new_machine.rs:254
 #, no-c-format
 msgid "UEFI with Secure Boot"
 msgstr ""
 
-#: src/details.rs:209
+#: src/details.rs:403
 #, no-c-format
 msgid "Firmware"
 msgstr ""
 
-#: src/details.rs:236
+#: src/details.rs:430
 #, no-c-format
 msgid "Nothing to boot from"
 msgstr ""
 
-#: src/details.rs:260
+#: src/details.rs:455
 #, no-c-format
 msgid "Processor and Memory"
 msgstr ""
 
-#: src/details.rs:266 src/usage.rs:119
+#: src/details.rs:461 src/usage.rs:119
 #, no-c-format
 msgid "Processors"
 msgstr ""
 
-#: src/details.rs:298 src/usage.rs:120
+#: src/details.rs:493
+#, no-c-format
+msgid "Emulator’s Host Processors, Like “0,1”"
+msgstr ""
+
+#: src/details.rs:503
+#, no-c-format
+msgid "Disk I/O Thread’s Host Processors, Like “0,1”"
+msgstr ""
+
+#: src/details.rs:515 src/usage.rs:120
 #, no-c-format
 msgid "Memory"
 msgstr ""
 
-#: src/details.rs:299 src/dialogs/mod.rs:183 src/dialogs/new_machine.rs:270
+#: src/details.rs:516 src/dialogs/mod.rs:183 src/dialogs/new_machine.rs:270
 #: src/dialogs/storage.rs:716
 #, no-c-format
 msgid "GiB"
 msgstr ""
 
-#: src/details.rs:324
+#: src/details.rs:541
 #, no-c-format
 msgid "Huge Pages"
 msgstr ""
 
-#: src/details.rs:326
+#: src/details.rs:543
 #, no-c-format
 msgid ""
 "Memory from the huge pages the host has set aside, which it needs to start"
 msgstr ""
 
-#: src/details.rs:352
+#: src/details.rs:558
+#, no-c-format
+msgid "Locked Memory"
+msgstr ""
+
+#: src/details.rs:559
+#, no-c-format
+msgid "Never swapped out on the host"
+msgstr ""
+
+#: src/details.rs:581
 #, no-c-format
 msgid "Same as the Host"
 msgstr ""
 
-#: src/details.rs:355
+#: src/details.rs:584
 #, no-c-format
 msgid "Like the Host, Portable"
 msgstr ""
 
-#: src/details.rs:357
+#: src/details.rs:586 src/details.rs:949 src/details.rs:963
 #, no-c-format
 msgid "QEMU’s Default"
 msgstr ""
 
-#: src/details.rs:370
+#: src/details.rs:599
 #, no-c-format
 msgid "Processor Model"
 msgstr ""
 
-#: src/details.rs:409
+#: src/details.rs:638
 #, no-c-format
 msgid "{n} socket"
 msgid_plural "{n} sockets"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/details.rs:413
+#: src/details.rs:642
 #, no-c-format
 msgid "1 socket, {n} core"
 msgid_plural "1 socket, {n} cores"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/details.rs:420
+#: src/details.rs:649
 #, no-c-format
 msgid "1 socket, {n} core, 2 threads"
 msgid_plural "1 socket, {n} cores, 2 threads"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/details.rs:435
+#: src/details.rs:664
 #, no-c-format
 msgid "{sockets} sockets, {cores} cores, {threads} threads"
 msgstr ""
 
-#: src/details.rs:443
+#: src/details.rs:672
 #, no-c-format
 msgid "Topology"
 msgstr ""
 
-#: src/details.rs:444
+#: src/details.rs:673
 #, no-c-format
 msgid "Windows uses no more than two sockets"
 msgstr ""
 
-#: src/details.rs:472
+#: src/details.rs:701
 #, no-c-format
 msgid "Pinned Host Processors, Like “2-5”"
 msgstr ""
 
-#: src/details.rs:491
-#, no-c-format
-msgid "“{text}” is not a list of processors, like “2-5,8”"
-msgstr ""
-
-#: src/details.rs:548 src/dialogs/storage.rs:74
+#: src/details.rs:771 src/dialogs/storage.rs:74
 #, no-c-format
 msgid "Storage"
 msgstr ""
 
-#: src/details.rs:550 src/dialogs/hardware.rs:331
+#: src/details.rs:773 src/dialogs/hardware.rs:331
 #, no-c-format
 msgid "Add Storage"
 msgstr ""
 
-#: src/details.rs:562
+#: src/details.rs:785
 #, no-c-format
 msgid "No disks"
 msgstr ""
 
-#: src/details.rs:569 src/dialogs/hardware.rs:266 src/dialogs/machine.rs:317
+#: src/details.rs:792 src/dialogs/hardware.rs:266 src/dialogs/machine.rs:317
 #, no-c-format
 msgid "CD/DVD Drive"
 msgstr ""
 
-#: src/details.rs:570 src/dialogs/machine.rs:318
+#: src/details.rs:793 src/dialogs/machine.rs:318
 #, no-c-format
 msgid "Floppy Drive"
 msgstr ""
 
-#: src/details.rs:571 src/dialogs/hardware.rs:263 src/dialogs/machine.rs:319
+#: src/details.rs:794 src/dialogs/hardware.rs:263 src/dialogs/machine.rs:319
 #, no-c-format
 msgid "Host Disk"
 msgstr ""
 
-#: src/details.rs:572 src/dialogs/machine.rs:320 src/dialogs/storage.rs:99
+#: src/details.rs:795 src/dialogs/machine.rs:320 src/dialogs/storage.rs:99
 #, no-c-format
 msgid "Disk"
 msgstr ""
 
-#: src/details.rs:574
+#: src/details.rs:797
 #, no-c-format
 msgid "Empty"
 msgstr ""
 
-#: src/details.rs:593 src/details.rs:813
+#: src/details.rs:818 src/details.rs:1148
 #, no-c-format
 msgid "Remove"
 msgstr ""
 
-#: src/details.rs:626 src/details.rs:725
+#: src/details.rs:851 src/details.rs:1035
 #, no-c-format
 msgid "Insert Disc Image"
 msgstr ""
 
-#: src/details.rs:657
+#: src/details.rs:882
 #, no-c-format
 msgid "Eject"
 msgstr ""
 
-#: src/details.rs:680 src/dialogs/storage.rs:483
+#: src/details.rs:932
+#, no-c-format
+msgid "Bus"
+msgstr ""
+
+#: src/details.rs:943
+#, no-c-format
+msgid ""
+"The guest needs a driver for the bus it boots from; Windows has none for "
+"Virtio of its          own"
+msgstr ""
+
+#: src/details.rs:947
+#, no-c-format
+msgid "Cache"
+msgstr ""
+
+#: src/details.rs:950 src/details.rs:1503 src/details.rs:1614
+#: src/details.rs:1894 src/details.rs:1967
+#, no-c-format
+msgid "None"
+msgstr ""
+
+#: src/details.rs:951
+#, no-c-format
+msgid "Write Back"
+msgstr ""
+
+#: src/details.rs:952
+#, no-c-format
+msgid "Write Through"
+msgstr ""
+
+#: src/details.rs:953
+#, no-c-format
+msgid "Direct Sync"
+msgstr ""
+
+#: src/details.rs:954
+#, no-c-format
+msgid "Unsafe"
+msgstr ""
+
+#: src/details.rs:961
+#, no-c-format
+msgid "I/O"
+msgstr ""
+
+#: src/details.rs:965
+#, no-c-format
+msgid "Native"
+msgstr ""
+
+#: src/details.rs:966
+#, no-c-format
+msgid "Threads"
+msgstr ""
+
+#: src/details.rs:972
+#, no-c-format
+msgid "Native needs the cache None or Direct Sync"
+msgstr ""
+
+#: src/details.rs:974
+#, no-c-format
+msgid "Discard"
+msgstr ""
+
+#: src/details.rs:975
+#, no-c-format
+msgid "Space the guest frees is freed in the image too"
+msgstr ""
+
+#: src/details.rs:990 src/dialogs/storage.rs:483
 #, no-c-format
 msgid "Resize…"
 msgstr ""
 
-#: src/details.rs:722 src/dialogs/new_machine.rs:516
+#: src/details.rs:1032 src/dialogs/new_machine.rs:516
 #, no-c-format
 msgid "Disc Images"
 msgstr ""
 
-#: src/details.rs:735 src/usage.rs:125
+#: src/details.rs:1046 src/usage.rs:125
 #, no-c-format
 msgid "Network"
 msgstr ""
 
-#: src/details.rs:737 src/dialogs/hardware.rs:487
+#: src/details.rs:1048 src/dialogs/hardware.rs:487
 #, no-c-format
 msgid "Add Network Interface"
 msgstr ""
 
-#: src/details.rs:754
+#: src/details.rs:1065
 #, no-c-format
 msgid "No network interfaces"
 msgstr ""
 
-#: src/details.rs:789 src/dialogs/hardware.rs:446
+#: src/details.rs:1096 src/dialogs/hardware.rs:446
 #, no-c-format
 msgid "Virtual Network “{name}”"
 msgstr ""
 
-#: src/details.rs:790
+#: src/details.rs:1097
 #, no-c-format
 msgid "Bridge {name}"
 msgstr ""
 
-#: src/details.rs:791
+#: src/details.rs:1098
 #, no-c-format
 msgid "Host Device {name}"
 msgstr ""
 
-#: src/details.rs:792 src/dialogs/hardware.rs:449
+#: src/details.rs:1099 src/dialogs/hardware.rs:449
 #, no-c-format
 msgid "User Networking"
 msgstr ""
 
-#: src/details.rs:832
+#: src/details.rs:1112
+#, no-c-format
+msgid "Model"
+msgstr ""
+
+#: src/details.rs:1132
+#, no-c-format
+msgid "The guest needs a driver for Virtio; Windows has none of its own"
+msgstr ""
+
+#: src/details.rs:1167
 #, no-c-format
 msgid "Host Devices"
 msgstr ""
 
-#: src/details.rs:834 src/dialogs/hardware.rs:589
+#: src/details.rs:1169 src/dialogs/hardware.rs:589
 #, no-c-format
 msgid "Add Host Device"
 msgstr ""
 
-#: src/details.rs:847
+#: src/details.rs:1182
 #, no-c-format
 msgid "USB and PCI devices of the host passed through to the virtual machine"
 msgstr ""
 
-#: src/details.rs:855 src/dialogs/hardware.rs:555 src/dialogs/machine.rs:346
+#: src/details.rs:1190 src/dialogs/hardware.rs:555 src/dialogs/machine.rs:346
 #, no-c-format
 msgid "USB Device"
 msgstr ""
 
-#: src/details.rs:856 src/dialogs/hardware.rs:556 src/dialogs/machine.rs:347
+#: src/details.rs:1191 src/dialogs/hardware.rs:556 src/dialogs/machine.rs:347
 #, no-c-format
 msgid "PCI Device"
 msgstr ""
 
-#: src/details.rs:890
+#: src/details.rs:1225
 #, no-c-format
 msgid "Devices"
 msgstr ""
 
-#: src/details.rs:892 src/dialogs/hardware.rs:1049
+#: src/details.rs:1227 src/dialogs/hardware.rs:1049
 #, no-c-format
 msgid "Add Device"
 msgstr ""
 
-#: src/details.rs:905
+#: src/details.rs:1240
 #, no-c-format
 msgid ""
 "A TPM, random number generator, sound card, serial port, or folders shared "
 "with              the guest"
 msgstr ""
 
-#: src/details.rs:911
+#: src/details.rs:1246
 #, no-c-format
 msgid "Emulated, version 2.0"
 msgstr ""
 
-#: src/details.rs:911 src/details.rs:912 src/dialogs/hardware.rs:1061
+#: src/details.rs:1246 src/details.rs:1247 src/dialogs/hardware.rs:1061
 #, no-c-format
 msgid "TPM"
 msgstr ""
 
-#: src/details.rs:912
+#: src/details.rs:1247
 #, no-c-format
 msgid "The host’s own"
 msgstr ""
 
-#: src/details.rs:914 src/dialogs/hardware.rs:1067
+#: src/details.rs:1249 src/dialogs/hardware.rs:1067
 #, no-c-format
 msgid "Random Number Generator"
 msgstr ""
 
-#: src/details.rs:918 src/dialogs/hardware.rs:1073
+#: src/details.rs:1253 src/dialogs/hardware.rs:1073
 #, no-c-format
 msgid "Sound Card"
 msgstr ""
 
-#: src/details.rs:920
+#: src/details.rs:1255
 #, no-c-format
 msgid "Intel HD Audio"
 msgstr ""
 
-#: src/details.rs:922
+#: src/details.rs:1257
 #, no-c-format
 msgid "USB Audio"
 msgstr ""
 
-#: src/details.rs:927 src/dialogs/hardware.rs:1079
+#: src/details.rs:1262 src/dialogs/hardware.rs:1079
 #, no-c-format
 msgid "Serial Port"
 msgstr ""
 
-#: src/details.rs:928
+#: src/details.rs:1263
 #, no-c-format
 msgid "Shown in the serial console"
 msgstr ""
 
-#: src/details.rs:931 src/dialogs/hardware.rs:1055
+#: src/details.rs:1266 src/dialogs/hardware.rs:1055
 #, no-c-format
 msgid "Shared Folder"
 msgstr ""
 
-#: src/details.rs:932
+#: src/details.rs:1267
 #, no-c-format
 msgid ""
 "{path}\n"
 "In the guest: mount -t virtiofs {tag} /mnt"
 msgstr ""
 
-#: src/details.rs:952
+#: src/details.rs:1287
 #, no-c-format
 msgid "Snapshots"
 msgstr ""
 
-#: src/details.rs:954 src/dialogs/machine.rs:215
+#: src/details.rs:1289 src/dialogs/machine.rs:215
 #, no-c-format
 msgid "Take Snapshot"
 msgstr ""
 
-#: src/details.rs:963
+#: src/details.rs:1298
 #, no-c-format
 msgid ""
 "Saved states of the disks, and of the memory while it runs, to go back to"
 msgstr ""
 
-#: src/details.rs:979
+#: src/details.rs:1314
 #, no-c-format
 msgid "With memory"
 msgstr ""
 
-#: src/details.rs:981
+#: src/details.rs:1316
 #, no-c-format
 msgid "Disks only"
 msgstr ""
 
-#: src/details.rs:992
+#: src/details.rs:1327
 #, no-c-format
 msgid "Current"
 msgstr ""
 
-#: src/details.rs:1000
+#: src/details.rs:1335
 #, no-c-format
 msgid "Revert to Snapshot"
 msgstr ""
 
-#: src/details.rs:1013
+#: src/details.rs:1348
 #, no-c-format
 msgid "Delete Snapshot"
 msgstr ""
 
-#: src/details.rs:1029
+#: src/details.rs:1361 ui/machine_view.ui:75
+#, no-c-format
+msgid "Power"
+msgstr ""
+
+#: src/details.rs:1375
+#, no-c-format
+msgid "Stop"
+msgstr ""
+
+#: src/details.rs:1376
+#, no-c-format
+msgid "Restart"
+msgstr ""
+
+#: src/details.rs:1379
+#, no-c-format
+msgid "When the Guest Powers Off"
+msgstr ""
+
+#: src/details.rs:1386
+#, no-c-format
+msgid "When the Guest Reboots"
+msgstr ""
+
+#: src/details.rs:1393
+#, no-c-format
+msgid "When the Guest Crashes"
+msgstr ""
+
+#: src/details.rs:1395
+#, no-c-format
+msgid "Only a guest with a panic device reports its crash"
+msgstr ""
+
+#: src/details.rs:1400
+#, no-c-format
+msgid "Keep It Paused, to Inspect"
+msgstr ""
+
+#: src/details.rs:1428
+#, no-c-format
+msgid "Features"
+msgstr ""
+
+#: src/details.rs:1434
+#, no-c-format
+msgid "Clock in Local Time"
+msgstr ""
+
+#: src/details.rs:1435
+#, no-c-format
+msgid "As Windows keeps it; other systems keep UTC"
+msgstr ""
+
+#: src/details.rs:1445
+#, no-c-format
+msgid "Hyper-V Enlightenments"
+msgstr ""
+
+#: src/details.rs:1446
+#, no-c-format
+msgid "Windows runs faster, as it does on Hyper-V"
+msgstr ""
+
+#: src/details.rs:1456
+#, no-c-format
+msgid "Host’s System Information"
+msgstr ""
+
+#: src/details.rs:1457
+#, no-c-format
+msgid "The guest sees the maker, model and serial number of the host"
+msgstr ""
+
+#: src/details.rs:1483
+#, no-c-format
+msgid "Scripts"
+msgstr ""
+
+#: src/details.rs:1485
+#, no-c-format
+msgid ""
+"Run as root by libvirt, with the machine’s name as their first argument and "
+"its              definition on standard input. They must not use libvirt, "
+"which waits for them."
+msgstr ""
+
+#: src/details.rs:1492
+#, no-c-format
+msgid "Before It Starts"
+msgstr ""
+
+#: src/details.rs:1493
+#, no-c-format
+msgid "If it fails, the machine does not start"
+msgstr ""
+
+#: src/details.rs:1496
+#, no-c-format
+msgid "After It Stops"
+msgstr ""
+
+#: src/details.rs:1497
+#, no-c-format
+msgid "Once libvirt has taken back what it gave the machine"
+msgstr ""
+
+#: src/details.rs:1511
+#, no-c-format
+msgid "Remove Script"
+msgstr ""
+
+#: src/details.rs:1537
+#, no-c-format
+msgid "Before “{name}” Starts"
+msgstr ""
+
+#: src/details.rs:1538
+#, no-c-format
+msgid "After “{name}” Stops"
+msgstr ""
+
+#: src/details.rs:1567
+#, no-c-format
+msgid "Remove Script?"
+msgstr ""
+
+#: src/details.rs:1568
+#, no-c-format
+msgid "libvirt no longer runs it for this machine."
+msgstr ""
+
+#: src/details.rs:1569 src/dialogs/hardware.rs:31 src/dialogs/storage.rs:334
+#, no-c-format
+msgid "_Remove"
+msgstr ""
+
+#: src/details.rs:1594
 #, no-c-format
 msgid "Display"
 msgstr ""
 
-#: src/details.rs:1049 src/details.rs:1329 src/details.rs:1402
-#, no-c-format
-msgid "None"
-msgstr ""
-
-#: src/details.rs:1052
+#: src/details.rs:1617
 #, no-c-format
 msgid "Protocol"
 msgstr ""
 
-#: src/details.rs:1063
+#: src/details.rs:1628
 #, no-c-format
 msgid ""
 "With sound, and the screen sized to the window where the guest runs its agent"
 msgstr ""
 
-#: src/details.rs:1065
+#: src/details.rs:1630
 #, no-c-format
 msgid "The screen alone, without sound"
 msgstr ""
 
-#: src/details.rs:1067
+#: src/details.rs:1632
 #, no-c-format
 msgid "No console, for a passed-through graphics card with its own screen"
 msgstr ""
 
-#: src/details.rs:1104
+#: src/details.rs:1669
 #, no-c-format
 msgid "Video Card"
 msgstr ""
 
-#: src/details.rs:1128
+#: src/details.rs:1693
 #, no-c-format
 msgid "3D Acceleration"
 msgstr ""
 
-#: src/details.rs:1130
+#: src/details.rs:1695
 #, no-c-format
 msgid "Renders on the host’s graphics card; needs a virtio video card"
 msgstr ""
 
-#: src/details.rs:1175
+#: src/details.rs:1740
 #, no-c-format
 msgid "Passthrough"
 msgstr ""
 
-#: src/details.rs:1201
+#: src/details.rs:1766
 #, no-c-format
 msgid ""
 "Shares the guest’s screen through {path} in place of its video card; the "
@@ -693,85 +965,85 @@ msgid ""
 "127.0.0.1"
 msgstr ""
 
-#: src/details.rs:1208
+#: src/details.rs:1773
 #, no-c-format
 msgid "This machine has no SPICE display for the client to connect to"
 msgstr ""
 
-#: src/details.rs:1219
+#: src/details.rs:1784
 #, no-c-format
 msgid "The size of {path} cannot be read: {error}"
 msgstr ""
 
-#: src/details.rs:1229
+#: src/details.rs:1794
 #, no-c-format
 msgid "The Looking Glass client, looking-glass-client, is not installed"
 msgstr ""
 
-#: src/details.rs:1256
+#: src/details.rs:1821
 #, no-c-format
 msgid "Memory Balloon"
 msgstr ""
 
-#: src/details.rs:1258
+#: src/details.rs:1823
 #, no-c-format
 msgid ""
 "Lets the host take back memory the guest does not use, which passed-through "
 "PCI              devices prevent"
 msgstr ""
 
-#: src/details.rs:1275
+#: src/details.rs:1840
 #, no-c-format
 msgid "Hide the Hypervisor"
 msgstr ""
 
-#: src/details.rs:1277
+#: src/details.rs:1842
 #, no-c-format
 msgid "For drivers and games that refuse to run in a virtual machine"
 msgstr ""
 
-#: src/details.rs:1351
+#: src/details.rs:1916
 #, no-c-format
 msgid "Host Keyboard"
 msgstr ""
 
-#: src/details.rs:1352
+#: src/details.rs:1917
 #, no-c-format
 msgid "Both Ctrl keys switch it, and the mouse, between the host and the guest"
 msgstr ""
 
-#: src/details.rs:1356 src/details.rs:1361
+#: src/details.rs:1921 src/details.rs:1926
 #, no-c-format
 msgid "Host Mouse"
 msgstr ""
 
-#: src/details.rs:1357
+#: src/details.rs:1922
 #, no-c-format
 msgid "Goes between the host and the guest with the keyboard"
 msgstr ""
 
-#: src/details.rs:1362
+#: src/details.rs:1927
 #, no-c-format
 msgid "Needs a host keyboard, whose Ctrl keys give the mouse back to the host"
 msgstr ""
 
-#: src/details.rs:1368
+#: src/details.rs:1933
 #, no-c-format
 msgid ""
 "Devices you may not read are left out: QEMU runs as you on this connection"
 msgstr ""
 
-#: src/details.rs:1395
+#: src/details.rs:1960
 #, no-c-format
 msgid "Virtio (Linux guests)"
 msgstr ""
 
-#: src/details.rs:1396
+#: src/details.rs:1961
 #, no-c-format
 msgid "QXL (older SPICE guests)"
 msgstr ""
 
-#: src/details.rs:1397
+#: src/details.rs:1962
 #, no-c-format
 msgid "VGA (any guest)"
 msgstr ""
@@ -794,7 +1066,7 @@ msgid "Delete “{name}”?"
 msgstr ""
 
 #: src/dialogs/delete.rs:34 src/dialogs/machine.rs:35
-#: src/dialogs/machine.rs:528 src/dialogs/mod.rs:88 src/dialogs/mod.rs:142
+#: src/dialogs/machine.rs:555 src/dialogs/mod.rs:88 src/dialogs/mod.rs:142
 #: src/dialogs/mod.rs:247 src/dialogs/new_machine.rs:321
 #, no-c-format
 msgid "_Cancel"
@@ -830,11 +1102,6 @@ msgstr ""
 #: src/dialogs/hardware.rs:31
 #, no-c-format
 msgid "Remove Disk?"
-msgstr ""
-
-#: src/dialogs/hardware.rs:31 src/dialogs/storage.rs:334
-#, no-c-format
-msgid "_Remove"
 msgstr ""
 
 #: src/dialogs/hardware.rs:98 src/dialogs/new_machine.rs:104
@@ -1237,111 +1504,109 @@ msgstr ""
 msgid "Move Down"
 msgstr ""
 
-#: src/dialogs/machine.rs:523
-#, no-c-format
-msgid "_Save"
-msgstr ""
-
-#: src/dialogs/machine.rs:540 ui/shortcuts-dialog.ui:68
-#, no-c-format
-msgid "Find and Replace"
-msgstr ""
-
-#: src/dialogs/machine.rs:561
+#: src/dialogs/machine.rs:489
 #, no-c-format
 msgid "Definition of “{name}”"
 msgstr ""
 
-#: src/dialogs/machine.rs:649
+#: src/dialogs/machine.rs:498 src/machine_view.rs:434
+#, no-c-format
+msgid "The change takes effect the next time the virtual machine starts"
+msgstr ""
+
+#: src/dialogs/machine.rs:550
+#, no-c-format
+msgid "_Save"
+msgstr ""
+
+#: src/dialogs/machine.rs:567 ui/shortcuts-dialog.ui:68
+#, no-c-format
+msgid "Find and Replace"
+msgstr ""
+
+#: src/dialogs/machine.rs:676
 #, no-c-format
 msgid "Discard Changes?"
 msgstr ""
 
-#: src/dialogs/machine.rs:650
+#: src/dialogs/machine.rs:677
 #, no-c-format
-msgid "The changes to the definition have not been saved."
+msgid "The changes have not been saved."
 msgstr ""
 
-#: src/dialogs/machine.rs:651 src/machine_view.rs:261
+#: src/dialogs/machine.rs:678 src/machine_view.rs:277
 #, no-c-format
 msgid "_Discard"
 msgstr ""
 
-#: src/dialogs/machine.rs:697
-#, no-c-format
-msgid ""
-"The change takes effect the next time the "
-"virtual                                              machine starts"
-msgstr ""
-
-#: src/dialogs/machine.rs:758 ui/shortcuts-dialog.ui:62
+#: src/dialogs/machine.rs:776 ui/shortcuts-dialog.ui:62
 #, no-c-format
 msgid "Find"
 msgstr ""
 
-#: src/dialogs/machine.rs:769 ui/shortcuts-dialog.ui:80
+#: src/dialogs/machine.rs:787 ui/shortcuts-dialog.ui:80
 #, no-c-format
 msgid "Previous Match"
 msgstr ""
 
-#: src/dialogs/machine.rs:773 ui/shortcuts-dialog.ui:74
+#: src/dialogs/machine.rs:791 ui/shortcuts-dialog.ui:74
 #, no-c-format
 msgid "Next Match"
 msgstr ""
 
-#: src/dialogs/machine.rs:780 src/dialogs/machine.rs:811
+#: src/dialogs/machine.rs:798 src/dialogs/machine.rs:829
 #, no-c-format
 msgid "Replace"
 msgstr ""
 
-#: src/dialogs/machine.rs:787
+#: src/dialogs/machine.rs:805
 #, no-c-format
 msgid "_Match Case"
 msgstr ""
 
-#: src/dialogs/machine.rs:788
+#: src/dialogs/machine.rs:806
 #, no-c-format
 msgid "Match _Whole Words"
 msgstr ""
 
-#: src/dialogs/machine.rs:789
+#: src/dialogs/machine.rs:807
 #, no-c-format
 msgid "_Regular Expression"
 msgstr ""
 
-#: src/dialogs/machine.rs:800
+#: src/dialogs/machine.rs:818
 #, no-c-format
 msgid "Search Options"
 msgstr ""
 
-#: src/dialogs/machine.rs:815
+#: src/dialogs/machine.rs:833
 #, no-c-format
 msgid "_Replace"
 msgstr ""
 
-#: src/dialogs/machine.rs:819
+#: src/dialogs/machine.rs:837
 #, no-c-format
 msgid "Replace _All"
 msgstr ""
 
-#: src/dialogs/machine.rs:876
+#: src/dialogs/machine.rs:894
 #, no-c-format
 msgid "No results"
 msgstr ""
 
-#: src/dialogs/machine.rs:883
+#: src/dialogs/machine.rs:901
 #, no-c-format
 msgid "{n} of {total}"
 msgstr ""
 
-#: src/dialogs/machine.rs:887
+#: src/dialogs/machine.rs:905
 #, no-c-format
 msgid "{total} match"
 msgid_plural "{total} matches"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/dialogs/machine.rs:1136
+#: src/dialogs/machine.rs:1154
 #, no-c-format
 msgid "Save Screenshot"
 msgstr ""
@@ -1875,6 +2140,16 @@ msgstr ""
 msgid "{sent} of {total}"
 msgstr ""
 
+#: src/hooks.rs:58
+#, no-c-format
+msgid "The helper machines-hooks is not installed"
+msgstr ""
+
+#: src/hooks.rs:82
+#, no-c-format
+msgid "The script could not be saved"
+msgstr ""
+
 #: src/hypervisor.rs:103
 #, no-c-format
 msgid ""
@@ -1928,7 +2203,7 @@ msgstr ""
 msgid "Saved"
 msgstr ""
 
-#: src/hypervisor.rs:453
+#: src/hypervisor.rs:465
 #, no-c-format
 msgid ""
 "The host’s devices cannot be listed, as libvirt’s node device service "
@@ -1936,7 +2211,7 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:513
+#: src/hypervisor.rs:525
 #, no-c-format
 msgid ""
 "The host has too few huge pages free for this virtual machine’s "
@@ -1945,17 +2220,17 @@ msgid ""
 "details."
 msgstr ""
 
-#: src/hypervisor.rs:746
+#: src/hypervisor.rs:758
 #, no-c-format
 msgid "The definition has a NUL character in it"
 msgstr ""
 
-#: src/hypervisor.rs:756
+#: src/hypervisor.rs:768
 #, no-c-format
 msgid "The definition has to keep the UUID {uuid}"
 msgstr ""
 
-#: src/hypervisor.rs:804
+#: src/hypervisor.rs:816
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""
@@ -1970,166 +2245,161 @@ msgstr ""
 msgid "libvirt stopped taking the file"
 msgstr ""
 
-#: src/machine_view.rs:172
+#: src/machine_view.rs:175
 #, no-c-format
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:256
+#: src/machine_view.rs:272
 #, no-c-format
 msgid "Discard Saved State?"
 msgstr ""
 
-#: src/machine_view.rs:258
+#: src/machine_view.rs:274
 #, no-c-format
 msgid ""
 "The virtual machine starts afresh next time instead of resuming where "
 "it                  was saved. Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:280
+#: src/machine_view.rs:296
 #, no-c-format
 msgid "Force Reset?"
 msgstr ""
 
-#: src/machine_view.rs:282
+#: src/machine_view.rs:298
 #, no-c-format
 msgid ""
 "The virtual machine restarts at once, as if its reset button were "
 "pressed.                  Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:285
+#: src/machine_view.rs:301
 #, no-c-format
 msgid "Force _Reset"
 msgstr ""
 
-#: src/machine_view.rs:295
+#: src/machine_view.rs:311
 #, no-c-format
 msgid "Force Off?"
 msgstr ""
 
-#: src/machine_view.rs:297
+#: src/machine_view.rs:313
 #, no-c-format
 msgid ""
 "The virtual machine stops at once, as if its power were cut. Work not "
 "saved                  in it is lost, and its disks may be left inconsistent."
 msgstr ""
 
-#: src/machine_view.rs:300
+#: src/machine_view.rs:316
 #, no-c-format
 msgid "Force _Off"
 msgstr ""
 
-#: src/machine_view.rs:356
+#: src/machine_view.rs:372
 #, no-c-format
 msgid "It resumes where it was saved."
 msgstr ""
 
-#: src/machine_view.rs:357 ui/machine_view.ui:366
+#: src/machine_view.rs:373 ui/machine_view.ui:366
 #, no-c-format
 msgid "_Resume"
 msgstr ""
 
-#: src/machine_view.rs:360
+#: src/machine_view.rs:376
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:418
-#, no-c-format
-msgid "The change takes effect the next time the virtual machine starts"
-msgstr ""
-
-#: src/machine_view.rs:729 src/machine_view.rs:732
+#: src/machine_view.rs:746 src/machine_view.rs:749
 #, no-c-format
 msgid "Starting…"
 msgstr ""
 
-#: src/machine_view.rs:737
+#: src/machine_view.rs:754
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:739 ui/machine_view.ui:81
+#: src/machine_view.rs:756 ui/machine_view.ui:81
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:910
+#: src/machine_view.rs:946
 #, no-c-format
 msgid "Shown in Looking Glass"
 msgstr ""
 
-#: src/machine_view.rs:912
+#: src/machine_view.rs:948
 #, no-c-format
 msgid ""
 "The guest shows its screen on the passed-through graphics card. Open "
 "it                      with the Looking Glass client."
 msgstr ""
 
-#: src/machine_view.rs:925
+#: src/machine_view.rs:961
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:927 src/machine_view.rs:1178
+#: src/machine_view.rs:963 src/machine_view.rs:1214
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:935
+#: src/machine_view.rs:971
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:937
+#: src/machine_view.rs:973
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:944
+#: src/machine_view.rs:980
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:945
+#: src/machine_view.rs:981
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:972 src/machine_view.rs:1013 ui/machine_view.ui:88
+#: src/machine_view.rs:1008 src/machine_view.rs:1049 ui/machine_view.ui:88
 #: ui/shortcuts-dialog.ui:44
 #, no-c-format
 msgid "Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:1011 ui/machine_view.ui:218
+#: src/machine_view.rs:1047 ui/machine_view.ui:218
 #, no-c-format
 msgid "Leave Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:1158
+#: src/machine_view.rs:1194
 #, no-c-format
 msgid "No Serial Console"
 msgstr ""
 
-#: src/machine_view.rs:1159
+#: src/machine_view.rs:1195
 #, no-c-format
 msgid "The serial port comes with the next start."
 msgstr ""
 
-#: src/machine_view.rs:1176
+#: src/machine_view.rs:1212
 #, no-c-format
 msgid "Serial Console Closed"
 msgstr ""
 
-#: src/machine_view.rs:1245
+#: src/machine_view.rs:1281
 #, no-c-format
 msgid "The serial console closed."
 msgstr ""
 
-#: src/machine_view.rs:1331
+#: src/machine_view.rs:1367
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -2208,10 +2478,6 @@ msgstr ""
 
 #: ui/machine_view.ui:68
 msgid "Machine Menu"
-msgstr ""
-
-#: ui/machine_view.ui:75
-msgid "Power"
 msgstr ""
 
 #: ui/machine_view.ui:173
@@ -2312,22 +2578,26 @@ msgid "Ctrl+Alt+F7"
 msgstr ""
 
 #: ui/machine_view.ui:456
+msgid "_Advanced Settings"
+msgstr ""
+
+#: ui/machine_view.ui:462
 msgid "Re_name…"
 msgstr ""
 
-#: ui/machine_view.ui:460
+#: ui/machine_view.ui:466
 msgid "_Clone…"
 msgstr ""
 
-#: ui/machine_view.ui:464
+#: ui/machine_view.ui:470
 msgid "Edit _XML…"
 msgstr ""
 
-#: ui/machine_view.ui:468
+#: ui/machine_view.ui:474
 msgid "Discard _Saved State…"
 msgstr ""
 
-#: ui/machine_view.ui:473
+#: ui/machine_view.ui:479
 msgid "_Delete…"
 msgstr ""
 
