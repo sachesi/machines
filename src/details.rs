@@ -1184,15 +1184,18 @@ fn passthrough(
         Vec::new()
     };
     // The device the machine has, where the host still has it, else the host's first.
-    let target = kvmfr
+    let mine = kvmfr
         .iter()
-        .find(|k| config.looking_glass.as_ref() == Some(&k.path))
-        .or(kvmfr.first())
-        .cloned();
+        .find(|k| config.looking_glass.as_ref() == Some(&k.path));
+    let shown = mine.or(kvmfr.first());
+    let target = mine
+        .filter(|k| k.bytes.is_ok())
+        .or_else(|| kvmfr.iter().find(|k| k.bytes.is_ok()))
+        .and_then(|k| Some((k.path.clone(), k.bytes.clone().ok()?)));
     if let Some(path) = config
         .looking_glass
         .clone()
-        .or_else(|| target.as_ref().map(|k| k.path.clone()))
+        .or_else(|| shown.map(|k| k.path.clone()))
     {
         let mut subtitle = gettext(
             "Shares the guest’s screen through {path} in place of its video card; the client \
@@ -1203,6 +1206,19 @@ fn passthrough(
             subtitle = format!(
                 "{subtitle}\n{}",
                 gettext("This machine has no SPICE display for the client to connect to")
+            );
+        }
+        if target.is_none()
+            && let Some(passthrough::Kvmfr {
+                path,
+                bytes: Err(e),
+            }) = shown
+        {
+            subtitle = format!(
+                "{subtitle}\n{}",
+                gettext("{path} cannot be read: {error}")
+                    .replace("{path}", path)
+                    .replace("{error}", e)
             );
         }
         // The screen is only seen through the client, so it is no use turned on without.
@@ -1227,10 +1243,7 @@ fn passthrough(
                 // Once off, it only comes back on with a device to share through, and the
                 // client to see it with.
                 row.set_sensitive(row.is_active() || target.is_some());
-                let device = target
-                    .as_ref()
-                    .filter(|_| row.is_active())
-                    .map(|k| (k.path.clone(), k.bytes));
+                let device = target.clone().filter(|_| row.is_active());
                 view.run(move |hv, uuid| {
                     hv.set_looking_glass(uuid, device.as_ref().map(|(p, b)| (p.as_str(), *b)))
                 });

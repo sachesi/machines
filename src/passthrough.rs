@@ -21,12 +21,13 @@ pub fn is_graphics_card(address: &PciAddress) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Kvmfr {
     pub path: String,
-    pub bytes: u64,
+    /// Its size, or why it could not be read.
+    pub bytes: Result<u64, String>,
 }
 
 /// The kvmfr devices, with the size each has, which the module does not show anywhere
-/// but on the device: at its end, where the Looking Glass client finds it too. A device
-/// this user may not open is left out, as there is no size to give QEMU.
+/// but on the device: at its end, where the Looking Glass client finds it too. Reading it
+/// takes opening the device, which this user may not be allowed.
 pub fn kvmfr_devices() -> Vec<Kvmfr> {
     let Ok(entries) = fs::read_dir("/dev") else {
         return Vec::new();
@@ -38,13 +39,16 @@ pub fn kvmfr_devices() -> Vec<Kvmfr> {
     numbers.sort_unstable();
     numbers
         .into_iter()
-        .filter_map(|n| {
+        .map(|n| {
             let path = format!("/dev/kvmfr{n}");
             let bytes = fs::File::open(&path)
                 .and_then(|mut f| f.seek(SeekFrom::End(0)))
-                .ok()
-                .filter(|&b| b > 0)?;
-            Some(Kvmfr { path, bytes })
+                .map_err(|e| e.to_string())
+                .and_then(|b| match b {
+                    0 => Err("it has no memory".to_owned()),
+                    b => Ok(b),
+                });
+            Kvmfr { path, bytes }
         })
         .collect()
 }
