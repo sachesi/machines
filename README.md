@@ -1,5 +1,9 @@
 # Machines
 
+<p align="center">
+  <img src="data/screenshots/details.png" alt="The details of a running virtual machine in the Machines window">
+</p>
+
 Machines manages QEMU/KVM virtual machines through libvirt, written in Rust with GTK 4 and
 libadwaita. It lists the machines of the system connection or of your user session,
 starts, stops and pauses them, saves them to disk to resume later, shows their display in
