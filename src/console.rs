@@ -89,8 +89,8 @@ mod imp {
             obj.set_focus_on_click(true);
             obj.set_overflow(gtk::Overflow::Hidden);
             obj.update_property(&[gtk::accessible::Property::Description(&gettext(
-                "Takes every key for the virtual machine; press and let go of Ctrl+Alt to \
-                 leave it",
+                "Takes every key for the virtual machine; press Ctrl+Alt to release the \
+                 keyboard",
             ))]);
             obj.setup_input();
         }
