@@ -24,11 +24,19 @@
     </ul>
   </description>
   <launchable type="desktop-id">io.github.sachesi.machines.desktop</launchable>
+  <provides>
+    <binary>machines</binary>
+  </provides>
+  <translation type="gettext">machines</translation>
   <url type="homepage">https://github.com/sachesi/machines</url>
   <url type="bugtracker">https://github.com/sachesi/machines/issues</url>
   <url type="vcs-browser">https://github.com/sachesi/machines</url>
   <developer id="io.github.sachesi"><name>sachesi</name></developer>
   <content_rating type="oars-1.1"/>
+  <branding>
+    <color type="primary" scheme_preference="light">#99c1f1</color>
+    <color type="primary" scheme_preference="dark">#1a5fb4</color>
+  </branding>
   <releases>
     <release version="0.1.1" date="2026-09-25">
       <description>

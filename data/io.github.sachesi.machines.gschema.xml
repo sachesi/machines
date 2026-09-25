@@ -9,10 +9,12 @@
     <key name="window-size" type="(ii)">
       <default>(1100, 720)</default>
       <summary>Window size</summary>
+      <description>The width and height of the main window when it is not maximized.</description>
     </key>
     <key name="window-maximized" type="b">
       <default>false</default>
       <summary>Window maximized</summary>
+      <description>Whether the main window was maximized the last time it closed.</description>
     </key>
   </schema>
 </schemalist>
