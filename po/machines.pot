@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.2\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-25 23:15+0300\n"
+"POT-Creation-Date: 2026-09-25 23:22+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -2145,7 +2145,12 @@ msgstr ""
 msgid "The helper machines-hooks is not installed"
 msgstr ""
 
-#: src/hooks.rs:82
+#: src/hooks.rs:90
+#, no-c-format
+msgid "No polkit agent is running to ask for the administrator’s password"
+msgstr ""
+
+#: src/hooks.rs:96
 #, no-c-format
 msgid "The script could not be saved"
 msgstr ""

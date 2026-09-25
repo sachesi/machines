@@ -56,7 +56,12 @@ fn helper() -> Option<PathBuf> {
 /// it. `Ok(false)` where the user did not authenticate.
 pub async fn set_script(uuid: &str, event: Event, script: &str) -> Result<bool, String> {
     let helper = helper().ok_or_else(|| gettext("The helper machines-hooks is not installed"))?;
+    // In a session of its own, without the terminal the app may have been started from,
+    // where pkexec would otherwise ask for the password unseen, in place of the desktop's
+    // agent.
     let argv = [
+        "setsid".as_ref(),
+        "--wait".as_ref(),
         "pkexec".as_ref(),
         helper.as_os_str(),
         "set".as_ref(),
@@ -76,6 +81,15 @@ pub async fn set_script(uuid: &str, event: Event, script: &str) -> Result<bool, 
         0 => Ok(true),
         // pkexec's own, for the authentication dialog dismissed.
         126 => Ok(false),
+        // What pkexec says when no agent is there to ask, and it has no terminal either.
+        127 if stderr
+            .as_deref()
+            .is_some_and(|e| e.contains("authentication agent")) =>
+        {
+            Err(gettext(
+                "No polkit agent is running to ask for the administrator’s password",
+            ))
+        }
         _ => Err(stderr
             .map(|e| e.trim().trim_start_matches("machines-hooks: ").to_owned())
             .filter(|e| !e.is_empty())
