@@ -60,6 +60,8 @@ mod imp {
         #[template_child]
         pub serial_bin: TemplateChild<adw::Bin>,
         #[template_child]
+        pub serial_hint: TemplateChild<gtk::Label>,
+        #[template_child]
         pub serial_message: TemplateChild<adw::StatusPage>,
         #[template_child]
         pub serial_button: TemplateChild<gtk::Button>,
@@ -431,6 +433,7 @@ impl MachineView {
         if let Some(terminal) = imp.terminal.get() {
             terminal.reset(true, true);
         }
+        imp.serial_hint.set_visible(true);
         imp.generation.set(imp.generation.get() + 1);
         imp.connecting.set(false);
         imp.console_error.take();
@@ -976,6 +979,7 @@ impl MachineView {
         }
         match bytes {
             Some(bytes) => {
+                imp.serial_hint.set_visible(false);
                 if let Some(terminal) = imp.terminal.get() {
                     terminal.feed(&bytes);
                 }

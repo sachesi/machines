@@ -181,7 +181,26 @@ template $MachinesMachineView: Adw.BreakpointBin {
         child: Stack serial_stack {
           StackPage {
             name: "terminal";
-            child: Adw.Bin serial_bin {};
+            child: Overlay {
+              child: Adw.Bin serial_bin {};
+
+              [overlay]
+              Label serial_hint {
+                label: _("Nothing received yet. The guest may not use its serial port.");
+                wrap: true;
+                justify: center;
+                halign: center;
+                valign: center;
+                margin-start: 12;
+                margin-end: 12;
+                can-target: false;
+
+                styles [
+                  "serial-hint",
+                  "dim-label",
+                ]
+              }
+            };
           }
 
           StackPage {

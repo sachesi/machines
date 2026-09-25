@@ -9,3 +9,8 @@ toolbarview.console > .top-bar {
   background-color: var(--headerbar-bg-color);
   color: var(--headerbar-fg-color);
 }
+
+/* The serial console is light on black, whatever the theme. */
+.serial-hint {
+  color: white;
+}
