@@ -471,13 +471,48 @@ impl Hypervisor {
                 } else {
                     0
                 };
-                dom.create_with_flags(flags).map_err(start_error)?;
+                dom.create_with_flags(flags).map_err(|e| {
+                    let e = start_error(e);
+                    if e.contains("unable to map backing store for guest RAM") {
+                        self.hugepages_short(&dom).unwrap_or(e)
+                    } else {
+                        e
+                    }
+                })?;
                 if reset {
                     let _ = self.set_reset_nvram(&dom, false);
                 }
                 Ok(())
             }
         }
+    }
+
+    /// How far the host's free huge pages fall short of the machine's memory, where it
+    /// takes its memory from them.
+    fn hugepages_short(&self, dom: &Domain) -> Option<String> {
+        let config = MachineConfig::parse(&dom.get_xml_desc(0).ok()?).ok()?;
+        if !config.hugepages {
+            return None;
+        }
+        let cells = self.conn.get_node_info().ok()?.nodes.max(1);
+        // Each size on its own, as a host without 1 GiB pages fails the whole question.
+        let free_kib: u64 = [2048, 1024 * 1024]
+            .into_iter()
+            .filter_map(|size| {
+                let counts = self.conn.get_free_pages(&[size], 0, cells, 0).ok()?;
+                Some(counts.iter().sum::<u64>() * u64::from(size))
+            })
+            .sum();
+        let size = |bytes| glib::format_size_full(bytes, glib::FormatSizeFlags::IEC_UNITS);
+        Some(
+            gettext(
+                "The host has too few huge pages free for this virtual machine’s memory: \
+                 {free} free, {needed} needed. Set more aside with the vm.nr_hugepages \
+                 setting, or turn Huge Pages off in the details.",
+            )
+            .replace("{free}", &size(free_kib * 1024))
+            .replace("{needed}", &size(config.memory_mib * 1024 * 1024)),
+        )
     }
 
     /// Mark the machine's firmware variables to be made afresh at its next start, or clear
