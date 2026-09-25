@@ -138,7 +138,22 @@ fn window(view: &MachineView) -> Option<MachinesWindow> {
 
 /// Redefine the machine with its definition as `edit` changes it.
 fn edit(view: &MachineView, edit: impl FnOnce(&str) -> Result<String, String> + Send + 'static) {
-    view.run(move |hv, uuid| hv.edit_definition(uuid, edit));
+    let (Some(win), Some(info)) = (window(view), view.info()) else {
+        return;
+    };
+    glib::spawn_future_local(glib::clone!(
+        #[weak]
+        view,
+        async move {
+            let uuid = info.uuid;
+            if let Some(Err(e)) = win.call(move |hv| hv.edit_definition(&uuid, edit)).await {
+                win.toast(&e);
+                // The row still shows what libvirt refused.
+                view.refresh_details();
+            }
+            win.refresh();
+        }
+    ));
 }
 
 /// A row of `choices`, values and their labels, with `current` selected, and added as
