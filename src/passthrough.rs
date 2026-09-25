@@ -27,7 +27,7 @@ pub struct Kvmfr {
 }
 
 /// The kvmfr module's `KVMFR_DMABUF_GETSIZE` request, `_IO('u', 0x44)`.
-const KVMFR_DMABUF_GETSIZE: libc::Ioctl = 0x7544;
+const KVMFR_DMABUF_GETSIZE: libc::c_ulong = 0x7544;
 
 /// The kvmfr devices, with the size each has, which the module gives only through an
 /// ioctl on the device, as the Looking Glass client reads it. Reading it takes opening
@@ -47,8 +47,17 @@ pub fn kvmfr_devices() -> Vec<Kvmfr> {
             let path = format!("/dev/kvmfr{n}");
             let bytes = fs::File::open(&path)
                 .and_then(|f| {
+                    // Through syscall, as ioctl() cuts the size, a long, to an int.
                     // SAFETY: the request takes no argument and only returns the size.
-                    match unsafe { libc::ioctl(f.as_raw_fd(), KVMFR_DMABUF_GETSIZE, 0) } {
+                    let size = unsafe {
+                        libc::syscall(
+                            libc::SYS_ioctl,
+                            f.as_raw_fd(),
+                            KVMFR_DMABUF_GETSIZE,
+                            0 as libc::c_ulong,
+                        )
+                    };
+                    match size {
                         -1 => Err(io::Error::last_os_error()),
                         size => Ok(size),
                     }
