@@ -378,6 +378,14 @@ impl MachinesWindow {
         }
     }
 
+    /// Let go of the connection. The last to hold it closes it, which waits on libvirt for as
+    /// long as a daemon that stopped answering takes to be given up on, so not here.
+    fn disconnect(&self) {
+        if let Some(hv) = self.imp().hypervisor.take() {
+            gio::spawn_blocking(move || drop(hv));
+        }
+    }
+
     fn follow_event(&self, connection: u64, event: Event) {
         if self.imp().connection.get() != connection {
             return;
@@ -385,7 +393,7 @@ impl MachinesWindow {
         match event {
             Event::Changed => self.refresh(),
             Event::Closed => {
-                self.imp().hypervisor.replace(None);
+                self.disconnect();
                 self.set_connected(false);
                 self.show_error(&gettext("The connection to libvirt was lost"));
             }
@@ -418,7 +426,7 @@ impl MachinesWindow {
         let uri = imp.settings.string("connection-uri").to_string();
         let connection = imp.connection.get() + 1;
         imp.connection.set(connection);
-        imp.hypervisor.replace(None);
+        self.disconnect();
         imp.store.remove_all();
         imp.connection_title.set_subtitle(&connection_label(&uri));
         imp.sidebar_stack.set_visible_child_name("loading");
@@ -448,6 +456,9 @@ impl MachinesWindow {
                 .await;
                 let imp = win.imp();
                 if imp.connection.get() != connection {
+                    if let Ok(Ok((hv, ..))) = opened {
+                        gio::spawn_blocking(move || drop(hv));
+                    }
                     return;
                 }
                 match opened {
@@ -501,7 +512,7 @@ impl MachinesWindow {
                 match listed {
                     Some(Ok(machines)) => win.apply_listing(machines),
                     Some(Err(e)) => {
-                        imp.hypervisor.replace(None);
+                        win.disconnect();
                         win.show_error(&e);
                     }
                     None => {}
