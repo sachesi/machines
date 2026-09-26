@@ -392,8 +392,8 @@ fn close_stream(serial: SerialStream) {
 }
 
 /// Whether the running machine has a screen for the console to show: a display it can
-/// connect to, and a video card to draw it, which Looking Glass and a passed-through
-/// graphics card do without.
+/// connect to, and a video card to draw it, which a passed-through graphics card does
+/// without, unless Looking Glass shows its screen.
 fn has_screen(info: &MachineInfo) -> bool {
     info.live
         .as_ref()
@@ -839,7 +839,7 @@ impl MachineView {
         }
         let page = imp.view_stack.visible_child_name();
         let details = page.as_deref() == Some("details");
-        let wanted = if active && has_screen(info) {
+        let wanted = if active && self.has_screen(info) {
             // Only from the details, not to take the serial console away from its boot.
             (was_active.is_none() || details).then_some("console")
         } else if active {
@@ -931,7 +931,7 @@ impl MachineView {
         let imp = self.imp();
         let detached = imp.detached.borrow().is_some();
         // The console is all fullscreen and a window of its own are for.
-        let screen = active && info.as_ref().is_some_and(has_screen);
+        let screen = active && info.as_ref().is_some_and(|i| self.has_screen(i));
         self.action_set_enabled(
             "machine.fullscreen",
             screen || detached || imp.fullscreen.get(),
@@ -962,6 +962,20 @@ impl MachineView {
             imp.console_action.replace(action.to_owned());
         }
         imp.console_stack.set_visible_child_name("message");
+    }
+
+    /// The kvmfr device the console shows the running machine's screen from: Looking
+    /// Glass's over SPICE, of a device of this computer's.
+    fn looking_glass(&self, info: &MachineInfo) -> Option<String> {
+        let live = info.live.as_ref()?;
+        live.looking_glass
+            .clone()
+            .filter(|_| live.graphics.first().is_some_and(|g| g == "spice"))
+            .filter(|_| self.window().is_some_and(|w| w.host().local))
+    }
+
+    fn has_screen(&self, info: &MachineInfo) -> bool {
+        has_screen(info) || self.looking_glass(info).is_some()
     }
 
     /// Show the screen the console has, or else why Looking Glass does not show one.
@@ -1039,14 +1053,7 @@ impl MachineView {
             return;
         }
         let live_graphics = info.live.as_ref().and_then(|l| l.graphics.first());
-        // The console shows what Looking Glass does over SPICE, from a kvmfr device of
-        // this computer's.
-        let looking_glass = info
-            .live
-            .as_ref()
-            .and_then(|l| l.looking_glass.clone())
-            .filter(|_| live_graphics.is_some_and(|g| g == "spice"))
-            .filter(|_| self.window().is_some_and(|w| w.host().local));
+        let looking_glass = self.looking_glass(info);
         // With no video card, the display has nothing to show but what Looking Glass does.
         if let Some(live) = &info.live
             && live.looking_glass.is_some()
