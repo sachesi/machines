@@ -1892,14 +1892,14 @@ fn passthrough(
         .or_else(|| shown.map(|k| k.path.clone()))
     {
         let mut subtitle = gettext(
-            "Shares the guest’s screen through {path} in place of its video card; the client \
-             takes the keyboard, mouse and clipboard over SPICE on 127.0.0.1",
+            "Shows the guest’s screen in the console through {path}, in place of its video \
+             card; the Looking Glass client can show it too, over SPICE on 127.0.0.1",
         )
         .replace("{path}", &path);
         if config.display().protocol != Protocol::Spice {
             subtitle = format!(
                 "{subtitle}\n{}",
-                gettext("This machine has no SPICE display for the client to connect to")
+                gettext("This machine has no SPICE display for the keyboard and mouse")
             );
         }
         if target.is_none()
@@ -1915,15 +1915,6 @@ fn passthrough(
                     .replace("{error}", e)
             );
         }
-        // The screen is only seen through the client, so it is no use turned on without.
-        let client = devices.looking_glass_client;
-        if !client {
-            subtitle = format!(
-                "{subtitle}\n{}",
-                gettext("The Looking Glass client, looking-glass-client, is not installed")
-            );
-        }
-        let target = target.filter(|_| client);
         let row = adw::SwitchRow::builder()
             .title("Looking Glass")
             .subtitle(subtitle)
@@ -1934,8 +1925,7 @@ fn passthrough(
             #[weak]
             view,
             move |row| {
-                // Once off, it only comes back on with a device to share through, and the
-                // client to see it with.
+                // Once off, it only comes back on with a device to share through.
                 row.set_sensitive(row.is_active() || target.is_some());
                 let device = target.clone().filter(|_| row.is_active());
                 view.run(move |hv, uuid| {

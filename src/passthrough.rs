@@ -8,8 +8,6 @@ use std::fs;
 use std::io;
 use std::os::fd::AsRawFd;
 
-use crate::glib;
-
 /// What the host has to pass through, read at once off the main loop, as reading it opens
 /// some of the devices.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -17,8 +15,6 @@ pub struct Devices {
     /// The graphics cards, by PCI address as sysfs names them.
     pub graphics_cards: Vec<String>,
     pub kvmfr: Vec<Kvmfr>,
-    /// Whether the Looking Glass client is installed.
-    pub looking_glass_client: bool,
     pub keyboards: Vec<InputDevice>,
     pub mice: Vec<InputDevice>,
 }
@@ -31,7 +27,6 @@ impl Devices {
         Self {
             graphics_cards: graphics_cards(),
             kvmfr: kvmfr_devices(),
-            looking_glass_client: glib::find_program_in_path("looking-glass-client").is_some(),
             keyboards,
             mice,
         }
@@ -82,30 +77,33 @@ fn kvmfr_devices() -> Vec<Kvmfr> {
         .map(|n| {
             let path = format!("/dev/kvmfr{n}");
             let bytes = fs::File::open(&path)
-                .and_then(|f| {
-                    // Through syscall, as ioctl() cuts the size, a long, to an int.
-                    // SAFETY: the request takes no argument and only returns the size.
-                    let size = unsafe {
-                        libc::syscall(
-                            libc::SYS_ioctl,
-                            f.as_raw_fd(),
-                            KVMFR_DMABUF_GETSIZE,
-                            0 as libc::c_ulong,
-                        )
-                    };
-                    match size {
-                        -1 => Err(io::Error::last_os_error()),
-                        size => Ok(size),
-                    }
-                })
+                .and_then(|f| kvmfr_size(&f))
                 .map_err(|e| e.to_string())
-                .and_then(|size| match u64::try_from(size) {
-                    Ok(0) | Err(_) => Err("it has no memory".to_owned()),
-                    Ok(bytes) => Ok(bytes),
+                .and_then(|size| match size {
+                    0 => Err("it has no memory".to_owned()),
+                    bytes => Ok(bytes),
                 });
             Kvmfr { path, bytes }
         })
         .collect()
+}
+
+/// The size of the kvmfr device open as `file`.
+pub fn kvmfr_size(file: &fs::File) -> io::Result<u64> {
+    // Through syscall, as ioctl() cuts the size, a long, to an int.
+    // SAFETY: the request takes no argument and only returns the size.
+    let size = unsafe {
+        libc::syscall(
+            libc::SYS_ioctl,
+            file.as_raw_fd(),
+            KVMFR_DMABUF_GETSIZE,
+            0 as libc::c_ulong,
+        )
+    };
+    match size {
+        -1 => Err(io::Error::last_os_error()),
+        size => u64::try_from(size).map_err(|_| io::Error::from(io::ErrorKind::InvalidData)),
+    }
 }
 
 /// A keyboard or mouse, by the stable path udev gives it.

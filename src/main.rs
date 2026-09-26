@@ -8,6 +8,7 @@ mod hooks;
 mod host_xml;
 mod hypervisor;
 mod keymap;
+mod looking_glass;
 mod machine;
 mod machine_view;
 mod osinfo;

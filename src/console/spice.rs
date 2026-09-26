@@ -121,6 +121,11 @@ impl Console {
         self.imp().spice.borrow().session.is_some()
     }
 
+    pub(super) fn spice_has_screen(&self) -> bool {
+        let display = self.imp().spice.borrow().display.clone();
+        display.is_some_and(|d| d.primary(0).is_some() || d.gl_scanout().is_some())
+    }
+
     /// What passes USB devices of this computer to the guest, while a SPICE session is open.
     pub fn usb_redirection(&self) -> Option<spice::UsbDeviceManager> {
         self.imp().spice.borrow().usb.clone()
@@ -463,10 +468,25 @@ impl Console {
         i32::from(self.imp().buttons.get())
     }
 
+    /// Move the guest's pointer to (`x`, `y`): there, where SPICE places the pointer, else
+    /// by as much as it is away, where Looking Glass says where it is.
     pub(super) fn spice_pointer(&self, x: u16, y: u16) {
-        let inputs = self.imp().spice.borrow().inputs.clone();
-        if let Some(inputs) = inputs {
-            inputs.position(i32::from(x), i32::from(y), 0, self.spice_buttons());
+        let (inputs, main) = {
+            let spice = self.imp().spice.borrow();
+            (spice.inputs.clone(), spice.main.clone())
+        };
+        let Some(inputs) = inputs else {
+            return;
+        };
+        let (x, y) = (i32::from(x), i32::from(y));
+        if main.is_none_or(|m| m.mouse_mode() == MOUSE_MODE_CLIENT) {
+            inputs.position(x, y, 0, self.spice_buttons());
+            return;
+        }
+        if let Some((dx, dy)) = self.looking_glass_pointer_to(x, y)
+            && (dx, dy) != (0, 0)
+        {
+            inputs.motion(dx, dy, self.spice_buttons());
         }
     }
 
@@ -521,9 +541,15 @@ impl Console {
 
     /// Ask the guest, through its agent, to make its screen the console's size, once the
     /// size has settled.
+    ///
+    /// Not with Looking Glass, whose guest has a graphics card of the host's, and screens
+    /// that take only the sizes they have.
     pub(super) fn resize_guest(&self) {
         if let Some(source) = self.spice_state().resize.take() {
             source.remove();
+        }
+        if self.watches_looking_glass() {
+            return;
         }
         let source = glib::timeout_add_local_once(
             RESIZE_SETTLE,

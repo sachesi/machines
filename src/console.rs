@@ -3,8 +3,10 @@
 //!
 //! The socket comes from libvirt already authenticated, so gvnc only has to speak RFB over
 //! it. gvnc decodes into a buffer this widget owns; each redraw after an update copies that
-//! buffer into a texture. SPICE is in [`spice`].
+//! buffer into a texture. SPICE is in [`spice`], and Looking Glass, which shows the screen
+//! of a SPICE machine, in [`looking_glass`].
 
+mod looking_glass;
 mod spice;
 
 pub use spice::FdSource;
@@ -94,6 +96,7 @@ mod imp {
         pub(super) grabbed: RefCell<Option<gdk::Toplevel>>,
         pub(super) error: RefCell<Option<String>>,
         pub(super) spice: RefCell<spice::Spice>,
+        pub(super) looking_glass: RefCell<looking_glass::LookingGlass>,
         /// Whether the texture has its first row at the bottom, as GL frames can.
         pub(super) flipped: Cell<bool>,
     }
@@ -131,6 +134,7 @@ mod imp {
             SIGNALS.get_or_init(|| {
                 vec![
                     glib::subclass::Signal::builder("connected").build(),
+                    glib::subclass::Signal::builder("looking-glass-changed").build(),
                     // Whether the console now has the system shortcuts too.
                     glib::subclass::Signal::builder("grab-changed")
                         .param_types([bool::static_type()])
@@ -151,7 +155,9 @@ mod imp {
     impl WidgetImpl for Console {
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let obj = self.obj();
-            if self.dirty.replace(false) {
+            let looking_glass = obj.looking_glass_screen();
+            // The display's own screen waits while Looking Glass shows the guest's.
+            if looking_glass.is_none() && self.dirty.replace(false) {
                 // A GL frame is upside down next to the desktop in memory, so nothing of it
                 // carries over.
                 let update = self
@@ -167,8 +173,12 @@ mod imp {
                 self.texture.replace(texture);
                 self.flipped.set(false);
             }
-            let Some(texture) = self.texture.borrow().clone() else {
-                return;
+            let (texture, flipped) = match looking_glass {
+                Some((texture, _)) => (texture, false),
+                None => match self.texture.borrow().clone() {
+                    Some(texture) => (texture, self.flipped.get()),
+                    None => return,
+                },
             };
             let (x, y, scale) = obj.placement(texture.width(), texture.height());
             let rect = graphene::Rect::new(
@@ -182,7 +192,7 @@ mod imp {
             } else {
                 gtk::gsk::ScalingFilter::Linear
             };
-            if self.flipped.get() {
+            if flipped {
                 snapshot.save();
                 snapshot.translate(&graphene::Point::new(0.0, rect.y() * 2.0 + rect.height()));
                 snapshot.scale(1.0, -1.0);
@@ -297,6 +307,7 @@ impl Console {
             conn.shutdown();
         }
         self.close_spice();
+        self.close_looking_glass();
         self.ungrab_shortcuts();
         imp.framebuffer.take();
         imp.texture.take();
@@ -315,6 +326,23 @@ impl Console {
             f(&args[0].get().expect("a Console"));
             None
         })
+    }
+
+    pub fn connect_looking_glass_changed<F: Fn(&Self) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("looking-glass-changed", false, move |args| {
+            f(&args[0].get().expect("a Console"));
+            None
+        })
+    }
+
+    /// Whether the console has a screen to show, of the display or from Looking Glass.
+    pub fn has_screen(&self) -> bool {
+        self.looking_glass_screen().is_some()
+            || self.imp().framebuffer.borrow().is_some()
+            || self.spice_has_screen()
     }
 
     pub fn connect_grab_changed<F: Fn(&Self, bool) + 'static>(
@@ -470,15 +498,26 @@ impl Console {
         ((w - fw * scale) / 2.0, (h - fh * scale) / 2.0, scale)
     }
 
-    /// The desktop pixel under the widget point (`x`, `y`), clamped to the desktop.
+    /// The desktop pixel under the widget point (`x`, `y`), clamped to the desktop. The
+    /// guest's screen may be larger than what Looking Glass shows of it.
     fn to_desktop(&self, x: f64, y: f64) -> Option<(u16, u16)> {
-        let texture = self.imp().texture.borrow().clone()?;
-        let (width, height) = (texture.width(), texture.height());
-        let (ox, oy, scale) = self.placement(width, height);
+        let (texture, (width, height)) = match self.looking_glass_screen() {
+            Some(shown) => shown,
+            None => {
+                let texture = self.imp().texture.borrow().clone()?;
+                let size = (texture.width(), texture.height());
+                (texture, size)
+            }
+        };
+        let (ox, oy, scale) = self.placement(texture.width(), texture.height());
         let clamp = |v: f64, max: i32| (v.max(0.0) as i32).min(max - 1).max(0) as u16;
+        let (sx, sy) = (
+            f64::from(width) / f64::from(texture.width().max(1)),
+            f64::from(height) / f64::from(texture.height().max(1)),
+        );
         Some((
-            clamp((x - ox) / scale, width),
-            clamp((y - oy) / scale, height),
+            clamp((x - ox) / scale * sx, width),
+            clamp((y - oy) / scale * sy, height),
         ))
     }
 

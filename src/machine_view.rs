@@ -14,6 +14,7 @@ use crate::adw::subclass::prelude::*;
 use crate::console::{Console, FdSource};
 use crate::domain_xml::{DiskDevice, MachineConfig};
 use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result, SerialStream};
+use crate::looking_glass::Status;
 use crate::machine::Machine;
 use crate::window::MachinesWindow;
 use crate::{adw, details, dialogs, gio, glib, gtk, keymap, usage};
@@ -168,6 +169,11 @@ mod imp {
                     view.imp().console_stack.set_visible_child_name("display");
                     view.update_actions();
                 }
+            ));
+            self.console.connect_looking_glass_changed(glib::clone!(
+                #[weak(rename_to = view)]
+                obj,
+                move |_| view.follow_looking_glass()
             ));
             self.console.connect_disconnected(glib::clone!(
                 #[weak(rename_to = view)]
@@ -958,6 +964,60 @@ impl MachineView {
         imp.console_stack.set_visible_child_name("message");
     }
 
+    /// Show the screen the console has, or else why Looking Glass does not show one.
+    fn follow_looking_glass(&self) {
+        let imp = self.imp();
+        if imp.console.has_screen() {
+            imp.console_stack.set_visible_child_name("display");
+            return;
+        }
+        let (title, text) = match imp.console.looking_glass_status() {
+            None | Some(Status::Showing) => return,
+            Some(Status::Waiting) => (
+                gettext("Waiting for Looking Glass"),
+                gettext(
+                    "The guest’s screen shows here once the Looking Glass host application \
+                     runs in the guest.",
+                ),
+            ),
+            Some(Status::Incompatible(version)) => (
+                gettext("Incompatible Looking Glass"),
+                match version {
+                    Some(version) => gettext(
+                        "The guest runs the Looking Glass host application {version}; the \
+                         console shows the screen of version B7.",
+                    )
+                    .replace("{version}", &version),
+                    None => gettext(
+                        "The guest runs a version of the Looking Glass host application other \
+                         than B7, whose screen the console shows.",
+                    ),
+                },
+            ),
+            Some(Status::OtherMachine) => (
+                gettext("Another Machine’s Screen"),
+                gettext("The kvmfr device shares the screen of another virtual machine."),
+            ),
+            Some(Status::TooSmall(mib)) => (
+                gettext("Looking Glass Device Too Small"),
+                gettext(
+                    "The guest’s screen needs a kvmfr device of {size} MiB, which the kvmfr \
+                     module’s static_size_mb option sets.",
+                )
+                .replace("{size}", &mib.to_string()),
+            ),
+            Some(Status::Denied) => (
+                gettext("Looking Glass Unavailable"),
+                gettext(
+                    "This user may not open the kvmfr device, which a udev rule for the kvmfr \
+                     module can allow.",
+                ),
+            ),
+            Some(Status::Failed(reason)) => (gettext("Looking Glass Unavailable"), reason),
+        };
+        self.console_message("video-display-symbolic", &title, Some(&text), None);
+    }
+
     fn update_console(&self, info: &MachineInfo) {
         let imp = self.imp();
         if !info.state.is_active() {
@@ -978,9 +1038,19 @@ impl MachineView {
         if imp.console.is_open() || imp.connecting.get() {
             return;
         }
+        let live_graphics = info.live.as_ref().and_then(|l| l.graphics.first());
+        // The console shows what Looking Glass does over SPICE, from a kvmfr device of
+        // this computer's.
+        let looking_glass = info
+            .live
+            .as_ref()
+            .and_then(|l| l.looking_glass.clone())
+            .filter(|_| live_graphics.is_some_and(|g| g == "spice"))
+            .filter(|_| self.window().is_some_and(|w| w.host().local));
         // With no video card, the display has nothing to show but what Looking Glass does.
         if let Some(live) = &info.live
             && live.looking_glass.is_some()
+            && looking_glass.is_none()
             && live.video.as_deref() == Some("none")
         {
             self.console_message(
@@ -994,7 +1064,6 @@ impl MachineView {
             );
             return;
         }
-        let live_graphics = info.live.as_ref().and_then(|l| l.graphics.first());
         match live_graphics.map(String::as_str) {
             Some(protocol @ ("vnc" | "spice")) => {
                 if let Some(error) = imp.console_error.borrow().as_deref() {
@@ -1005,7 +1074,7 @@ impl MachineView {
                         Some((&gettext("_Reconnect"), "machine.reconnect")),
                     );
                 } else {
-                    self.open_console(protocol == "spice");
+                    self.open_console(protocol == "spice", looking_glass);
                 }
             }
             Some(other) => self.console_message(
@@ -1155,7 +1224,9 @@ impl MachineView {
         imp.console.close();
     }
 
-    fn open_console(&self, spice: bool) {
+    /// Open the machine's display, and watch the kvmfr device at `looking_glass` for its
+    /// screen.
+    fn open_console(&self, spice: bool, looking_glass: Option<String>) {
         let imp = self.imp();
         let (Some(win), Some(machine)) = (self.window(), self.machine()) else {
             return;
@@ -1179,7 +1250,12 @@ impl MachineView {
                 }
                 imp.connecting.set(false);
                 match opened {
-                    Some(Ok(fd)) if spice => imp.console.open_spice(fd, view.fd_source()),
+                    Some(Ok(fd)) if spice => {
+                        imp.console.open_spice(fd, view.fd_source());
+                        if let Some(path) = looking_glass {
+                            imp.console.watch_looking_glass(&path, &machine.uuid());
+                        }
+                    }
                     Some(Ok(fd)) => imp.console.open(fd),
                     Some(Err(e)) => {
                         imp.console_error.replace(Some(e));
