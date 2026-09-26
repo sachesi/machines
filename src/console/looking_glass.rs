@@ -6,6 +6,7 @@
 //! the guest or lets go of it, held down it shows the keys that go with it, and with
 //! another key it does what that key is for there.
 
+use std::os::fd::AsRawFd;
 use std::time::Duration;
 
 use gettextrs::gettext;
@@ -14,7 +15,7 @@ use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
 use crate::gtk::{cairo, graphene};
 use crate::keymap;
-use crate::looking_glass::{Format, Frame, Reader, Rect, Shape, Status};
+use crate::looking_glass::{Format, Frame, Pixels, Reader, Rect, Shape, Status};
 use crate::{gdk, glib, gtk};
 
 use super::Console;
@@ -26,12 +27,26 @@ const KEYS_DELAY: Duration = Duration::from_millis(200);
 /// How far the pointer's sensitivity goes either way from 0, as in Looking Glass, where
 /// each step is a tenth.
 const SENSITIVITY_STEPS: i32 = 9;
+/// The DRM formats of the frames GTK can be given in the device's memory itself, as
+/// Looking Glass gives them to the GPU.
+const DMABUF_FORMATS: [(Format, &[u8; 4]); 5] = [
+    (Format::Bgrx, b"XR24"),
+    (Format::Rgbx, b"XB24"),
+    (Format::Rgb10, b"XB30"),
+    (Format::Rgb10Pq, b"XB30"),
+    (Format::Rgba16Float, b"AB4H"),
+];
+/// `DRM_FORMAT_MOD_LINEAR`: one row after the other, as the host writes them.
+const DRM_FORMAT_MOD_LINEAR: u64 = 0;
 
 #[derive(Default)]
 pub(super) struct LookingGlass {
     reader: Option<Reader>,
     status: Option<Status>,
     texture: Option<gdk::Texture>,
+    /// How the texture's frame was laid out, which the next frame's changes are counted
+    /// from only if it is laid out the same.
+    format: Option<Format>,
     /// The size of the guest's screen, which its pointer moves in.
     screen: (i32, i32),
     /// How many quarter turns clockwise the frame is shown turned, as the guest's screen
@@ -74,7 +89,13 @@ impl Console {
     pub fn watch_looking_glass(&self, path: &str, uuid: &str) {
         let console = glib::SendWeakRef::from(self.downgrade());
         let context = glib::MainContext::default();
-        let reader = Reader::start(path, uuid, move || {
+        let formats = self.display().dmabuf_formats();
+        let shareable = DMABUF_FORMATS
+            .iter()
+            .filter(|(_, code)| formats.contains(u32::from_le_bytes(**code), DRM_FORMAT_MOD_LINEAR))
+            .map(|&(format, _)| format)
+            .collect();
+        let reader = Reader::start(path, uuid, shareable, move || {
             let console = console.clone();
             context.invoke(move || {
                 if let Some(console) = console.upgrade() {
@@ -417,16 +438,32 @@ impl Console {
             return;
         };
         let mut lg = imp.looking_glass.borrow_mut();
-        let first = update.frame.is_some() && lg.texture.is_none();
+        let blank = lg.texture.is_none();
         if let Some(frame) = update.frame {
             lg.screen = match frame.screen {
                 (0, _) | (_, 0) => (frame.width as i32, frame.height as i32),
                 (width, height) => (width as i32, height as i32),
             };
             lg.frame_turns = frame.turns;
-            let before = lg.texture.take();
-            lg.texture = Some(frame_texture(frame, update.damage, before));
+            let format = frame.format;
+            let before = lg.texture.clone().filter(|_| lg.format == Some(format));
+            match frame_texture(&self.display(), frame, update.damage, before) {
+                Ok(texture) => {
+                    lg.texture = Some(texture);
+                    lg.format = Some(format);
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Looking Glass frames are copied from now on, as GTK cannot show them in place: {e}"
+                    );
+                    lg.format = None;
+                    if let Some(reader) = &lg.reader {
+                        reader.copy_frames();
+                    }
+                }
+            }
         }
+        let first = blank && lg.texture.is_some();
         if let Some(shape) = update.shape {
             let texture = shape_texture(&shape);
             let hotspot = (
@@ -480,39 +517,21 @@ impl Console {
     }
 }
 
+/// The frame as a texture, which differs from `before`, where given, only in `damage`.
 fn frame_texture(
+    display: &gdk::Display,
     frame: Frame,
     damage: Option<Vec<Rect>>,
     before: Option<gdk::Texture>,
-) -> gdk::Texture {
-    let (format, color_state) = match frame.format {
-        Format::Bgrx => (gdk::MemoryFormat::B8g8r8x8, None),
-        Format::Rgbx => (gdk::MemoryFormat::R8g8b8x8, None),
-        Format::Bgr => (gdk::MemoryFormat::B8g8r8, None),
-        Format::Rgb => (gdk::MemoryFormat::R8g8b8, None),
-        Format::Rgb16 => (gdk::MemoryFormat::R16g16b16, None),
-        Format::Rgb16Pq => (
-            gdk::MemoryFormat::R16g16b16,
-            Some(gdk::ColorState::rec2100_pq()),
-        ),
-        Format::Rgba16Float => (
-            gdk::MemoryFormat::R16g16b16a16Float,
-            Some(gdk::ColorState::srgb_linear()),
-        ),
+) -> Result<gdk::Texture, glib::Error> {
+    let color_state = match frame.format {
+        Format::Rgb16Pq | Format::Rgb10Pq => Some(gdk::ColorState::rec2100_pq()),
+        Format::Rgba16Float => Some(gdk::ColorState::srgb_linear()),
+        _ => None,
     };
     let (width, height) = (frame.width as i32, frame.height as i32);
-    let mut builder = gdk::MemoryTextureBuilder::new()
-        .set_bytes(Some(&glib::Bytes::from_owned(frame.pixels)))
-        .set_width(width)
-        .set_height(height)
-        .set_format(format)
-        .set_stride(frame.stride);
-    if let Some(color_state) = &color_state {
-        builder = builder.set_color_state(color_state);
-    }
-    let before =
-        before.filter(|b| b.width() == width && b.height() == height && b.format() == format);
-    if let (Some(damage), Some(before)) = (damage, before) {
+    let before = before.filter(|b| b.width() == width && b.height() == height);
+    let update = before.zip(damage).map(|(before, damage)| {
         let region = cairo::Region::create();
         for rect in damage {
             let (x, y) = (rect.x.min(frame.width), rect.y.min(frame.height));
@@ -523,11 +542,65 @@ fn frame_texture(
                 rect.height.min(frame.height - y) as i32,
             ));
         }
-        builder = builder
-            .set_update_texture(Some(&before))
-            .set_update_region(Some(&super::with_filter_margin(&region, width, height)));
+        (before, super::with_filter_margin(&region, width, height))
+    });
+    match frame.pixels {
+        Pixels::Copied(pixels) => {
+            let format = match frame.format {
+                Format::Bgrx => gdk::MemoryFormat::B8g8r8x8,
+                Format::Rgbx => gdk::MemoryFormat::R8g8b8x8,
+                Format::Bgr => gdk::MemoryFormat::B8g8r8,
+                Format::Rgb => gdk::MemoryFormat::R8g8b8,
+                Format::Rgb16 | Format::Rgb16Pq => gdk::MemoryFormat::R16g16b16,
+                Format::Rgba16Float => gdk::MemoryFormat::R16g16b16a16Float,
+                Format::Rgb10 | Format::Rgb10Pq => {
+                    unreachable!("10-bit pixels are widened as they are copied")
+                }
+            };
+            let mut builder = gdk::MemoryTextureBuilder::new()
+                .set_bytes(Some(&glib::Bytes::from_owned(pixels)))
+                .set_width(width)
+                .set_height(height)
+                .set_format(format)
+                .set_stride(frame.stride);
+            if let Some(color_state) = &color_state {
+                builder = builder.set_color_state(color_state);
+            }
+            if let Some((before, region)) = &update {
+                builder = builder
+                    .set_update_texture(Some(before))
+                    .set_update_region(Some(region));
+            }
+            Ok(builder.build())
+        }
+        Pixels::Shared(fd) => {
+            let (_, code) = DMABUF_FORMATS
+                .iter()
+                .find(|(format, _)| *format == frame.format)
+                .expect("only frames of a DRM format are shared");
+            let raw = fd.as_raw_fd();
+            // SAFETY: the texture holds `fd` open until GTK lets go of it.
+            unsafe {
+                let mut builder = gdk::DmabufTextureBuilder::new()
+                    .set_display(display)
+                    .set_width(frame.width)
+                    .set_height(frame.height)
+                    .set_fourcc(u32::from_le_bytes(**code))
+                    .set_modifier(DRM_FORMAT_MOD_LINEAR)
+                    .set_n_planes(1)
+                    .set_fd(0, raw)
+                    .set_stride(0, frame.stride as u32)
+                    .set_offset(0, 0)
+                    .set_color_state(color_state.as_ref());
+                if let Some((before, region)) = &update {
+                    builder = builder
+                        .set_update_texture(Some(before))
+                        .set_update_region(Some(region));
+                }
+                builder.build_with_release_func(move || drop(fd))
+            }
+        }
     }
-    builder.build()
 }
 
 fn shape_texture(shape: &Shape) -> gdk::Texture {

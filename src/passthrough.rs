@@ -6,7 +6,7 @@
 
 use std::fs;
 use std::io;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 
 /// What the host has to pass through, read at once off the main loop, as reading it opens
 /// some of the devices.
@@ -104,6 +104,36 @@ pub fn kvmfr_size(file: &fs::File) -> io::Result<u64> {
         -1 => Err(io::Error::last_os_error()),
         size => u64::try_from(size).map_err(|_| io::Error::from(io::ErrorKind::InvalidData)),
     }
+}
+
+/// The kvmfr module's `KVMFR_DMABUF_CREATE` request, `_IOW('u', 0x42, struct
+/// kvmfr_dmabuf_create)`, and its flag to close the buffer on exec.
+const KVMFR_DMABUF_CREATE: libc::c_ulong = 0x4018_7542;
+const KVMFR_DMABUF_FLAG_CLOEXEC: u8 = 0x1;
+
+/// `struct kvmfr_dmabuf_create`.
+#[repr(C)]
+struct KvmfrDmabufCreate {
+    flags: u8,
+    offset: u64,
+    size: u64,
+}
+
+/// A DMA buffer of the `size` bytes at `offset` in the memory of the kvmfr device open as
+/// `file`, both whole pages.
+pub fn kvmfr_dmabuf(file: &fs::File, offset: u64, size: u64) -> io::Result<OwnedFd> {
+    let create = KvmfrDmabufCreate {
+        flags: KVMFR_DMABUF_FLAG_CLOEXEC,
+        offset,
+        size,
+    };
+    // SAFETY: the request only reads `create`, which outlives the call.
+    let fd = unsafe { libc::ioctl(file.as_raw_fd(), KVMFR_DMABUF_CREATE, &create) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the request returns a new descriptor, which nothing else owns.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
 /// A keyboard or mouse, by the stable path udev gives it.

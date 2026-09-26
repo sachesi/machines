@@ -4,9 +4,9 @@
 
 mod lgmp;
 
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -106,15 +106,29 @@ pub enum Format {
     Rgb16,
     /// As `Rgb16`, in the PQ curve of an HDR screen.
     Rgb16Pq,
+    /// R, G, B, 10 bits each, in 32.
+    Rgb10,
+    /// As `Rgb10`, in the PQ curve of an HDR screen.
+    Rgb10Pq,
     /// R, G, B, A, half floats, in linear light.
     Rgba16Float,
 }
 
-/// A frame's pixels, in a buffer the reader uses again once nothing else holds it.
+/// A frame's pixels.
 #[derive(Debug, Clone)]
-pub struct Pixels(Arc<Vec<u8>>);
+pub enum Pixels {
+    Copied(Copied),
+    /// Left in the device, at the start of a DMA buffer of its memory. The host writes
+    /// the frame after the next one there.
+    Shared(Arc<OwnedFd>),
+}
 
-impl AsRef<[u8]> for Pixels {
+/// Pixels copied out of the device, into a buffer the reader uses again once nothing else
+/// holds it.
+#[derive(Debug, Clone)]
+pub struct Copied(Arc<Vec<u8>>);
+
+impl AsRef<[u8]> for Copied {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
@@ -174,6 +188,9 @@ struct Shared {
     woken: bool,
     /// Where to put the guest's pointer, not yet asked of the host.
     place: Option<(i32, i32)>,
+    /// The formats frames are handed on in without copying them out of the device, where
+    /// it makes DMA buffers of its memory.
+    shareable: Vec<Format>,
 }
 
 /// Reads a kvmfr device on a thread of its own, until dropped.
@@ -183,10 +200,19 @@ pub struct Reader {
 }
 
 impl Reader {
-    /// Read the kvmfr device at `path` for the machine of UUID `uuid`. The thread calls
-    /// `wake` when there is something to take, once until it is taken.
-    pub fn start(path: &str, uuid: &str, wake: impl Fn() + Send + 'static) -> Self {
-        let shared: Arc<Mutex<Shared>> = Arc::default();
+    /// Read the kvmfr device at `path` for the machine of UUID `uuid`, handing on frames
+    /// of the `shareable` formats in the device's memory itself where it can. The thread
+    /// calls `wake` when there is something to take, once until it is taken.
+    pub fn start(
+        path: &str,
+        uuid: &str,
+        shareable: Vec<Format>,
+        wake: impl Fn() + Send + 'static,
+    ) -> Self {
+        let shared = Arc::new(Mutex::new(Shared {
+            shareable,
+            ..Shared::default()
+        }));
         let stop: Arc<AtomicBool> = Arc::default();
         let mut worker = Worker {
             shared: shared.clone(),
@@ -198,6 +224,8 @@ impl Reader {
             raw: Vec::new(),
             serial: None,
             whole: true,
+            device: None,
+            dmabufs: Vec::new(),
         };
         let path = path.to_owned();
         if let Err(e) = thread::Builder::new()
@@ -212,6 +240,11 @@ impl Reader {
     /// Have the host put the guest's pointer at (`x`, `y`) on its screen, if it can.
     pub fn place(&self, x: i32, y: i32) {
         lock(&self.shared).place = Some((x, y));
+    }
+
+    /// Copy the frames out of the device from now on.
+    pub fn copy_frames(&self) {
+        lock(&self.shared).shareable.clear();
     }
 
     pub fn take(&self) -> Update {
@@ -248,12 +281,13 @@ struct Mapping {
 }
 
 impl Mapping {
-    fn open(path: &str) -> io::Result<Self> {
+    /// The memory at `path`, and the device, where it is a kvmfr device and not a file.
+    fn open(path: &str) -> io::Result<(Self, Option<File>)> {
         let file = OpenOptions::new().read(true).write(true).open(path)?;
-        let len = match passthrough::kvmfr_size(&file) {
-            Ok(len) => len,
+        let (len, device) = match passthrough::kvmfr_size(&file) {
+            Ok(len) => (len, true),
             // A plain file, as QEMU can share one in place of the device.
-            Err(e) if e.raw_os_error() == Some(libc::ENOTTY) => file.metadata()?.len(),
+            Err(e) if e.raw_os_error() == Some(libc::ENOTTY) => (file.metadata()?.len(), false),
             Err(e) => return Err(e),
         };
         let len = usize::try_from(len)
@@ -275,7 +309,7 @@ impl Mapping {
             return Err(io::Error::last_os_error());
         }
         let ptr = NonNull::new(ptr.cast()).ok_or_else(|| io::Error::from(io::ErrorKind::Other))?;
-        Ok(Self { ptr, len })
+        Ok((Self { ptr, len }, device.then_some(file)))
     }
 }
 
@@ -395,6 +429,18 @@ impl FrameHeader {
             _ => return None,
         })
     }
+
+    /// How the pixels are laid out as they come, where they can be handed on so.
+    fn shared_format(&self) -> Option<Format> {
+        Some(match self.kind {
+            FRAME_TYPE_BGRA => Format::Bgrx,
+            FRAME_TYPE_RGBA => Format::Rgbx,
+            FRAME_TYPE_RGBA10 if self.flags & FRAME_FLAG_HDR_PQ != 0 => Format::Rgb10Pq,
+            FRAME_TYPE_RGBA10 => Format::Rgb10,
+            FRAME_TYPE_RGBA16F => Format::Rgba16Float,
+            _ => return None,
+        })
+    }
 }
 
 /// R, G, B of 10 bits in 32, widened to 16 bits each.
@@ -494,6 +540,18 @@ struct Worker {
     /// Whether the next frame handed on has to be taken whole, as the one before it was
     /// not handed on.
     whole: bool,
+    /// The kvmfr device, which makes DMA buffers of its memory; none for a file.
+    device: Option<File>,
+    /// The DMA buffers made of where the host writes its frames, which are the same few
+    /// places over and over.
+    dmabufs: Vec<Dmabuf>,
+}
+
+/// A DMA buffer of the `len` bytes at `offset` in the device.
+struct Dmabuf {
+    offset: usize,
+    len: usize,
+    fd: Arc<OwnedFd>,
 }
 
 impl Worker {
@@ -532,7 +590,10 @@ impl Worker {
 
     fn run(&mut self, path: &str) {
         let mapping = match Mapping::open(path) {
-            Ok(mapping) => mapping,
+            Ok((mapping, device)) => {
+                self.device = device;
+                mapping
+            }
             Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
                 self.set_status(Status::Denied);
                 return;
@@ -596,6 +657,7 @@ impl Worker {
         };
         self.serial = None;
         self.whole = true;
+        self.dmabufs.clear();
         lock(&self.shared).place = None;
         self.publish(|update| update.places_pointer = Some(welcome.places_pointer));
         self.follow(shm, &mut client, &mut frames, &mut pointer);
@@ -690,6 +752,14 @@ impl Worker {
         Ok(())
     }
 
+    /// The pixels in `buffer`, which goes back to the pool once nothing else holds it.
+    fn copied(&mut self, buffer: Arc<Vec<u8>>) -> Pixels {
+        if self.pool.len() < POOL {
+            self.pool.push(buffer.clone());
+        }
+        Pixels::Copied(Copied(buffer))
+    }
+
     /// A buffer of `len` bytes nothing else holds, from the pool if one there is free.
     fn buffer(&mut self, len: usize) -> Arc<Vec<u8>> {
         let free = self.pool.iter_mut().position(|b| Arc::get_mut(b).is_some());
@@ -703,21 +773,22 @@ impl Worker {
         buffer
     }
 
-    /// Copy the pixels at `data`, which the host may still be writing, as far as the
-    /// write pointer at `write_pointer` says it has; whether they all came in time.
-    fn copy_pixels(
+    /// Follow the write pointer at `write_pointer` through the `len` bytes of pixels the
+    /// host may still be writing, handing each span it has written to `arrived`; whether
+    /// they all came in time.
+    fn follow_writes(
         shm: &Shm,
         write_pointer: usize,
-        data: usize,
-        dst: &mut [u8],
+        len: usize,
+        mut arrived: impl FnMut(std::ops::Range<usize>) -> Result<(), Error>,
     ) -> Result<bool, Error> {
         let written = shm.atomic_u32(write_pointer)?;
         let mut done = 0;
         let mut progressed = Instant::now();
-        while done < dst.len() {
-            let now = (written.load(Ordering::Acquire) as usize).min(dst.len());
+        while done < len {
+            let now = (written.load(Ordering::Acquire) as usize).min(len);
             if now > done {
-                shm.read(data + done, &mut dst[done..now])?;
+                arrived(done..now)?;
                 done = now;
                 progressed = Instant::now();
             } else if progressed.elapsed() > FRAME_STALL {
@@ -727,6 +798,56 @@ impl Worker {
             }
         }
         Ok(true)
+    }
+
+    /// Copy the pixels at `data` as the host writes them; whether they all came in time.
+    fn copy_pixels(
+        shm: &Shm,
+        write_pointer: usize,
+        data: usize,
+        dst: &mut [u8],
+    ) -> Result<bool, Error> {
+        Self::follow_writes(shm, write_pointer, dst.len(), |span| {
+            shm.read(data + span.start, &mut dst[span])
+        })
+    }
+
+    /// A DMA buffer of at least the `len` bytes at `offset` in the device, for pixels of
+    /// `format`, where the device makes one and frames of the format are shared.
+    fn dmabuf(&mut self, offset: usize, len: usize, format: Format) -> Option<Arc<OwnedFd>> {
+        let device = self.device.as_ref()?;
+        if !lock(&self.shared).shareable.contains(&format) {
+            return None;
+        }
+        // SAFETY: sysconf only reads the configuration.
+        let page = usize::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok()?;
+        let len = len.next_multiple_of(page);
+        if !offset.is_multiple_of(page) {
+            return None;
+        }
+        if let Some(made) = self
+            .dmabufs
+            .iter()
+            .find(|d| d.offset == offset && d.len >= len)
+        {
+            return Some(made.fd.clone());
+        }
+        match passthrough::kvmfr_dmabuf(device, offset as u64, len as u64) {
+            Ok(fd) => {
+                let fd = Arc::new(fd);
+                self.dmabufs.retain(|d| d.offset != offset);
+                self.dmabufs.push(Dmabuf {
+                    offset,
+                    len,
+                    fd: fd.clone(),
+                });
+                Some(fd)
+            }
+            Err(_) => {
+                lock(&self.shared).shareable.clear();
+                None
+            }
+        }
     }
 
     fn frame(&mut self, shm: &Shm, message: &Message) -> Result<(), Error> {
@@ -765,7 +886,17 @@ impl Worker {
         }
         let write_pointer = message.offset + header.offset as usize;
         let data = write_pointer + WRITE_POINTER;
-        let (pixels, stride) = if matches!(format, Format::Rgb16 | Format::Rgb16Pq) {
+        let shared = header
+            .shared_format()
+            .and_then(|format| Some((format, self.dmabuf(data, size, format)?)));
+        let (pixels, format, stride) = if let Some((format, fd)) = shared {
+            let complete = Self::follow_writes(shm, write_pointer, size, |_| Ok(()))?;
+            (
+                complete.then_some(Pixels::Shared(fd)),
+                format,
+                pitch as usize,
+            )
+        } else if matches!(format, Format::Rgb16 | Format::Rgb16Pq) {
             let mut raw = std::mem::take(&mut self.raw);
             raw.resize(size, 0);
             let complete = Self::copy_pixels(shm, write_pointer, data, &mut raw)?;
@@ -773,22 +904,27 @@ impl Worker {
             let bytes = Arc::get_mut(&mut buffer).expect("a buffer nothing else holds");
             widen_rgb10(&raw, width as usize, height as usize, pitch as usize, bytes);
             self.raw = raw;
-            (complete.then_some(buffer), width as usize * 6)
+            (
+                complete.then(|| self.copied(buffer)),
+                format,
+                width as usize * 6,
+            )
         } else {
             let mut buffer = self.buffer(size);
             let bytes = Arc::get_mut(&mut buffer).expect("a buffer nothing else holds");
             let complete = Self::copy_pixels(shm, write_pointer, data, bytes)?;
-            (complete.then_some(buffer), pitch as usize)
+            (
+                complete.then(|| self.copied(buffer)),
+                format,
+                pitch as usize,
+            )
         };
         let Some(pixels) = pixels else {
             self.whole = true;
             return Ok(());
         };
-        if self.pool.len() < POOL {
-            self.pool.push(pixels.clone());
-        }
         let frame = Frame {
-            pixels: Pixels(pixels),
+            pixels,
             format,
             width,
             height,
@@ -975,6 +1111,8 @@ mod tests {
             raw: Vec::new(),
             serial: None,
             whole: true,
+            device: None,
+            dmabufs: Vec::new(),
         };
         (worker, shared)
     }
@@ -1027,7 +1165,10 @@ mod tests {
         let frame = update.frame.unwrap();
         assert_eq!(frame.format, Format::Bgrx);
         assert_eq!((frame.width, frame.height, frame.stride), (2, 2, 8));
-        assert_eq!(frame.pixels.as_ref(), &pixels[..]);
+        let Pixels::Copied(copied) = frame.pixels else {
+            panic!("pixels of a file are copied");
+        };
+        assert_eq!(copied.as_ref(), &pixels[..]);
 
         worker.frame(&shm, &message).unwrap();
         assert!(lock(&shared).update.frame.is_none(), "the same frame again");
