@@ -116,6 +116,9 @@ mod imp {
         pub(super) error: RefCell<Option<String>>,
         pub(super) spice: RefCell<spice::Spice>,
         pub(super) looking_glass: RefCell<looking_glass::LookingGlass>,
+        /// The pointer the VNC or SPICE display gives, which Looking Glass's stands in for
+        /// while it shows the screen.
+        pub(super) remote_cursor: RefCell<Option<gdk::Cursor>>,
         /// Whether the texture has its first row at the bottom, as GL frames can.
         pub(super) flipped: Cell<bool>,
     }
@@ -341,6 +344,7 @@ impl Console {
         imp.texture.take();
         imp.pressed.borrow_mut().clear();
         imp.buttons.set(0);
+        imp.remote_cursor.take();
         self.set_cursor(None);
         self.queue_draw();
     }
@@ -578,9 +582,18 @@ impl Console {
         ))
     }
 
+    /// Show `cursor`, the pointer the VNC or SPICE display gives, unless Looking Glass
+    /// shows the screen, whose own pointer stands in for it.
+    fn follow_remote_cursor(&self, cursor: Option<gdk::Cursor>) {
+        self.imp().remote_cursor.replace(cursor.clone());
+        if self.looking_glass_screen().is_none() {
+            self.set_cursor(cursor.as_ref());
+        }
+    }
+
     fn set_remote_cursor(&self, cursor: Option<&gvnc::Cursor>) {
         let Some(cursor) = cursor.filter(|c| c.width() > 0 && c.height() > 0) else {
-            self.set_cursor(gdk::Cursor::from_name("none", None).as_ref());
+            self.follow_remote_cursor(gdk::Cursor::from_name("none", None));
             return;
         };
         let (width, height) = (usize::from(cursor.width()), usize::from(cursor.height()));
@@ -597,7 +610,7 @@ impl Console {
             &glib::Bytes::from(data),
             width * BYTES_PER_PIXEL,
         );
-        self.set_cursor(Some(&gdk::Cursor::from_texture(
+        self.follow_remote_cursor(Some(gdk::Cursor::from_texture(
             &texture,
             i32::from(cursor.hotx()),
             i32::from(cursor.hoty()),

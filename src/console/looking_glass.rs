@@ -399,13 +399,13 @@ impl Console {
     }
 
     /// The pointer over the screen: the guest's, unless the guest hides it or the console
-    /// holds it, which draws it itself.
+    /// holds it, which draws it itself; the display's where Looking Glass shows nothing.
     fn follow_looking_glass_cursor(&self) {
         let lg = self.imp().looking_glass.borrow();
         let cursor = match (lg.texture.is_some(), lg.visible && lg.held.is_none()) {
             (true, true) => lg.cursor.clone(),
             (true, false) => gdk::Cursor::from_name("none", None),
-            (false, _) => None,
+            (false, _) => self.imp().remote_cursor.borrow().clone(),
         };
         drop(lg);
         self.set_cursor(cursor.as_ref());

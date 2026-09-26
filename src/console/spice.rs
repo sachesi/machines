@@ -339,12 +339,12 @@ impl Console {
             cursor.connect_cursor_hide(glib::clone!(
                 #[weak(rename_to = console)]
                 self,
-                move |_| console.set_cursor(gdk::Cursor::from_name("none", None).as_ref())
+                move |_| console.follow_remote_cursor(gdk::Cursor::from_name("none", None))
             ));
             cursor.connect_cursor_reset(glib::clone!(
                 #[weak(rename_to = console)]
                 self,
-                move |_| console.set_cursor(None)
+                move |_| console.follow_remote_cursor(None)
             ));
             ChannelExt::connect(channel);
             self.spice_state().cursor = Some(cursor.clone());
@@ -437,7 +437,7 @@ impl Console {
 
     fn set_spice_cursor(&self, shape: Option<spice::CursorShape>) {
         let Some(shape) = shape else {
-            self.set_cursor(None);
+            self.follow_remote_cursor(None);
             return;
         };
         let (Ok(width), Ok(height), Ok(data)) = (
@@ -457,7 +457,7 @@ impl Console {
             &glib::Bytes::from(data),
             width * BYTES_PER_PIXEL,
         );
-        self.set_cursor(Some(&gdk::Cursor::from_texture(
+        self.follow_remote_cursor(Some(gdk::Cursor::from_texture(
             &texture,
             shape.hot_x(),
             shape.hot_y(),
