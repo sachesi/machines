@@ -472,6 +472,12 @@ impl Console {
         let Some(main) = main else {
             return;
         };
+        // The mode is 0 until the server tells it, which it does once the channel is
+        // linked, emitting main-mouse-update; before that, spice-glib has nothing to send a
+        // request with, and crashes on one.
+        if main.mouse_mode() == 0 {
+            return;
+        }
         let wanted = if self.looking_glass_wants_server_mouse() {
             MOUSE_MODE_SERVER
         } else {
