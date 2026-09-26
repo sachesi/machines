@@ -343,7 +343,7 @@ fn present_storage(
         qemu_is_other_user: window(view).is_some_and(|w| w.host().qemu_is_other_user),
     });
     form.kind.connect_selected_notify(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         move |_| {
             form.file.take();
@@ -351,22 +351,22 @@ fn present_storage(
         }
     ));
     form.pool.connect_selected_notify(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         move |_| form.sync()
     ));
     form.volume.connect_selected_notify(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         move |_| form.sync()
     ));
     form.host_disk.connect_selected_notify(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         move |_| form.sync()
     ));
     choose.connect_clicked(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         #[weak]
         dialog,
@@ -397,7 +397,7 @@ fn present_storage(
         }
     ));
     add.connect_clicked(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         #[weak]
         dialog,
@@ -411,6 +411,8 @@ fn present_storage(
         }
     ));
     form.sync();
+    // As the new machine's form is held.
+    dialog.add_weak_ref_notify_local(move || drop(form));
     dialog.present(Some(view));
 }
 

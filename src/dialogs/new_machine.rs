@@ -381,7 +381,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         .build();
 
     form.source.connect_selected_notify(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         move |_| {
             form.file.take();
@@ -390,15 +390,17 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         }
     ));
     form.name.connect_changed(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         move |_| form.sync()
     ));
     // Typing a name of one's own stops the file from renaming the machine.
     let key = gtk::EventControllerKey::new();
     key.connect_key_pressed(glib::clone!(
-        #[strong]
+        #[weak]
         form,
+        #[upgrade_or]
+        glib::Propagation::Proceed,
         move |_, _, _, _| {
             form.name_is_derived.set(false);
             glib::Propagation::Proceed
@@ -406,12 +408,12 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
     ));
     form.name.add_controller(key);
     form.disk.connect_value_notify(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         move |_| form.disk_touched.set(true)
     ));
     form.os.connect_selected_notify(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         move |_| {
             if !form.disk_touched.get() {
@@ -426,7 +428,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         }
     ));
     choose.connect_clicked(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         #[weak]
         dialog,
@@ -478,7 +480,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         }
     ));
     create.connect_clicked(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         #[weak]
         dialog,
@@ -494,7 +496,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
     form.set_firmware(form.default_firmware());
     form.offer_pools(&[]);
     form.pool.connect_selected_notify(glib::clone!(
-        #[strong]
+        #[weak]
         form,
         move |_| form.show_pool_space()
     ));
@@ -510,6 +512,9 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         }
     ));
     form.sync();
+    // Its widgets hold the form weakly, as the form holds them, and the dialog alone holds it
+    // strongly, for them all to go with the dialog.
+    dialog.add_weak_ref_notify_local(move || drop(form));
     dialog.present(Some(win));
 }
 
