@@ -17,7 +17,7 @@ use crate::domain_xml::{
 };
 use crate::hooks::{self, Event};
 use crate::host_xml::HostDeviceId;
-use crate::hypervisor::MachineInfo;
+use crate::hypervisor::{Host, MachineInfo};
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
 use crate::{adw, glib, gtk, passthrough, prefs, usage};
@@ -25,9 +25,66 @@ use crate::{adw, glib, gtk, passthrough, prefs, usage};
 /// How long a spin row has to rest before its value is saved.
 const SETTLE: Duration = Duration::from_millis(700);
 
+/// What the details show of the computer's own files beside the machine's definition: the
+/// machine's scripts, and the devices it could have passed through. Reading them opens
+/// devices, so the view reads them off the main loop and fills the details from what it
+/// read last.
+#[derive(Debug, Clone, Default)]
+pub struct HostFiles {
+    /// The machine the scripts are of.
+    pub uuid: String,
+    scripts: Vec<(Event, String)>,
+    devices: passthrough::Devices,
+}
+
+impl HostFiles {
+    pub fn read(uuid: String, host: Host) -> Self {
+        let scripts = if host.hooks {
+            [Event::Prepare, Event::Release]
+                .into_iter()
+                .filter_map(|event| Some((event, hooks::script(&uuid, event)?)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let devices = if host.local {
+            passthrough::Devices::read(host.qemu_is_other_user)
+        } else {
+            passthrough::Devices::default()
+        };
+        Self {
+            uuid,
+            scripts,
+            devices,
+        }
+    }
+
+    /// The script of the machine `uuid` at `event`, where these are its.
+    fn script(&self, uuid: &str, event: Event) -> Option<String> {
+        self.scripts
+            .iter()
+            .find(|(e, _)| self.uuid == uuid && *e == event)
+            .map(|(_, script)| script.clone())
+    }
+
+    /// Whether the details of the machine `uuid` show `other` otherwise than these.
+    pub fn differ_for(&self, uuid: &str, other: &Self) -> bool {
+        self.devices != other.devices
+            || [Event::Prepare, Event::Release]
+                .into_iter()
+                .any(|event| self.script(uuid, event) != other.script(uuid, event))
+    }
+}
+
 /// Fill two columns with the machine's settings: what it is and what it runs with in
 /// `start`, the devices it has in `end`.
-pub fn fill(view: &MachineView, info: &MachineInfo, start: &gtk::Box, end: &gtk::Box) {
+pub fn fill(
+    view: &MachineView,
+    info: &MachineInfo,
+    files: &HostFiles,
+    start: &gtk::Box,
+    end: &gtk::Box,
+) {
     let Some(config) = &info.config else {
         let group = adw::PreferencesGroup::builder()
             .description(gettext(
@@ -45,14 +102,14 @@ pub fn fill(view: &MachineView, info: &MachineInfo, start: &gtk::Box, end: &gtk:
     }
     start.append(&resources(view, info, config, advanced));
     start.append(&display(view, info, config));
-    if let Some(group) = passthrough(view, info, config) {
+    if let Some(group) = passthrough(view, info, config, &files.devices) {
         start.append(&group);
     }
     if advanced {
         start.append(&power(view, info, config));
         start.append(&features(view, info, config));
     }
-    if let Some(group) = scripts(view, info, advanced) {
+    if let Some(group) = scripts(view, info, files, advanced) {
         start.append(&group);
     }
     end.append(&storage(view, config, live, advanced));
@@ -1536,12 +1593,13 @@ fn features(
 fn scripts(
     view: &MachineView,
     info: &MachineInfo,
+    files: &HostFiles,
     advanced: bool,
 ) -> Option<adw::PreferencesGroup> {
     if !window(view)?.host().hooks || !info.persistent {
         return None;
     }
-    let found = [Event::Prepare, Event::Release].map(|e| (e, hooks::script(&info.uuid, e)));
+    let found = [Event::Prepare, Event::Release].map(|e| (e, files.script(&info.uuid, e)));
     if !advanced && found.iter().all(|(_, s)| s.is_none()) {
         return None;
     }
@@ -1788,15 +1846,15 @@ fn passthrough(
     view: &MachineView,
     info: &MachineInfo,
     config: &MachineConfig,
+    devices: &passthrough::Devices,
 ) -> Option<adw::PreferencesGroup> {
-    let host = window(view).map(|w| w.host()).unwrap_or_default();
-    let local = host.local;
+    let local = window(view).is_some_and(|w| w.host().local);
     let in_use = config.looking_glass.is_some()
         || !config.balloon
         || config.hypervisor_hidden
         || !config.evdev.is_empty();
     let graphics_card = config.host_devices.iter().any(|d| match &d.id {
-        HostDeviceId::Pci(address) => passthrough::is_graphics_card(address),
+        HostDeviceId::Pci(address) => devices.graphics_cards.contains(&address.to_string()),
         HostDeviceId::Usb { .. } => false,
     });
     if !(in_use || local && graphics_card) {
@@ -1809,11 +1867,7 @@ fn passthrough(
         group.set_description(Some(&note));
     }
 
-    let kvmfr = if local {
-        passthrough::kvmfr_devices()
-    } else {
-        Vec::new()
-    };
+    let kvmfr: &[passthrough::Kvmfr] = if local { &devices.kvmfr } else { &[] };
     // The device the machine has, where the host still has it, else the host's first.
     let mine = kvmfr
         .iter()
@@ -1853,7 +1907,7 @@ fn passthrough(
             );
         }
         // The screen is only seen through the client, so it is no use turned on without.
-        let client = glib::find_program_in_path("looking-glass-client").is_some();
+        let client = devices.looking_glass_client;
         if !client {
             subtitle = format!(
                 "{subtitle}\n{}",
@@ -1921,17 +1975,15 @@ fn passthrough(
     }
 
     let (keyboards, mice) = if local {
-        passthrough::input_devices()
+        (devices.keyboards.clone(), devices.mice.clone())
     } else {
         Default::default()
     };
-    for (keyboard, devices) in [(true, keyboards), (false, mice)] {
+    for (keyboard, inputs) in [(true, keyboards), (false, mice)] {
         // On the user's own connection QEMU runs as the user, and reads only what the user
         // may.
-        let (devices, unreadable): (Vec<_>, Vec<_>) = devices
-            .into_iter()
-            .partition(|d| host.qemu_is_other_user || passthrough::readable(&d.path));
-        if let Some(row) = evdev_row(view, config, keyboard, devices, !unreadable.is_empty()) {
+        let (inputs, unreadable): (Vec<_>, Vec<_>) = inputs.into_iter().partition(|d| d.usable);
+        if let Some(row) = evdev_row(view, config, keyboard, inputs, !unreadable.is_empty()) {
             group.add(&row);
         }
     }
@@ -2091,5 +2143,28 @@ mod tests {
             Some("win 11")
         );
         assert_eq!(os_name("nonsense"), None);
+    }
+
+    #[test]
+    fn scripts_read_for_one_machine_show_for_it_alone() {
+        let files = |uuid: &str, script: Option<&str>| HostFiles {
+            uuid: uuid.to_owned(),
+            scripts: script
+                .map(|s| (Event::Prepare, s.to_owned()))
+                .into_iter()
+                .collect(),
+            devices: passthrough::Devices::default(),
+        };
+        let a = files("a", Some("#!/bin/sh\n"));
+        assert_eq!(
+            a.script("a", Event::Prepare).as_deref(),
+            Some("#!/bin/sh\n")
+        );
+        assert_eq!(a.script("a", Event::Release), None);
+        assert_eq!(a.script("b", Event::Prepare), None);
+        assert!(files("", None).differ_for("a", &a));
+        assert!(!a.differ_for("a", &a.clone()));
+        // Another machine's, read before, show nothing for it either.
+        assert!(!a.differ_for("b", &files("b", None)));
     }
 }

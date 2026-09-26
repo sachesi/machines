@@ -93,6 +93,7 @@ mod imp {
         pub(super) changed_handler: RefCell<Option<glib::SignalHandlerId>>,
         /// What the details page was last built from.
         pub(super) shown: RefCell<Option<MachineInfo>>,
+        pub(super) host_files: RefCell<details::HostFiles>,
         /// Whether the machine was running when last seen, for the page to follow it as
         /// it starts and stops.
         pub(super) was_active: Cell<Option<bool>>,
@@ -781,9 +782,43 @@ impl MachineView {
                 root.set_focus(gtk::Widget::NONE);
             }
             self.clear_details();
-            details::fill(self, &info, &imp.details_start, &imp.details_end);
+            let files = imp.host_files.borrow().clone();
+            details::fill(self, &info, &files, &imp.details_start, &imp.details_end);
             imp.shown.replace(Some(info));
+            self.read_host_files();
         }
+    }
+
+    /// Read what the details show of the host's own files again, off the main loop, and
+    /// fill the details again if it changed.
+    fn read_host_files(&self) {
+        let (Some(win), Some(info)) = (self.window(), self.info()) else {
+            return;
+        };
+        let host = win.host();
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            async move {
+                let read = gio::spawn_blocking(move || details::HostFiles::read(info.uuid, host));
+                let Ok(files) = read.await else {
+                    return;
+                };
+                // Unless the view went on to another machine meanwhile.
+                let Some(uuid) = view
+                    .machine()
+                    .map(|m| m.uuid())
+                    .filter(|u| *u == files.uuid)
+                else {
+                    return;
+                };
+                let changed = view.imp().host_files.borrow().differ_for(&uuid, &files);
+                view.imp().host_files.replace(files);
+                if changed {
+                    view.refresh_details();
+                }
+            }
+        ));
     }
 
     /// Show the details of a machine that is not running, and its screen once it starts,
