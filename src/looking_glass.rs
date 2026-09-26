@@ -175,7 +175,7 @@ pub struct Update {
     pub damage: Option<Vec<Rect>>,
     pub shape: Option<Shape>,
     pub visible: Option<bool>,
-    /// Where the guest's pointer is, on its screen.
+    /// Where the guest's pointer points, on its screen.
     pub position: Option<(i32, i32)>,
     /// Whether the host puts the guest's pointer where [`Reader::place`] says.
     pub places_pointer: Option<bool>,
@@ -226,6 +226,7 @@ impl Reader {
             whole: true,
             device: None,
             dmabufs: Vec::new(),
+            hotspot: (0, 0),
         };
         let path = path.to_owned();
         if let Err(e) = thread::Builder::new()
@@ -545,6 +546,9 @@ struct Worker {
     /// The DMA buffers made of where the host writes its frames, which are the same few
     /// places over and over.
     dmabufs: Vec<Dmabuf>,
+    /// The hotspot of the pointer's last shape. The host says where the shape's corner
+    /// is, and places the pointer by where it points, as Windows does.
+    hotspot: (i32, i32),
 }
 
 /// A DMA buffer of the `len` bytes at `offset` in the device.
@@ -985,13 +989,17 @@ impl Worker {
         } else {
             None
         };
+        if let Some(shape) = &shape {
+            self.hotspot = shape.hotspot;
+        }
+        let (hx, hy) = self.hotspot;
         self.publish(|update| {
             if shape.is_some() {
                 update.shape = shape;
             }
             update.visible = Some(flags & CURSOR_FLAG_VISIBLE != 0);
             if flags & CURSOR_FLAG_POSITION != 0 {
-                update.position = Some((i32::from(x), i32::from(y)));
+                update.position = Some((i32::from(x) + hx, i32::from(y) + hy));
             }
         });
         Ok(())
@@ -1050,6 +1058,42 @@ mod tests {
         let mut udata = welcome(KVMFR_VERSION, &[]);
         udata.extend_from_slice(&[RECORD_VMINFO, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 1, 2]);
         assert_eq!(Welcome::parse(&udata).unwrap().uuid, None);
+    }
+
+    #[test]
+    fn the_pointer_is_where_its_hotspot_is() {
+        let mut words = vec![0u64; 64];
+        // SAFETY: as in `frames_are_handed_on_with_what_changed`.
+        let memory: &mut [u8] =
+            unsafe { std::slice::from_raw_parts_mut(words.as_mut_ptr().cast(), 512) };
+        // A 1×1 shape with its corner at (10, 20) and its hotspot 3 across and 4 down.
+        memory[..4].copy_from_slice(&[10, 0, 20, 0]);
+        memory[8..10].copy_from_slice(&[3, 4]);
+        for (at, value) in [(12, 1u32), (16, 1), (20, 4)] {
+            memory[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        memory[256..260].copy_from_slice(&[100, 0, 50, 0]);
+        let ptr = NonNull::new(words.as_mut_ptr().cast()).unwrap();
+        // SAFETY: `words` outlives `shm`, and its u64 align it.
+        let shm = unsafe { Shm::new(ptr, 512) };
+        let (mut worker, shared) = worker();
+        let flags = CURSOR_FLAG_POSITION | CURSOR_FLAG_VISIBLE;
+
+        let shape = Message {
+            udata: flags | CURSOR_FLAG_SHAPE,
+            offset: 0,
+            size: 256,
+        };
+        worker.pointer(&shm, &shape).unwrap();
+        assert_eq!(lock(&shared).update.position, Some((13, 24)));
+
+        let moved = Message {
+            udata: flags,
+            offset: 256,
+            size: CURSOR_HEADER,
+        };
+        worker.pointer(&shm, &moved).unwrap();
+        assert_eq!(lock(&shared).update.position, Some((103, 54)));
     }
 
     #[test]
@@ -1113,6 +1157,7 @@ mod tests {
             whole: true,
             device: None,
             dmabufs: Vec::new(),
+            hotspot: (0, 0),
         };
         (worker, shared)
     }
