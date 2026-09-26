@@ -520,7 +520,7 @@ fn frame_texture(
         }
         builder = builder
             .set_update_texture(Some(&before))
-            .set_update_region(Some(&region));
+            .set_update_region(Some(&super::with_filter_margin(&region, width, height)));
     }
     builder.build()
 }

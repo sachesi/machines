@@ -28,6 +28,24 @@ use gtk::{cairo, graphene};
 /// What changed of the desktop, and the texture it was in before.
 type TextureUpdate = (cairo::Region, gdk::Texture);
 
+/// `region` grown by a pixel on every side, within `width`×`height`. A texture drawn
+/// scaled is filtered, so a pixel that changed changes the ones around it on screen too,
+/// which GTK leaves out of what it redraws.
+fn with_filter_margin(region: &cairo::Region, width: i32, height: i32) -> cairo::Region {
+    let grown = cairo::Region::create();
+    for i in 0..region.num_rectangles() {
+        let r = region.rectangle(i);
+        let _ = grown.union_rectangle(&cairo::RectangleInt::new(
+            r.x() - 1,
+            r.y() - 1,
+            r.width() + 2,
+            r.height() + 2,
+        ));
+    }
+    let _ = grown.intersect_rectangle(&cairo::RectangleInt::new(0, 0, width, height));
+    grown
+}
+
 /// A texture of the desktop in `bytes`, for which GTK uploads only what `update` says
 /// changed from the texture before, when there is one of the same size.
 fn memory_texture(
@@ -47,7 +65,7 @@ fn memory_texture(
     match update.filter(|(_, before)| before.width() == width && before.height() == height) {
         Some((region, before)) => builder
             .set_update_texture(Some(&before))
-            .set_update_region(Some(&region))
+            .set_update_region(Some(&with_filter_margin(&region, width, height)))
             .build(),
         None => builder.build(),
     }
