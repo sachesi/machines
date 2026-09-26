@@ -14,7 +14,7 @@ use crate::dialogs::{self, add_button, hardware, size};
 use crate::host_xml::{HostDisk, PoolSource};
 use crate::hypervisor::{HostUse, Hypervisor, Pool, Result, Volume};
 use crate::window::MachinesWindow;
-use crate::{adw, glib, gtk};
+use crate::{adw, gio, glib, gtk};
 
 const VOLUME_FORMATS: [&str; 2] = ["qcow2", "raw"];
 
@@ -812,7 +812,14 @@ impl Storage {
             let Some(path) = file.path() else {
                 return;
             };
-            let total = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let total = file
+                .query_info_future(
+                    gio::FILE_ATTRIBUTE_STANDARD_SIZE,
+                    gio::FileQueryInfoFlags::NONE,
+                    glib::Priority::DEFAULT,
+                )
+                .await
+                .map_or(0, |info| u64::try_from(info.size()).unwrap_or(0));
             let upload = Rc::new(Upload {
                 pool: pool.clone(),
                 name: path
