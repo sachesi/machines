@@ -17,7 +17,7 @@ use crate::hypervisor::{Change, Hypervisor, MachineInfo, MachineState, Result, S
 use crate::looking_glass::Status;
 use crate::machine::Machine;
 use crate::window::MachinesWindow;
-use crate::{adw, details, dialogs, gio, glib, gtk, keymap, usage};
+use crate::{adw, details, dialogs, gdk, gio, glib, gtk, keymap, usage};
 
 /// How close to the top edge the pointer has to come, in fullscreen, to bring up the
 /// console's controls.
@@ -724,6 +724,11 @@ impl MachineView {
             ),
         );
         imp.controls_timeout.replace(Some(timeout));
+    }
+
+    /// The guest's screen as Looking Glass shows it in the console, if it does.
+    pub fn looking_glass_frame(&self) -> Option<gdk::Texture> {
+        self.imp().console.looking_glass_frame()
     }
 
     fn console_is_fullscreen(&self) -> bool {

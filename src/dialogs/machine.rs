@@ -1135,19 +1135,31 @@ pub fn screenshot(view: &MachineView) {
     let (Some(win), Some(info)) = (window(view), view.info()) else {
         return;
     };
+    // Libvirt has nothing of a screen only Looking Glass shows.
+    let frame = view.looking_glass_frame();
     glib::spawn_future_local(async move {
         let uuid = info.uuid.clone();
         // Made a PNG there too, which for a large screen takes long enough to hold up the
         // window.
-        let png = win.call(move |hv| {
-            gdk::Texture::from_bytes(&glib::Bytes::from_owned(hv.screenshot(&uuid)?))
-                .map(|texture| texture.save_to_png_bytes())
-                .map_err(|e| e.to_string())
-        });
-        let png = match png.await {
-            Some(Ok(png)) => png,
-            Some(Err(e)) => return win.toast(&e),
-            None => return,
+        let png = match frame {
+            Some(frame) => gio::spawn_blocking(move || frame.save_to_png_bytes())
+                .await
+                .ok(),
+            None => {
+                let png = win.call(move |hv| {
+                    gdk::Texture::from_bytes(&glib::Bytes::from_owned(hv.screenshot(&uuid)?))
+                        .map(|texture| texture.save_to_png_bytes())
+                        .map_err(|e| e.to_string())
+                });
+                match png.await {
+                    Some(Ok(png)) => Some(png),
+                    Some(Err(e)) => return win.toast(&e),
+                    None => None,
+                }
+            }
+        };
+        let Some(png) = png else {
+            return;
         };
         let time = glib::DateTime::now_local()
             .and_then(|t| t.format("%Y-%m-%d %H-%M-%S"))

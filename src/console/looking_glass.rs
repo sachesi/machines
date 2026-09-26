@@ -96,6 +96,11 @@ impl Console {
         self.imp().looking_glass.borrow().status.clone()
     }
 
+    /// The guest's screen as Looking Glass last showed it, while it shows it.
+    pub fn looking_glass_frame(&self) -> Option<gdk::Texture> {
+        self.imp().looking_glass.borrow().texture.clone()
+    }
+
     pub(super) fn watches_looking_glass(&self) -> bool {
         self.imp().looking_glass.borrow().reader.is_some()
     }
