@@ -377,6 +377,12 @@ fn stopped(info: &MachineInfo) -> (Option<String>, String) {
     }
 }
 
+/// Close the serial console where closing it, which waits on libvirt's answer, holds up
+/// nothing on screen.
+fn close_stream(serial: SerialStream) {
+    gio::spawn_blocking(move || drop(serial));
+}
+
 /// Whether the running machine has a screen for the console to show: a display it can
 /// connect to, and a video card to draw it, which Looking Glass and a passed-through
 /// graphics card do without.
@@ -1242,6 +1248,9 @@ impl MachineView {
                 let opened = win.call(move |hv| hv.open_serial(&uuid, sink)).await;
                 let imp = view.imp();
                 if imp.serial_generation.get() != generation {
+                    if let Some(Ok(serial)) = opened {
+                        close_stream(serial);
+                    }
                     return;
                 }
                 imp.serial_connecting.set(false);
@@ -1288,8 +1297,12 @@ impl MachineView {
     fn close_serial(&self) {
         let imp = self.imp();
         let connecting = imp.serial_connecting.replace(false);
-        if imp.serial.take().is_some() || connecting {
+        let serial = imp.serial.take();
+        if serial.is_some() || connecting {
             imp.serial_generation.set(imp.serial_generation.get() + 1);
+        }
+        if let Some(serial) = serial {
+            close_stream(serial);
         }
     }
 
