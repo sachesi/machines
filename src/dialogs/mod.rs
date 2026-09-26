@@ -293,6 +293,9 @@ mod tests {
         mode(&open, 0o711);
         assert_eq!(closed_to_qemu(&closed.join("a.iso")), Some(closed.clone()));
         assert!(closed_to_qemu(&open.join("a.iso")).is_none_or(|d| !d.starts_with(&base)));
+        let warning =
+            glib::MainContext::default().block_on(qemu_access_warning(closed.join("a.iso")));
+        assert!(warning.is_some_and(|w| w.contains(&*closed.to_string_lossy())));
         std::fs::remove_dir_all(&base).unwrap();
     }
 }
