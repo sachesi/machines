@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.3\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-26 21:28+0300\n"
+"POT-Creation-Date: 2026-09-26 22:34+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -103,73 +103,80 @@ msgid ""
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:13
-msgid "A serial console shown as text"
+msgid ""
+"The screen Looking Glass shares from a passed-through graphics card shown in "
+"the console, with the Looking Glass client's Scroll Lock keys to hold the "
+"pointer for games"
 msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:14
+msgid "A serial console shown as text"
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:15
 msgid ""
 "New machines from an installation ISO or an existing disk image, with a disk "
 "in libvirt's default storage pool, set up for the system on the ISO"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:15
+#: data/io.github.sachesi.machines.metainfo.xml:16
 msgid ""
 "Processors, memory, autostart, boot order and the CD-ROM drive changed from "
 "the details page"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:16
+#: data/io.github.sachesi.machines.metainfo.xml:17
 msgid ""
 "Graphs of what a running machine uses of the host's processors, memory, "
 "disks and network"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:17
+#: data/io.github.sachesi.machines.metainfo.xml:18
 msgid ""
 "Processor model, topology and pinning, huge pages, and BIOS or UEFI firmware "
 "with Secure Boot"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:18
+#: data/io.github.sachesi.machines.metainfo.xml:19
 msgid "Machines renamed, and cloned with copies of their disks"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:19
+#: data/io.github.sachesi.machines.metainfo.xml:20
 msgid ""
 "Snapshots of a machine's disks, and of its memory while it runs, to revert to"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:20
+#: data/io.github.sachesi.machines.metainfo.xml:21
 msgid ""
 "Disks, CD/DVD drives, network interfaces, display and video card, and USB "
 "and PCI devices of the host added and changed from the details page"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:21
+#: data/io.github.sachesi.machines.metainfo.xml:22
 msgid "Storage pools, disks of the host and virtual networks"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:22
+#: data/io.github.sachesi.machines.metainfo.xml:23
 msgid "A machine's XML definition, edited by hand"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:23
+#: data/io.github.sachesi.machines.metainfo.xml:24
 msgid "Machines made with virt-manager"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:34
+#: data/io.github.sachesi.machines.metainfo.xml:35
 msgid "sachesi"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:43
+#: data/io.github.sachesi.machines.metainfo.xml:44
 msgid "Follow what a running machine uses, and change its hardware"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:47
+#: data/io.github.sachesi.machines.metainfo.xml:48
 msgid "Create a machine from an installation image"
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:53
+#: data/io.github.sachesi.machines.metainfo.xml:54
 msgid ""
 "The details have a Passthrough group for Looking Glass, the memory balloon, "
 "hiding the hypervisor from the guest, and the host's keyboard and mouse. "
@@ -183,7 +190,7 @@ msgid ""
 "cannot start for want of huge pages says how many are missing."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:54
+#: data/io.github.sachesi.machines.metainfo.xml:55
 msgid ""
 "A disk or network card whose settings change at the next start is marked as "
 "such, and a setting libvirt refuses shows as it was. Settings QEMU cannot "
@@ -191,7 +198,7 @@ msgid ""
 "are no longer offered."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:55
+#: data/io.github.sachesi.machines.metainfo.xml:56
 msgid ""
 "The window no longer waits on libvirt as a connection or serial console "
 "closes, as a screenshot is saved, or as the details look at the host's "
@@ -200,7 +207,7 @@ msgid ""
 "memory once closed."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:60
+#: data/io.github.sachesi.machines.metainfo.xml:61
 msgid ""
 "A click in the console gives the virtual machine the shortcuts the desktop "
 "would otherwise take, such as Super and Alt+Tab, until Ctrl+Alt releases the "
@@ -212,7 +219,7 @@ msgid ""
 "guest."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:61
+#: data/io.github.sachesi.machines.metainfo.xml:62
 msgid ""
 "A libvirt daemon that stops answering now shows as a lost connection instead "
 "of leaving the window waiting. SPICE is offered only where QEMU has its "
@@ -221,7 +228,7 @@ msgid ""
 "screen readers know it by the machine's name."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:66
+#: data/io.github.sachesi.machines.metainfo.xml:67
 msgid ""
 "New virtual machines boot with the firmware chosen for them: BIOS, UEFI, or "
 "UEFI with Secure Boot, which is the default where the host's firmware has "
@@ -230,7 +237,7 @@ msgid ""
 "socket, so that Windows uses all of them."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:67
+#: data/io.github.sachesi.machines.metainfo.xml:68
 msgid ""
 "The serial console is offered only to machines with a serial port, which is "
 "added and removed with the other devices. The sidebar selects a machine on a "
@@ -240,7 +247,7 @@ msgid ""
 "a keyboard shortcuts dialog lists what the keyboard does."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:71
+#: data/io.github.sachesi.machines.metainfo.xml:72
 msgid "First release."
 msgstr ""
 
@@ -264,11 +271,26 @@ msgstr ""
 msgid "translator-credits"
 msgstr ""
 
-#: src/console.rs:126
+#: src/console.rs:145
 #, no-c-format
 msgid ""
 "Takes every key for the virtual machine; press Ctrl+Alt to release "
 "the                  keyboard"
+msgstr ""
+
+#: src/console/looking_glass.rs:313
+#, no-c-format
+msgid "Pointer sensitivity: {}"
+msgstr ""
+
+#: src/console/looking_glass.rs:358
+#, no-c-format
+msgid "The pointer cannot be held on this desktop"
+msgstr ""
+
+#: src/console/looking_glass.rs:371
+#, no-c-format
+msgid "Press Scroll Lock to release the pointer"
 msgstr ""
 
 #: src/details.rs:91
@@ -699,7 +721,7 @@ msgstr ""
 msgid "Devices"
 msgstr ""
 
-#: src/details.rs:1345 src/dialogs/hardware.rs:1059
+#: src/details.rs:1345 src/dialogs/hardware.rs:1066
 #, no-c-format
 msgid "Add Device"
 msgstr ""
@@ -716,7 +738,7 @@ msgstr ""
 msgid "Emulated, version 2.0"
 msgstr ""
 
-#: src/details.rs:1364 src/details.rs:1365 src/dialogs/hardware.rs:1071
+#: src/details.rs:1364 src/details.rs:1365 src/dialogs/hardware.rs:1078
 #, no-c-format
 msgid "TPM"
 msgstr ""
@@ -726,12 +748,12 @@ msgstr ""
 msgid "The host’s own"
 msgstr ""
 
-#: src/details.rs:1367 src/dialogs/hardware.rs:1077
+#: src/details.rs:1367 src/dialogs/hardware.rs:1084
 #, no-c-format
 msgid "Random Number Generator"
 msgstr ""
 
-#: src/details.rs:1371 src/dialogs/hardware.rs:1083
+#: src/details.rs:1371 src/dialogs/hardware.rs:1090
 #, no-c-format
 msgid "Sound Card"
 msgstr ""
@@ -746,7 +768,7 @@ msgstr ""
 msgid "USB Audio"
 msgstr ""
 
-#: src/details.rs:1380 src/dialogs/hardware.rs:1089
+#: src/details.rs:1380 src/dialogs/hardware.rs:1096
 #, no-c-format
 msgid "Serial Port"
 msgstr ""
@@ -756,7 +778,7 @@ msgstr ""
 msgid "Shown in the serial console"
 msgstr ""
 
-#: src/details.rs:1384 src/dialogs/hardware.rs:1065
+#: src/details.rs:1384 src/dialogs/hardware.rs:1072
 #, no-c-format
 msgid "Shared Folder"
 msgstr ""
@@ -1260,7 +1282,7 @@ msgstr ""
 msgid "No Host Devices"
 msgstr ""
 
-#: src/dialogs/hardware.rs:642 src/dialogs/hardware.rs:771
+#: src/dialogs/hardware.rs:642 src/dialogs/hardware.rs:778
 #, no-c-format
 msgid "USB Devices"
 msgstr ""
@@ -1283,24 +1305,24 @@ msgstr ""
 msgid "The host runs from a disk on it"
 msgstr ""
 
-#: src/dialogs/hardware.rs:709
+#: src/dialogs/hardware.rs:716
 #, no-c-format
 msgid "None to pass through"
 msgstr ""
 
-#: src/dialogs/hardware.rs:725
+#: src/dialogs/hardware.rs:732
 #, no-c-format
 msgid "Pass “{device}” Through?"
 msgstr ""
 
-#: src/dialogs/hardware.rs:728
+#: src/dialogs/hardware.rs:735
 #, no-c-format
 msgid ""
 "The host loses the device while the virtual machine has it. If it is "
 "this              computer’s keyboard or mouse, they stop working here."
 msgstr ""
 
-#: src/dialogs/hardware.rs:732
+#: src/dialogs/hardware.rs:739
 #, no-c-format
 msgid ""
 "The host loses the device at once, until the virtual machine stops. If the "
@@ -1308,7 +1330,7 @@ msgid ""
 "reaches the network through              it, the host stops working."
 msgstr ""
 
-#: src/dialogs/hardware.rs:737
+#: src/dialogs/hardware.rs:744
 #, no-c-format
 msgid ""
 "The host loses the device whenever the virtual machine runs. If the host "
@@ -1316,12 +1338,12 @@ msgid ""
 "network through it,              the host stops working then."
 msgstr ""
 
-#: src/dialogs/hardware.rs:742
+#: src/dialogs/hardware.rs:749
 #, no-c-format
 msgid "_Pass Through"
 msgstr ""
 
-#: src/dialogs/hardware.rs:758
+#: src/dialogs/hardware.rs:765
 #, no-c-format
 msgid ""
 "Plugged in here, a device stays with the virtual machine until it is "
@@ -1329,12 +1351,12 @@ msgid ""
 "under Host Devices in              Details."
 msgstr ""
 
-#: src/dialogs/hardware.rs:799 src/dialogs/hardware.rs:924
+#: src/dialogs/hardware.rs:806 src/dialogs/hardware.rs:931
 #, no-c-format
 msgid "No USB devices"
 msgstr ""
 
-#: src/dialogs/hardware.rs:862
+#: src/dialogs/hardware.rs:869
 #, no-c-format
 msgid ""
 "Devices of this computer, lent to the virtual machine through the "
@@ -1342,57 +1364,57 @@ msgid ""
 "switched off here."
 msgstr ""
 
-#: src/dialogs/hardware.rs:874
+#: src/dialogs/hardware.rs:881
 #, no-c-format
 msgid "Redirect USB Devices"
 msgstr ""
 
-#: src/dialogs/hardware.rs:901
+#: src/dialogs/hardware.rs:908
 #, no-c-format
 msgid "_Add USB Redirection"
 msgstr ""
 
-#: src/dialogs/hardware.rs:912
+#: src/dialogs/hardware.rs:919
 #, no-c-format
 msgid "The virtual machine takes no USB devices from the console"
 msgstr ""
 
-#: src/dialogs/hardware.rs:914
+#: src/dialogs/hardware.rs:921
 #, no-c-format
 msgid "Adding two slots for them reconnects the console"
 msgstr ""
 
-#: src/dialogs/hardware.rs:1066
+#: src/dialogs/hardware.rs:1073
 #, no-c-format
 msgid "A folder of the host, which the guest mounts over virtiofs"
 msgstr ""
 
-#: src/dialogs/hardware.rs:1072
+#: src/dialogs/hardware.rs:1079
 #, no-c-format
 msgid "An emulated TPM 2.0, which Windows 11 needs; swtpm has to be installed"
 msgstr ""
 
-#: src/dialogs/hardware.rs:1078
+#: src/dialogs/hardware.rs:1085
 #, no-c-format
 msgid "Entropy from the host, for guests that start up waiting for it"
 msgstr ""
 
-#: src/dialogs/hardware.rs:1084
+#: src/dialogs/hardware.rs:1091
 #, no-c-format
 msgid "Heard in the console with SPICE"
 msgstr ""
 
-#: src/dialogs/hardware.rs:1090
+#: src/dialogs/hardware.rs:1097
 #, no-c-format
 msgid "A text console, for systems without a desktop"
 msgstr ""
 
-#: src/dialogs/hardware.rs:1099
+#: src/dialogs/hardware.rs:1106
 #, no-c-format
 msgid "The virtual machine has one"
 msgstr ""
 
-#: src/dialogs/hardware.rs:1123
+#: src/dialogs/hardware.rs:1130
 #, no-c-format
 msgid "Choose a Folder to Share"
 msgstr ""
@@ -1540,7 +1562,7 @@ msgstr ""
 msgid "Definition of “{name}”"
 msgstr ""
 
-#: src/dialogs/machine.rs:498 src/machine_view.rs:448
+#: src/dialogs/machine.rs:498 src/machine_view.rs:453
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
@@ -1565,7 +1587,7 @@ msgstr ""
 msgid "The changes have not been saved."
 msgstr ""
 
-#: src/dialogs/machine.rs:678 src/machine_view.rs:285
+#: src/dialogs/machine.rs:678 src/machine_view.rs:290
 #, no-c-format
 msgid "_Discard"
 msgstr ""
@@ -1637,7 +1659,7 @@ msgid_plural "{total} matches"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/dialogs/machine.rs:1157
+#: src/dialogs/machine.rs:1169
 #, no-c-format
 msgid "Save Screenshot"
 msgstr ""
@@ -2271,7 +2293,7 @@ msgstr ""
 msgid "Shut the virtual machine down to clone it"
 msgstr ""
 
-#: src/hypervisor/devices.rs:322
+#: src/hypervisor/devices.rs:337
 #, no-c-format
 msgid "{path} is neither a file nor a block device"
 msgstr ""
@@ -2281,226 +2303,231 @@ msgstr ""
 msgid "libvirt stopped taking the file"
 msgstr ""
 
-#: src/machine_view.rs:183
+#: src/machine_view.rs:188
 #, no-c-format
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:280
+#: src/machine_view.rs:285
 #, no-c-format
 msgid "Discard Saved State?"
 msgstr ""
 
-#: src/machine_view.rs:282
+#: src/machine_view.rs:287
 #, no-c-format
 msgid ""
 "The virtual machine starts afresh next time instead of resuming where "
 "it                  was saved. Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:304
+#: src/machine_view.rs:309
 #, no-c-format
 msgid "Force Reset?"
 msgstr ""
 
-#: src/machine_view.rs:306
+#: src/machine_view.rs:311
 #, no-c-format
 msgid ""
 "The virtual machine restarts at once, as if its reset button were "
 "pressed.                  Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:309
+#: src/machine_view.rs:314
 #, no-c-format
 msgid "Force _Reset"
 msgstr ""
 
-#: src/machine_view.rs:319
+#: src/machine_view.rs:324
 #, no-c-format
 msgid "Force Off?"
 msgstr ""
 
-#: src/machine_view.rs:321
+#: src/machine_view.rs:326
 #, no-c-format
 msgid ""
 "The virtual machine stops at once, as if its power were cut. Work not "
 "saved                  in it is lost, and its disks may be left inconsistent."
 msgstr ""
 
-#: src/machine_view.rs:324
+#: src/machine_view.rs:329
 #, no-c-format
 msgid "Force _Off"
 msgstr ""
 
-#: src/machine_view.rs:380
+#: src/machine_view.rs:385
 #, no-c-format
 msgid "It resumes where it was saved."
 msgstr ""
 
-#: src/machine_view.rs:381 ui/machine_view.ui:366
+#: src/machine_view.rs:386 ui/machine_view.ui:615
 #, no-c-format
 msgid "_Resume"
 msgstr ""
 
-#: src/machine_view.rs:384
+#: src/machine_view.rs:389
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:760 src/machine_view.rs:763
+#: src/machine_view.rs:667
+#, no-c-format
+msgid "Press Ctrl+Alt to release the keyboard"
+msgstr ""
+
+#: src/machine_view.rs:793 src/machine_view.rs:796
 #, no-c-format
 msgid "Starting…"
 msgstr ""
 
-#: src/machine_view.rs:768
+#: src/machine_view.rs:801
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:770 ui/machine_view.ui:81
+#: src/machine_view.rs:803 ui/machine_view.ui:81
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:977
+#: src/machine_view.rs:1024
 #, no-c-format
 msgid "Waiting for Looking Glass"
 msgstr ""
 
-#: src/machine_view.rs:979
+#: src/machine_view.rs:1026
 #, no-c-format
 msgid ""
 "The guest’s screen shows here once the Looking Glass host "
 "application                      runs in the guest."
 msgstr ""
 
-#: src/machine_view.rs:984
+#: src/machine_view.rs:1031
 #, no-c-format
 msgid "Incompatible Looking Glass"
 msgstr ""
 
-#: src/machine_view.rs:987
+#: src/machine_view.rs:1034
 #, no-c-format
 msgid ""
 "The guest runs the Looking Glass host application {version}; "
 "the                          console shows the screen of version B7."
 msgstr ""
 
-#: src/machine_view.rs:992
+#: src/machine_view.rs:1039
 #, no-c-format
 msgid ""
 "The guest runs a version of the Looking Glass host application "
 "other                          than B7, whose screen the console shows."
 msgstr ""
 
-#: src/machine_view.rs:998
+#: src/machine_view.rs:1045
 #, no-c-format
 msgid "Another Machine’s Screen"
 msgstr ""
 
-#: src/machine_view.rs:999
+#: src/machine_view.rs:1046
 #, no-c-format
 msgid "The kvmfr device shares the screen of another virtual machine."
 msgstr ""
 
-#: src/machine_view.rs:1002
+#: src/machine_view.rs:1049
 #, no-c-format
 msgid "Looking Glass Device Too Small"
 msgstr ""
 
-#: src/machine_view.rs:1004
+#: src/machine_view.rs:1051
 #, no-c-format
 msgid ""
 "The guest’s screen needs a kvmfr device of {size} MiB, which the "
 "kvmfr                      module’s static_size_mb option sets."
 msgstr ""
 
-#: src/machine_view.rs:1010 src/machine_view.rs:1016
+#: src/machine_view.rs:1057 src/machine_view.rs:1063
 #, no-c-format
 msgid "Looking Glass Unavailable"
 msgstr ""
 
-#: src/machine_view.rs:1012
+#: src/machine_view.rs:1059
 #, no-c-format
 msgid ""
 "This user may not open the kvmfr device, which a udev rule for the "
 "kvmfr                      module can allow."
 msgstr ""
 
-#: src/machine_view.rs:1058
+#: src/machine_view.rs:1098
 #, no-c-format
 msgid "Shown in Looking Glass"
 msgstr ""
 
-#: src/machine_view.rs:1060
+#: src/machine_view.rs:1100
 #, no-c-format
 msgid ""
 "The guest shows its screen on the passed-through graphics card. Open "
 "it                      with the Looking Glass client."
 msgstr ""
 
-#: src/machine_view.rs:1072
+#: src/machine_view.rs:1112
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:1074 src/machine_view.rs:1332
+#: src/machine_view.rs:1114 src/machine_view.rs:1372
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:1082
+#: src/machine_view.rs:1122
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:1084
+#: src/machine_view.rs:1124
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:1091
+#: src/machine_view.rs:1131
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:1092
+#: src/machine_view.rs:1132
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:1119 src/machine_view.rs:1160 ui/machine_view.ui:88
-#: ui/shortcuts-dialog.ui:44
+#: src/machine_view.rs:1159 src/machine_view.rs:1200 ui/machine_view.ui:88
+#: ui/machine_view.ui:235 ui/shortcuts-dialog.ui:44
 #, no-c-format
 msgid "Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:1158 ui/machine_view.ui:218
+#: src/machine_view.rs:1198 ui/machine_view.ui:467
 #, no-c-format
 msgid "Leave Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:1312
+#: src/machine_view.rs:1352
 #, no-c-format
 msgid "No Serial Console"
 msgstr ""
 
-#: src/machine_view.rs:1313
+#: src/machine_view.rs:1353
 #, no-c-format
 msgid "The serial port comes with the next start."
 msgstr ""
 
-#: src/machine_view.rs:1330
+#: src/machine_view.rs:1370
 #, no-c-format
 msgid "Serial Console Closed"
 msgstr ""
 
-#: src/machine_view.rs:1402
+#: src/machine_view.rs:1442
 #, no-c-format
 msgid "The serial console closed."
 msgstr ""
 
-#: src/machine_view.rs:1492
+#: src/machine_view.rs:1532
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
@@ -2573,7 +2600,7 @@ msgstr ""
 msgid "Serial Console"
 msgstr ""
 
-#: ui/machine_view.ui:59 ui/machine_view.ui:319
+#: ui/machine_view.ui:59 ui/machine_view.ui:568
 msgid "Details"
 msgstr ""
 
@@ -2581,124 +2608,196 @@ msgstr ""
 msgid "Machine Menu"
 msgstr ""
 
-#: ui/machine_view.ui:173
-msgid "Press Ctrl+Alt to release the keyboard"
+#: ui/machine_view.ui:199
+msgid "Scroll Lock"
 msgstr ""
 
-#: ui/machine_view.ui:211
-msgid "Send Key"
+#: ui/machine_view.ui:212
+msgid "Hold or release the pointer"
 msgstr ""
 
-#: ui/machine_view.ui:238
-msgid "Display in Its Own Window"
+#: ui/machine_view.ui:222
+msgid "Scroll Lock+F"
 msgstr ""
 
-#: ui/machine_view.ui:241
-msgid "_Bring Back"
+#: ui/machine_view.ui:245
+msgid "Scroll Lock+R"
 msgstr ""
 
-#: ui/machine_view.ui:261
-msgid "Serial"
+#: ui/machine_view.ui:258
+msgid "Turn the screen clockwise"
 msgstr ""
 
-#: ui/machine_view.ui:275
-msgid "Nothing received yet. The guest may not use its serial port."
+#: ui/machine_view.ui:268
+msgid "Scroll Lock+Insert"
 msgstr ""
 
-#: ui/machine_view.ui:371
-msgid "_Pause"
+#: ui/machine_view.ui:281
+msgid "Faster pointer while held"
 msgstr ""
 
-#: ui/machine_view.ui:376
-msgid "Sa_ve"
+#: ui/machine_view.ui:291
+msgid "Scroll Lock+Delete"
 msgstr ""
 
-#: ui/machine_view.ui:382
-msgid "_Shut Down"
+#: ui/machine_view.ui:304
+msgid "Slower pointer while held"
 msgstr ""
 
-#: ui/machine_view.ui:386
-msgid "_Reboot"
+#: ui/machine_view.ui:314
+msgid "Scroll Lock+Up"
 msgstr ""
 
-#: ui/machine_view.ui:392
-msgid "Force _Reset…"
+#: ui/machine_view.ui:327
+msgid "Send Volume Up"
+msgstr ""
+
+#: ui/machine_view.ui:337
+msgid "Scroll Lock+Down"
+msgstr ""
+
+#: ui/machine_view.ui:350
+msgid "Send Volume Down"
+msgstr ""
+
+#: ui/machine_view.ui:360
+msgid "Scroll Lock+M"
+msgstr ""
+
+#: ui/machine_view.ui:373
+msgid "Send Mute"
+msgstr ""
+
+#: ui/machine_view.ui:383
+msgid "Scroll Lock+Super"
 msgstr ""
 
 #: ui/machine_view.ui:396
+msgid "Send Super"
+msgstr ""
+
+#: ui/machine_view.ui:406
+msgid "Scroll Lock+F1…F12"
+msgstr ""
+
+#: ui/machine_view.ui:419
+msgid "Send Ctrl+Alt+F1…F12"
+msgstr ""
+
+#: ui/machine_view.ui:460
+msgid "Send Key"
+msgstr ""
+
+#: ui/machine_view.ui:487
+msgid "Display in Its Own Window"
+msgstr ""
+
+#: ui/machine_view.ui:490
+msgid "_Bring Back"
+msgstr ""
+
+#: ui/machine_view.ui:510
+msgid "Serial"
+msgstr ""
+
+#: ui/machine_view.ui:524
+msgid "Nothing received yet. The guest may not use its serial port."
+msgstr ""
+
+#: ui/machine_view.ui:620
+msgid "_Pause"
+msgstr ""
+
+#: ui/machine_view.ui:625
+msgid "Sa_ve"
+msgstr ""
+
+#: ui/machine_view.ui:631
+msgid "_Shut Down"
+msgstr ""
+
+#: ui/machine_view.ui:635
+msgid "_Reboot"
+msgstr ""
+
+#: ui/machine_view.ui:641
+msgid "Force _Reset…"
+msgstr ""
+
+#: ui/machine_view.ui:645
 msgid "Force _Off…"
 msgstr ""
 
-#: ui/machine_view.ui:404
+#: ui/machine_view.ui:653
 msgid "_Fullscreen"
 msgstr ""
 
-#: ui/machine_view.ui:408
+#: ui/machine_view.ui:657
 msgid "Open Display in New _Window"
 msgstr ""
 
-#: ui/machine_view.ui:412
+#: ui/machine_view.ui:661
 msgid "Take _Screenshot…"
 msgstr ""
 
-#: ui/machine_view.ui:418
+#: ui/machine_view.ui:667
 msgid "_USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:422
+#: ui/machine_view.ui:671
 msgid "_Redirect USB Devices…"
 msgstr ""
 
-#: ui/machine_view.ui:426
+#: ui/machine_view.ui:675
 msgid "Send _Key"
 msgstr ""
 
-#: ui/machine_view.ui:428
+#: ui/machine_view.ui:677
 msgctxt "shortcut"
 msgid "Ctrl+Alt+Del"
 msgstr ""
 
-#: ui/machine_view.ui:433
+#: ui/machine_view.ui:682
 msgctxt "shortcut"
 msgid "Ctrl+Alt+Backspace"
 msgstr ""
 
-#: ui/machine_view.ui:438
+#: ui/machine_view.ui:687
 msgctxt "shortcut"
 msgid "Ctrl+Alt+F1"
 msgstr ""
 
-#: ui/machine_view.ui:443
+#: ui/machine_view.ui:692
 msgctxt "shortcut"
 msgid "Ctrl+Alt+F2"
 msgstr ""
 
-#: ui/machine_view.ui:448
+#: ui/machine_view.ui:697
 msgctxt "shortcut"
 msgid "Ctrl+Alt+F7"
 msgstr ""
 
-#: ui/machine_view.ui:456
+#: ui/machine_view.ui:705
 msgid "_Advanced Settings"
 msgstr ""
 
-#: ui/machine_view.ui:462
+#: ui/machine_view.ui:711
 msgid "Re_name…"
 msgstr ""
 
-#: ui/machine_view.ui:466
+#: ui/machine_view.ui:715
 msgid "_Clone…"
 msgstr ""
 
-#: ui/machine_view.ui:470
+#: ui/machine_view.ui:719
 msgid "Edit _XML…"
 msgstr ""
 
-#: ui/machine_view.ui:474
+#: ui/machine_view.ui:723
 msgid "Discard _Saved State…"
 msgstr ""
 
-#: ui/machine_view.ui:479
+#: ui/machine_view.ui:728
 msgid "_Delete…"
 msgstr ""
 
