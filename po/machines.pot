@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: machines 0.1.3\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-26 13:34+0300\n"
+"POT-Creation-Date: 2026-09-26 21:28+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -264,7 +264,7 @@ msgstr ""
 msgid "translator-credits"
 msgstr ""
 
-#: src/console.rs:123
+#: src/console.rs:126
 #, no-c-format
 msgid ""
 "Takes every key for the virtual machine; press Ctrl+Alt to release "
@@ -559,7 +559,7 @@ msgid "Cache"
 msgstr ""
 
 #: src/details.rs:1059 src/details.rs:1627 src/details.rs:1747
-#: src/details.rs:2021 src/details.rs:2094
+#: src/details.rs:2011 src/details.rs:2084
 #, no-c-format
 msgid "None"
 msgstr ""
@@ -996,14 +996,14 @@ msgstr ""
 #: src/details.rs:1895
 #, no-c-format
 msgid ""
-"Shares the guest’s screen through {path} in place of its video card; the "
-"client              takes the keyboard, mouse and clipboard over SPICE on "
-"127.0.0.1"
+"Shows the guest’s screen in the console through {path}, in place of its "
+"video              card; the Looking Glass client can show it too, over "
+"SPICE on 127.0.0.1"
 msgstr ""
 
 #: src/details.rs:1902
 #, no-c-format
-msgid "This machine has no SPICE display for the client to connect to"
+msgid "This machine has no SPICE display for the keyboard and mouse"
 msgstr ""
 
 #: src/details.rs:1913
@@ -1011,75 +1011,70 @@ msgstr ""
 msgid "The size of {path} cannot be read: {error}"
 msgstr ""
 
-#: src/details.rs:1923
-#, no-c-format
-msgid "The Looking Glass client, looking-glass-client, is not installed"
-msgstr ""
-
-#: src/details.rs:1950
+#: src/details.rs:1940
 #, no-c-format
 msgid "Memory Balloon"
 msgstr ""
 
-#: src/details.rs:1952
+#: src/details.rs:1942
 #, no-c-format
 msgid ""
 "Lets the host take back memory the guest does not use, which passed-through "
 "PCI              devices prevent"
 msgstr ""
 
-#: src/details.rs:1969
+#: src/details.rs:1959
 #, no-c-format
 msgid "Hide the Hypervisor"
 msgstr ""
 
-#: src/details.rs:1971
+#: src/details.rs:1961
 #, no-c-format
 msgid "For drivers and games that refuse to run in a virtual machine"
 msgstr ""
 
-#: src/details.rs:2043
+#: src/details.rs:2033
 #, no-c-format
 msgid "Host Keyboard"
 msgstr ""
 
-#: src/details.rs:2044
+#: src/details.rs:2034
 #, no-c-format
 msgid "Both Ctrl keys switch it, and the mouse, between the host and the guest"
 msgstr ""
 
-#: src/details.rs:2048 src/details.rs:2053
+#: src/details.rs:2038 src/details.rs:2043
 #, no-c-format
 msgid "Host Mouse"
 msgstr ""
 
-#: src/details.rs:2049
+#: src/details.rs:2039
 #, no-c-format
 msgid "Goes between the host and the guest with the keyboard"
 msgstr ""
 
-#: src/details.rs:2054
+#: src/details.rs:2044
 #, no-c-format
 msgid "Needs a host keyboard, whose Ctrl keys give the mouse back to the host"
 msgstr ""
 
-#: src/details.rs:2060
+#: src/details.rs:2050
 #, no-c-format
 msgid ""
 "Devices you may not read are left out: QEMU runs as you on this connection"
 msgstr ""
 
-#: src/details.rs:2087
+#: src/details.rs:2077
 #, no-c-format
 msgid "Virtio (Linux guests)"
 msgstr ""
 
-#: src/details.rs:2088
+#: src/details.rs:2078
 #, no-c-format
 msgid "QXL (older SPICE guests)"
 msgstr ""
 
-#: src/details.rs:2089
+#: src/details.rs:2079
 #, no-c-format
 msgid "VGA (any guest)"
 msgstr ""
@@ -1545,7 +1540,7 @@ msgstr ""
 msgid "Definition of “{name}”"
 msgstr ""
 
-#: src/dialogs/machine.rs:498 src/machine_view.rs:442
+#: src/dialogs/machine.rs:498 src/machine_view.rs:448
 #, no-c-format
 msgid "The change takes effect the next time the virtual machine starts"
 msgstr ""
@@ -1570,7 +1565,7 @@ msgstr ""
 msgid "The changes have not been saved."
 msgstr ""
 
-#: src/dialogs/machine.rs:678 src/machine_view.rs:279
+#: src/dialogs/machine.rs:678 src/machine_view.rs:285
 #, no-c-format
 msgid "_Discard"
 msgstr ""
@@ -2286,161 +2281,226 @@ msgstr ""
 msgid "libvirt stopped taking the file"
 msgstr ""
 
-#: src/machine_view.rs:177
+#: src/machine_view.rs:183
 #, no-c-format
 msgid "The display connection closed."
 msgstr ""
 
-#: src/machine_view.rs:274
+#: src/machine_view.rs:280
 #, no-c-format
 msgid "Discard Saved State?"
 msgstr ""
 
-#: src/machine_view.rs:276
+#: src/machine_view.rs:282
 #, no-c-format
 msgid ""
 "The virtual machine starts afresh next time instead of resuming where "
 "it                  was saved. Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:298
+#: src/machine_view.rs:304
 #, no-c-format
 msgid "Force Reset?"
 msgstr ""
 
-#: src/machine_view.rs:300
+#: src/machine_view.rs:306
 #, no-c-format
 msgid ""
 "The virtual machine restarts at once, as if its reset button were "
 "pressed.                  Work not saved in it is lost."
 msgstr ""
 
-#: src/machine_view.rs:303
+#: src/machine_view.rs:309
 #, no-c-format
 msgid "Force _Reset"
 msgstr ""
 
-#: src/machine_view.rs:313
+#: src/machine_view.rs:319
 #, no-c-format
 msgid "Force Off?"
 msgstr ""
 
-#: src/machine_view.rs:315
+#: src/machine_view.rs:321
 #, no-c-format
 msgid ""
 "The virtual machine stops at once, as if its power were cut. Work not "
 "saved                  in it is lost, and its disks may be left inconsistent."
 msgstr ""
 
-#: src/machine_view.rs:318
+#: src/machine_view.rs:324
 #, no-c-format
 msgid "Force _Off"
 msgstr ""
 
-#: src/machine_view.rs:374
+#: src/machine_view.rs:380
 #, no-c-format
 msgid "It resumes where it was saved."
 msgstr ""
 
-#: src/machine_view.rs:375 ui/machine_view.ui:366
+#: src/machine_view.rs:381 ui/machine_view.ui:366
 #, no-c-format
 msgid "_Resume"
 msgstr ""
 
-#: src/machine_view.rs:378
+#: src/machine_view.rs:384
 #, no-c-format
 msgid "_Start"
 msgstr ""
 
-#: src/machine_view.rs:754 src/machine_view.rs:757
+#: src/machine_view.rs:760 src/machine_view.rs:763
 #, no-c-format
 msgid "Starting…"
 msgstr ""
 
-#: src/machine_view.rs:762
+#: src/machine_view.rs:768
 #, no-c-format
 msgid "Resume"
 msgstr ""
 
-#: src/machine_view.rs:764 ui/machine_view.ui:81
+#: src/machine_view.rs:770 ui/machine_view.ui:81
 #, no-c-format
 msgid "Start"
 msgstr ""
 
-#: src/machine_view.rs:988
+#: src/machine_view.rs:977
+#, no-c-format
+msgid "Waiting for Looking Glass"
+msgstr ""
+
+#: src/machine_view.rs:979
+#, no-c-format
+msgid ""
+"The guest’s screen shows here once the Looking Glass host "
+"application                      runs in the guest."
+msgstr ""
+
+#: src/machine_view.rs:984
+#, no-c-format
+msgid "Incompatible Looking Glass"
+msgstr ""
+
+#: src/machine_view.rs:987
+#, no-c-format
+msgid ""
+"The guest runs the Looking Glass host application {version}; "
+"the                          console shows the screen of version B7."
+msgstr ""
+
+#: src/machine_view.rs:992
+#, no-c-format
+msgid ""
+"The guest runs a version of the Looking Glass host application "
+"other                          than B7, whose screen the console shows."
+msgstr ""
+
+#: src/machine_view.rs:998
+#, no-c-format
+msgid "Another Machine’s Screen"
+msgstr ""
+
+#: src/machine_view.rs:999
+#, no-c-format
+msgid "The kvmfr device shares the screen of another virtual machine."
+msgstr ""
+
+#: src/machine_view.rs:1002
+#, no-c-format
+msgid "Looking Glass Device Too Small"
+msgstr ""
+
+#: src/machine_view.rs:1004
+#, no-c-format
+msgid ""
+"The guest’s screen needs a kvmfr device of {size} MiB, which the "
+"kvmfr                      module’s static_size_mb option sets."
+msgstr ""
+
+#: src/machine_view.rs:1010 src/machine_view.rs:1016
+#, no-c-format
+msgid "Looking Glass Unavailable"
+msgstr ""
+
+#: src/machine_view.rs:1012
+#, no-c-format
+msgid ""
+"This user may not open the kvmfr device, which a udev rule for the "
+"kvmfr                      module can allow."
+msgstr ""
+
+#: src/machine_view.rs:1058
 #, no-c-format
 msgid "Shown in Looking Glass"
 msgstr ""
 
-#: src/machine_view.rs:990
+#: src/machine_view.rs:1060
 #, no-c-format
 msgid ""
 "The guest shows its screen on the passed-through graphics card. Open "
 "it                      with the Looking Glass client."
 msgstr ""
 
-#: src/machine_view.rs:1003
+#: src/machine_view.rs:1072
 #, no-c-format
 msgid "Display Disconnected"
 msgstr ""
 
-#: src/machine_view.rs:1005 src/machine_view.rs:1256
+#: src/machine_view.rs:1074 src/machine_view.rs:1332
 #, no-c-format
 msgid "_Reconnect"
 msgstr ""
 
-#: src/machine_view.rs:1013
+#: src/machine_view.rs:1082
 #, no-c-format
 msgid "Unsupported Display"
 msgstr ""
 
-#: src/machine_view.rs:1015
+#: src/machine_view.rs:1084
 #, no-c-format
 msgid "The console cannot show a “{type}” display."
 msgstr ""
 
-#: src/machine_view.rs:1022
+#: src/machine_view.rs:1091
 #, no-c-format
 msgid "No Display"
 msgstr ""
 
-#: src/machine_view.rs:1023
+#: src/machine_view.rs:1092
 #, no-c-format
 msgid "This virtual machine has no graphical display."
 msgstr ""
 
-#: src/machine_view.rs:1050 src/machine_view.rs:1091 ui/machine_view.ui:88
+#: src/machine_view.rs:1119 src/machine_view.rs:1160 ui/machine_view.ui:88
 #: ui/shortcuts-dialog.ui:44
 #, no-c-format
 msgid "Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:1089 ui/machine_view.ui:218
+#: src/machine_view.rs:1158 ui/machine_view.ui:218
 #, no-c-format
 msgid "Leave Fullscreen"
 msgstr ""
 
-#: src/machine_view.rs:1236
+#: src/machine_view.rs:1312
 #, no-c-format
 msgid "No Serial Console"
 msgstr ""
 
-#: src/machine_view.rs:1237
+#: src/machine_view.rs:1313
 #, no-c-format
 msgid "The serial port comes with the next start."
 msgstr ""
 
-#: src/machine_view.rs:1254
+#: src/machine_view.rs:1330
 #, no-c-format
 msgid "Serial Console Closed"
 msgstr ""
 
-#: src/machine_view.rs:1326
+#: src/machine_view.rs:1402
 #, no-c-format
 msgid "The serial console closed."
 msgstr ""
 
-#: src/machine_view.rs:1416
+#: src/machine_view.rs:1492
 #, no-c-format
 msgid "Some disk images could not be deleted: {files}"
 msgstr ""
