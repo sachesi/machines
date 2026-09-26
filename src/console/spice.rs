@@ -22,6 +22,7 @@ use crate::{gdk, glib};
 /// or nothing if there is none to be had.
 pub type FdSource = Rc<dyn Fn(Box<dyn FnOnce(Option<i32>)>)>;
 
+const MOUSE_MODE_SERVER: i32 = 1;
 const MOUSE_MODE_CLIENT: i32 = 2;
 const MOUSE_BUTTON_UP: i32 = 4;
 const MOUSE_BUTTON_DOWN: i32 = 5;
@@ -277,11 +278,11 @@ impl Console {
         ));
 
         if let Some(main) = channel.downcast_ref::<spice::MainChannel>() {
-            main.connect_main_mouse_update(|main| {
-                if main.mouse_mode() != MOUSE_MODE_CLIENT {
-                    main.request_mouse_mode(MOUSE_MODE_CLIENT);
-                }
-            });
+            main.connect_main_mouse_update(glib::clone!(
+                #[weak(rename_to = console)]
+                self,
+                move |_| console.follow_mouse_mode()
+            ));
             main.connect_agent_connected_notify(glib::clone!(
                 #[weak(rename_to = console)]
                 self,
@@ -464,12 +465,30 @@ impl Console {
         )));
     }
 
+    /// Ask for the mouse mode Looking Glass needs, else for the client mode, where the
+    /// agent or a tablet puts the guest's pointer where the pointer is.
+    pub(super) fn follow_mouse_mode(&self) {
+        let main = self.imp().spice.borrow().main.clone();
+        let Some(main) = main else {
+            return;
+        };
+        let wanted = if self.looking_glass_wants_server_mouse() {
+            MOUSE_MODE_SERVER
+        } else {
+            MOUSE_MODE_CLIENT
+        };
+        if main.mouse_mode() != wanted {
+            main.request_mouse_mode(wanted);
+        }
+    }
+
     fn spice_buttons(&self) -> i32 {
         i32::from(self.imp().buttons.get())
     }
 
-    /// Move the guest's pointer to (`x`, `y`): there, where SPICE places the pointer, else
-    /// by as much as it is away, where Looking Glass says where it is.
+    /// Move the guest's pointer to (`x`, `y`): there, where SPICE or Looking Glass places
+    /// the pointer, else by as much as it is away, where Looking Glass says where it is.
+    /// Not while the console holds the pointer, which moves by as much as it is moved.
     pub(super) fn spice_pointer(&self, x: u16, y: u16) {
         let (inputs, main) = {
             let spice = self.imp().spice.borrow();
@@ -478,14 +497,28 @@ impl Console {
         let Some(inputs) = inputs else {
             return;
         };
+        if self.holds_looking_glass_pointer() {
+            return;
+        }
         let (x, y) = (i32::from(x), i32::from(y));
         if main.is_none_or(|m| m.mouse_mode() == MOUSE_MODE_CLIENT) {
             inputs.position(x, y, 0, self.spice_buttons());
             return;
         }
+        if self.place_looking_glass_pointer(x, y) {
+            return;
+        }
         if let Some((dx, dy)) = self.looking_glass_pointer_to(x, y)
             && (dx, dy) != (0, 0)
         {
+            inputs.motion(dx, dy, self.spice_buttons());
+        }
+    }
+
+    /// Move the guest's pointer by (`dx`, `dy`).
+    pub(super) fn spice_motion(&self, dx: i32, dy: i32) {
+        let inputs = self.imp().spice.borrow().inputs.clone();
+        if let Some(inputs) = inputs {
             inputs.motion(dx, dy, self.spice_buttons());
         }
     }

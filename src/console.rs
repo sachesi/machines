@@ -7,6 +7,7 @@
 //! of a SPICE machine, in [`looking_glass`].
 
 mod looking_glass;
+mod pointer_lock;
 mod spice;
 
 pub use spice::FdSource;
@@ -135,6 +136,15 @@ mod imp {
                 vec![
                     glib::subclass::Signal::builder("connected").build(),
                     glib::subclass::Signal::builder("looking-glass-changed").build(),
+                    // Whether the keys that go with Scroll Lock are to be shown, while it
+                    // is held down over Looking Glass.
+                    glib::subclass::Signal::builder("looking-glass-keys")
+                        .param_types([bool::static_type()])
+                        .build(),
+                    // What to tell the user for a moment; empty to stop.
+                    glib::subclass::Signal::builder("hint")
+                        .param_types([String::static_type()])
+                        .build(),
                     // Whether the console now has the system shortcuts too.
                     glib::subclass::Signal::builder("grab-changed")
                         .param_types([bool::static_type()])
@@ -155,9 +165,12 @@ mod imp {
     impl WidgetImpl for Console {
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let obj = self.obj();
-            let looking_glass = obj.looking_glass_screen();
             // The display's own screen waits while Looking Glass shows the guest's.
-            if looking_glass.is_none() && self.dirty.replace(false) {
+            if obj.snapshot_looking_glass(snapshot) {
+                obj.after_spice_frame();
+                return;
+            }
+            if self.dirty.replace(false) {
                 // A GL frame is upside down next to the desktop in memory, so nothing of it
                 // carries over.
                 let update = self
@@ -173,13 +186,10 @@ mod imp {
                 self.texture.replace(texture);
                 self.flipped.set(false);
             }
-            let (texture, flipped) = match looking_glass {
-                Some((texture, _)) => (texture, false),
-                None => match self.texture.borrow().clone() {
-                    Some(texture) => (texture, self.flipped.get()),
-                    None => return,
-                },
+            let Some(texture) = self.texture.borrow().clone() else {
+                return;
             };
+            let flipped = self.flipped.get();
             let (x, y, scale) = obj.placement(texture.width(), texture.height());
             let rect = graphene::Rect::new(
                 x as f32,
@@ -345,6 +355,25 @@ impl Console {
             || self.spice_has_screen()
     }
 
+    pub fn connect_looking_glass_keys<F: Fn(&Self, bool) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("looking-glass-keys", false, move |args| {
+            let shown: bool = args[1].get().expect("a bool");
+            f(&args[0].get().expect("a Console"), shown);
+            None
+        })
+    }
+
+    pub fn connect_hint<F: Fn(&Self, &str) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_local("hint", false, move |args| {
+            let hint: String = args[1].get().expect("a hint");
+            f(&args[0].get().expect("a Console"), &hint);
+            None
+        })
+    }
+
     pub fn connect_grab_changed<F: Fn(&Self, bool) + 'static>(
         &self,
         f: F,
@@ -499,25 +528,35 @@ impl Console {
     }
 
     /// The desktop pixel under the widget point (`x`, `y`), clamped to the desktop. The
-    /// guest's screen may be larger than what Looking Glass shows of it.
+    /// guest's screen may be larger than what Looking Glass shows of it, and shown turned.
     fn to_desktop(&self, x: f64, y: f64) -> Option<(u16, u16)> {
-        let (texture, (width, height)) = match self.looking_glass_screen() {
+        let (texture, (width, height), turns) = match self.looking_glass_screen() {
             Some(shown) => shown,
             None => {
                 let texture = self.imp().texture.borrow().clone()?;
                 let size = (texture.width(), texture.height());
-                (texture, size)
+                (texture, size, 0)
             }
         };
-        let (ox, oy, scale) = self.placement(texture.width(), texture.height());
+        let (w, h) = (texture.width(), texture.height());
+        let (ox, oy, scale) = if turns % 2 == 1 {
+            self.placement(h, w)
+        } else {
+            self.placement(w, h)
+        };
+        let (x, y) = ((x - ox) / scale, (y - oy) / scale);
+        let (w, h) = (f64::from(w.max(1)), f64::from(h.max(1)));
+        // Back from turned clockwise to the frame as it came.
+        let (x, y) = match turns {
+            1 => (y, h - x),
+            2 => (w - x, h - y),
+            3 => (w - y, x),
+            _ => (x, y),
+        };
         let clamp = |v: f64, max: i32| (v.max(0.0) as i32).min(max - 1).max(0) as u16;
-        let (sx, sy) = (
-            f64::from(width) / f64::from(texture.width().max(1)),
-            f64::from(height) / f64::from(texture.height().max(1)),
-        );
         Some((
-            clamp((x - ox) / scale * sx, width),
-            clamp((y - oy) / scale * sy, height),
+            clamp(x * f64::from(width) / w, width),
+            clamp(y * f64::from(height) / h, height),
         ))
     }
 
@@ -673,6 +712,7 @@ impl Console {
             #[weak(rename_to = console)]
             self,
             move |_| {
+                console.release_looking_glass();
                 console.release_keys();
                 console.hold_shortcuts(false);
                 console.ungrab_shortcuts();
@@ -683,7 +723,11 @@ impl Console {
 
     fn send_key(&self, down: bool, keysym: u32, hardware_code: u32) {
         // X11 and Wayland both number keys as evdev + 8.
-        let scancode = keymap::qnum(hardware_code.saturating_sub(8));
+        let code = hardware_code.saturating_sub(8);
+        if self.looking_glass_key(down, code) {
+            return;
+        }
+        let scancode = keymap::qnum(code);
         {
             let mut pressed = self.imp().pressed.borrow_mut();
             if down {

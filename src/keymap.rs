@@ -2,12 +2,27 @@
 //! with the 0xE0 prefix folded into the high bit). Values from keymap-gen's keymaps.csv.
 
 pub const KEY_BACKSPACE: u32 = 14;
+pub const KEY_R: u32 = 19;
 pub const KEY_LEFTCTRL: u32 = 29;
+pub const KEY_F: u32 = 33;
+pub const KEY_M: u32 = 50;
 pub const KEY_LEFTALT: u32 = 56;
 pub const KEY_F1: u32 = 59;
 pub const KEY_F2: u32 = 60;
 pub const KEY_F7: u32 = 65;
+pub const KEY_F10: u32 = 68;
+pub const KEY_SCROLLLOCK: u32 = 70;
+pub const KEY_F11: u32 = 87;
+pub const KEY_F12: u32 = 88;
+pub const KEY_UP: u32 = 103;
+pub const KEY_DOWN: u32 = 108;
+pub const KEY_INSERT: u32 = 110;
 pub const KEY_DELETE: u32 = 111;
+pub const KEY_MUTE: u32 = 113;
+pub const KEY_VOLUMEDOWN: u32 = 114;
+pub const KEY_VOLUMEUP: u32 = 115;
+pub const KEY_LEFTMETA: u32 = 125;
+pub const KEY_RIGHTMETA: u32 = 126;
 
 /// The scan code for evdev code `code`, or 0 where there is none; with 0, gvnc sends the
 /// keysym alone.

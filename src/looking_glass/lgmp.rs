@@ -12,6 +12,9 @@ use std::time::{Duration, Instant};
 const MAGIC: u32 = 0x504d_474c;
 const VERSION: u32 = 6;
 const MAX_QUEUES: u32 = 5;
+/// How many messages from clients a queue holds, and how large each may be.
+const CLIENT_MESSAGES: u32 = 10;
+const CLIENT_MESSAGE_SIZE: usize = 64;
 /// How long the host may leave its heartbeat as it is before its session counts as over.
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(1);
 /// How long a queue's lock is waited for, as a guest that stopped could hold it forever.
@@ -45,6 +48,14 @@ mod queue {
     pub const START: usize = 424;
     pub const MSG_TIMEOUT: usize = 432;
     pub const COUNT: usize = 440;
+    pub const CLIENT_LOCK: usize = 444;
+    pub const CLIENT_AVAILABLE: usize = 448;
+    pub const CLIENT_WRITE: usize = 452;
+    pub const CLIENT_SENT: usize = 456;
+    pub const CLIENT_RECEIVED: usize = 460;
+    /// `struct LGMPClientMessage`s: a size, and the message.
+    pub const CLIENT_MESSAGES: usize = 464;
+    pub const CLIENT_MESSAGE: usize = 68;
 }
 
 /// The size of `struct LGMPHeaderMessage`, and where it has its fields.
@@ -68,6 +79,8 @@ pub enum Error {
     Version,
     /// The session is over: the host restarted or stopped, or dropped this client.
     SessionOver,
+    /// The host has no room for another message from its clients yet.
+    Full,
     /// What the memory holds makes no sense.
     Corrupted,
 }
@@ -140,6 +153,13 @@ impl Shm {
         let at = self.at(offset, 8, 8)?;
         // SAFETY: as in `atomic_u32`.
         Ok(unsafe { AtomicU64::from_ptr(at.cast()) })
+    }
+
+    fn write(&self, offset: usize, src: &[u8]) -> Result<(), Error> {
+        let at = self.at(offset, src.len(), 1)?;
+        // SAFETY: as in `read`, the other way.
+        unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), at, src.len()) };
+        Ok(())
     }
 
     /// Copy the bytes at `offset` into `dst`.
@@ -390,6 +410,51 @@ impl Queue {
         Ok(())
     }
 
+    /// Send the host `message`, of at most 64 bytes; its number, which
+    /// [`Queue::received`] reaches once the host has taken it.
+    pub fn send(&self, client: &Client, message: &[u8]) -> Result<u32, Error> {
+        assert!(
+            message.len() <= CLIENT_MESSAGE_SIZE,
+            "a message of 64 bytes at most"
+        );
+        let shm = client.shm;
+        if dropped(shm.atomic_u64(self.base + queue::SUBS)?.load(SeqCst)) & self.bit() != 0 {
+            return Err(Error::SessionOver);
+        }
+        let available = shm.atomic_u32(self.base + queue::CLIENT_AVAILABLE)?;
+        if available.load(SeqCst) == 0 {
+            return Err(Error::Full);
+        }
+        let _lock = Lock::take(
+            shm.atomic_u32(self.base + queue::CLIENT_LOCK)?,
+            LOCK_TIMEOUT,
+        )
+        .ok_or(Error::SessionOver)?;
+        if available.load(SeqCst) == 0 {
+            return Err(Error::Full);
+        }
+        let write = shm.atomic_u32(self.base + queue::CLIENT_WRITE)?;
+        let position = write.load(SeqCst);
+        if position >= CLIENT_MESSAGES {
+            return Err(Error::Corrupted);
+        }
+        let at = self.base + queue::CLIENT_MESSAGES + position as usize * queue::CLIENT_MESSAGE;
+        shm.set_u32(at, message.len() as u32)?;
+        shm.write(at + 4, message)?;
+        write.store((position + 1) % CLIENT_MESSAGES, SeqCst);
+        available.fetch_sub(1, SeqCst);
+        let sent = shm.atomic_u32(self.base + queue::CLIENT_SENT)?;
+        Ok(sent.fetch_add(1, SeqCst).wrapping_add(1))
+    }
+
+    /// How many messages from its clients the host has taken.
+    pub fn received(&self, client: &Client) -> Result<u32, Error> {
+        Ok(client
+            .shm
+            .atomic_u32(self.base + queue::CLIENT_RECEIVED)?
+            .load(SeqCst))
+    }
+
     /// Give the place up.
     pub fn unsubscribe(self, client: &Client) {
         let shm = client.shm;
@@ -433,6 +498,7 @@ mod tests {
             host.set(36, 2);
             host.set(44, 1000);
             host.set(52, 8192);
+            host.set(480, 10);
             host.set(5752, 3);
             host.set(5756, u32::from_le_bytes(*b"abc\0"));
             host
@@ -535,6 +601,27 @@ mod tests {
         queue.unsubscribe(&client);
         assert_eq!(host.get(452), 0);
         assert_eq!(host.get(312), 0);
+    }
+
+    #[test]
+    fn clients_send_the_host_messages_while_it_has_room() {
+        let mut host = Host::new();
+        let shm = host.shm();
+        let client = Client::new(&shm, 5).unwrap();
+        let queue = client.subscribe(2).unwrap();
+        assert_eq!(queue.send(&client, b"hello"), Ok(1));
+        assert_eq!(host.get(496), 5, "its size");
+        assert_eq!(&host.get(500).to_le_bytes(), b"hell");
+        assert_eq!(host.get(480), 9, "room for nine more");
+        assert_eq!(host.get(484), 1, "written up to the second");
+        assert_eq!(queue.received(&client), Ok(0));
+        host.set(492, 1);
+        assert_eq!(queue.received(&client), Ok(1));
+        host.set(480, 0);
+        assert_eq!(queue.send(&client, b"again"), Err(Error::Full));
+        host.set(480, 1);
+        host.set(484, 12);
+        assert_eq!(queue.send(&client, b"again"), Err(Error::Corrupted));
     }
 
     #[test]

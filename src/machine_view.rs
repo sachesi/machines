@@ -24,7 +24,8 @@ use crate::{adw, details, dialogs, gio, glib, gtk, keymap, usage};
 const REVEAL_EDGE: f64 = 4.0;
 /// How close to the top edge a touch has to land, in fullscreen, for the same.
 const TOUCH_REVEAL_EDGE: f64 = 24.0;
-/// How long the console says how to give the keyboard back, once it takes it.
+/// How long a hint stays over the console, such as how to give the keyboard back once
+/// the console takes it.
 const GRAB_HINT_TIME: std::time::Duration = std::time::Duration::from_secs(3);
 /// How long the controls stay when they come down by themselves or for a touch.
 const CONTROLS_PEEK_TIME: std::time::Duration = std::time::Duration::from_secs(3);
@@ -61,6 +62,10 @@ mod imp {
         pub console_stack: TemplateChild<gtk::Stack>,
         #[template_child]
         pub grab_hint: TemplateChild<gtk::Revealer>,
+        #[template_child]
+        pub grab_hint_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub looking_glass_keys: TemplateChild<gtk::Revealer>,
         #[template_child]
         pub console_controls: TemplateChild<gtk::Revealer>,
         #[template_child]
@@ -657,7 +662,24 @@ impl MachineView {
         imp.console.connect_grab_changed(glib::clone!(
             #[weak(rename_to = view)]
             self,
-            move |_, grabbed| view.show_grab_hint(grabbed)
+            move |_, grabbed| {
+                let hint = if grabbed {
+                    gettext("Press Ctrl+Alt to release the keyboard")
+                } else {
+                    String::new()
+                };
+                view.show_hint(&hint);
+            }
+        ));
+        imp.console.connect_hint(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            move |_, hint| view.show_hint(hint)
+        ));
+        imp.console.connect_looking_glass_keys(glib::clone!(
+            #[weak(rename_to = view)]
+            self,
+            move |_, shown| view.imp().looking_glass_keys.set_reveal_child(shown)
         ));
     }
 
@@ -712,10 +734,16 @@ impl MachineView {
             .is_some_and(|w| w.is_fullscreen())
     }
 
-    fn show_grab_hint(&self, shown: bool) {
+    /// Show `hint` over the console for a moment, or take the one shown away if it is
+    /// empty.
+    fn show_hint(&self, hint: &str) {
         let imp = self.imp();
         if let Some(timeout) = imp.grab_hint_timeout.take() {
             timeout.remove();
+        }
+        let shown = !hint.is_empty();
+        if shown {
+            imp.grab_hint_label.set_label(hint);
         }
         imp.grab_hint
             .set_reveal_child(shown && !imp.console_controls.reveals_child());

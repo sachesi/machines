@@ -26,6 +26,10 @@ const QUEUE_FRAME: u32 = 2;
 /// its version string is.
 const KVMFR_SIZE: usize = 48;
 const KVMFR_HOSTVER: std::ops::Range<usize> = 12..44;
+const KVMFR_FEATURES: usize = 44;
+/// The host can put the guest's pointer where a client asks, with `KVMFRSetCursorPos`.
+const KVMFR_FEATURE_SETCURSORPOS: u32 = 0x1;
+const KVMFR_MESSAGE_SETCURSORPOS: u32 = 0;
 /// The size of `struct KVMFRRecord`'s header, the records after `struct KVMFR` start with.
 const RECORD_HEADER: usize = 8;
 const RECORD_VMINFO: u8 = 1;
@@ -126,6 +130,9 @@ pub struct Frame {
     /// The size of the guest's screen, which its pointer moves in, and which the frame
     /// may be scaled down from.
     pub screen: (u32, u32),
+    /// How many quarter turns clockwise the frame is to be shown turned, as the guest's
+    /// screen is.
+    pub turns: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,6 +163,8 @@ pub struct Update {
     pub visible: Option<bool>,
     /// Where the guest's pointer is, on its screen.
     pub position: Option<(i32, i32)>,
+    /// Whether the host puts the guest's pointer where [`Reader::place`] says.
+    pub places_pointer: Option<bool>,
 }
 
 #[derive(Default)]
@@ -163,6 +172,8 @@ struct Shared {
     update: Update,
     /// Whether the other side was told of the update, and has not taken it yet.
     woken: bool,
+    /// Where to put the guest's pointer, not yet asked of the host.
+    place: Option<(i32, i32)>,
 }
 
 /// Reads a kvmfr device on a thread of its own, until dropped.
@@ -196,6 +207,11 @@ impl Reader {
             lock(&shared).update.status = Some(Status::Failed(e.to_string()));
         }
         Self { shared, stop }
+    }
+
+    /// Have the host put the guest's pointer at (`x`, `y`) on its screen, if it can.
+    pub fn place(&self, x: i32, y: i32) {
+        lock(&self.shared).place = Some((x, y));
     }
 
     pub fn take(&self) -> Update {
@@ -275,6 +291,7 @@ impl Drop for Mapping {
 struct Welcome {
     /// The guest's UUID, when it has one.
     uuid: Option<[u8; 16]>,
+    places_pointer: bool,
 }
 
 impl Welcome {
@@ -305,7 +322,10 @@ impl Welcome {
             }
             records = &records[RECORD_HEADER + size..];
         }
-        Ok(Self { uuid })
+        Ok(Self {
+            uuid,
+            places_pointer: u32_at(udata, KVMFR_FEATURES) & KVMFR_FEATURE_SETCURSORPOS != 0,
+        })
     }
 }
 
@@ -322,6 +342,7 @@ struct FrameHeader {
     width: u32,
     height: u32,
     pitch: u32,
+    turns: u32,
     /// Where the pixels' write pointer is, from the header.
     offset: u32,
     damage: Option<Vec<Rect>>,
@@ -351,6 +372,8 @@ impl FrameHeader {
             width: u32_at(h, 28),
             height: u32_at(h, 32),
             pitch: u32_at(h, 44),
+            // FRAME_ROT_0 to FRAME_ROT_270; Looking Glass takes anything else as 0.
+            turns: Some(u32_at(h, 36)).filter(|&r| r < 4).unwrap_or(0),
             offset: u32_at(h, 48),
             damage,
             flags: u32_at(h, 1080),
@@ -573,6 +596,8 @@ impl Worker {
         };
         self.serial = None;
         self.whole = true;
+        lock(&self.shared).place = None;
+        self.publish(|update| update.places_pointer = Some(welcome.places_pointer));
         self.follow(shm, &mut client, &mut frames, &mut pointer);
         frames.unsubscribe(&client);
         pointer.unsubscribe(&client);
@@ -594,7 +619,11 @@ impl Worker {
     /// Hand on the frames and pointer the host posts, until its session ends.
     fn follow(&mut self, shm: &Shm, client: &mut Client, frames: &mut Queue, pointer: &mut Queue) {
         let mut checked = Instant::now();
+        let mut placing = None;
         while !self.stopped() {
+            if self.place_pointer(client, pointer, &mut placing).is_err() {
+                return;
+            }
             let mut busy = false;
             match frames.peek(client) {
                 Ok(message) => {
@@ -628,6 +657,37 @@ impl Worker {
                 thread::sleep(POLL);
             }
         }
+    }
+
+    /// Ask the host to put the guest's pointer where it was last wanted, once the host has
+    /// taken the last such request, `placing`.
+    fn place_pointer(
+        &self,
+        client: &Client,
+        pointer: &Queue,
+        placing: &mut Option<u32>,
+    ) -> Result<(), Error> {
+        if let Some(sent) = *placing {
+            if (pointer.received(client)?.wrapping_sub(sent) as i32) < 0 {
+                return Ok(());
+            }
+            *placing = None;
+        }
+        let Some((x, y)) = lock(&self.shared).place.take() else {
+            return Ok(());
+        };
+        let mut message = [0; 12];
+        message[..4].copy_from_slice(&KVMFR_MESSAGE_SETCURSORPOS.to_le_bytes());
+        message[4..8].copy_from_slice(&x.to_le_bytes());
+        message[8..].copy_from_slice(&y.to_le_bytes());
+        match pointer.send(client, &message) {
+            Ok(sent) => *placing = Some(sent),
+            Err(Error::Full) => {
+                lock(&self.shared).place.get_or_insert((x, y));
+            }
+            Err(e) => return Err(e),
+        }
+        Ok(())
     }
 
     /// A buffer of `len` bytes nothing else holds, from the pool if one there is free.
@@ -734,6 +794,7 @@ impl Worker {
             height,
             stride,
             screen: header.screen,
+            turns: header.turns,
         };
         let damage = header.damage.filter(|_| !std::mem::take(&mut self.whole));
         self.set_status(Status::Showing);
@@ -811,7 +872,7 @@ mod tests {
         let mut hostver = [0; 32];
         hostver[..5].copy_from_slice(b"B6-12");
         udata.extend_from_slice(&hostver);
-        udata.extend_from_slice(&0u32.to_le_bytes());
+        udata.extend_from_slice(&KVMFR_FEATURE_SETCURSORPOS.to_le_bytes());
         for (kind, data) in records {
             udata.extend_from_slice(&[*kind, 0, 0, 0]);
             udata.extend_from_slice(&(data.len() as u32).to_le_bytes());
@@ -831,9 +892,11 @@ mod tests {
             KVMFR_VERSION,
             &[(2, b"\x03Windows"), (RECORD_VMINFO, &vminfo)],
         );
-        assert_eq!(Welcome::parse(&udata), Ok(Welcome { uuid: Some(uuid) }));
+        let parsed = Welcome::parse(&udata).unwrap();
+        assert_eq!(parsed.uuid, Some(uuid));
+        assert!(parsed.places_pointer);
         let unknown = welcome(KVMFR_VERSION, &[(RECORD_VMINFO, &[0; 51])]);
-        assert_eq!(Welcome::parse(&unknown), Ok(Welcome { uuid: None }));
+        assert_eq!(Welcome::parse(&unknown).unwrap().uuid, None);
         assert_eq!(parse_uuid("not-a-uuid"), None);
     }
 
@@ -850,7 +913,7 @@ mod tests {
     fn records_longer_than_what_is_there_end_the_list() {
         let mut udata = welcome(KVMFR_VERSION, &[]);
         udata.extend_from_slice(&[RECORD_VMINFO, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 1, 2]);
-        assert_eq!(Welcome::parse(&udata), Ok(Welcome { uuid: None }));
+        assert_eq!(Welcome::parse(&udata).unwrap().uuid, None);
     }
 
     #[test]
@@ -973,6 +1036,7 @@ mod tests {
         let memory: &mut [u8] =
             unsafe { std::slice::from_raw_parts_mut(words.as_mut_ptr().cast(), 16384) };
         post_frame(memory, FRAME_TYPE_BGR_32, 2, &pixels[..12], 1);
+        memory[4096 + 36] = 1;
         worker.frame(&shm, &message).unwrap();
         let update = std::mem::take(&mut lock(&shared).update);
         let rect = Rect {
@@ -984,6 +1048,7 @@ mod tests {
         assert_eq!(update.damage, Some(vec![rect]));
         let frame = update.frame.unwrap();
         assert_eq!((frame.format, frame.stride), (Format::Bgr, 6));
+        assert_eq!(frame.turns, 1, "FRAME_ROT_90");
     }
 
     #[test]

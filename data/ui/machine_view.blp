@@ -153,13 +153,272 @@ template $MachinesMachineView: Adw.BreakpointBin {
                   transition-type: crossfade;
                   can-target: false;
 
-                  child: Label {
-                    label: _("Press Ctrl+Alt to release the keyboard");
+                  child: Label grab_hint_label {
+                    wrap: true;
+                    justify: center;
 
                     styles [
                       "osd",
                       "console-osd",
                     ]
+                  };
+                }
+
+                [overlay]
+                Revealer looking_glass_keys {
+                  halign: center;
+                  valign: center;
+                  transition-type: crossfade;
+                  can-target: false;
+
+                  child: Grid {
+                    row-spacing: 6;
+                    column-spacing: 24;
+
+                    styles [
+                      "osd",
+                      "console-osd",
+                    ]
+
+                    Label {
+                      label: _("Scroll Lock");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 0;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Hold or release the pointer");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 0;
+                      }
+                    }
+
+                    Label {
+                      label: _("Scroll Lock+F");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 1;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Fullscreen");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 1;
+                      }
+                    }
+
+                    Label {
+                      label: _("Scroll Lock+R");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 2;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Turn the screen clockwise");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 2;
+                      }
+                    }
+
+                    Label {
+                      label: _("Scroll Lock+Insert");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 3;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Faster pointer while held");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 3;
+                      }
+                    }
+
+                    Label {
+                      label: _("Scroll Lock+Delete");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 4;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Slower pointer while held");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 4;
+                      }
+                    }
+
+                    Label {
+                      label: _("Scroll Lock+Up");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 5;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Send Volume Up");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 5;
+                      }
+                    }
+
+                    Label {
+                      label: _("Scroll Lock+Down");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 6;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Send Volume Down");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 6;
+                      }
+                    }
+
+                    Label {
+                      label: _("Scroll Lock+M");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 7;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Send Mute");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 7;
+                      }
+                    }
+
+                    Label {
+                      label: _("Scroll Lock+Super");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 8;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Send Super");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 8;
+                      }
+                    }
+
+                    Label {
+                      label: _("Scroll Lock+F1…F12");
+                      xalign: 0;
+
+                      layout {
+                        column: 0;
+                        row: 9;
+                      }
+
+                      styles [
+                        "heading",
+                      ]
+                    }
+
+                    Label {
+                      label: _("Send Ctrl+Alt+F1…F12");
+                      xalign: 0;
+
+                      layout {
+                        column: 1;
+                        row: 9;
+                      }
+                    }
                   };
                 }
 

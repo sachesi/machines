@@ -51,6 +51,12 @@ to a window of its own, to put it on another screen, and be saved as a screensho
 it has the keyboard, the console passes every key to the machine, Tab included; pressing
 Ctrl+Alt together and letting go hands the keyboard back.
 
+A machine with Looking Glass set up in its Passthrough group shows, once the Looking Glass
+host application runs in the guest, the screen of the graphics card passed through to it,
+read straight from the kvmfr device. Scroll Lock does what it does in the Looking Glass
+client: a tap holds the pointer for the machine, for games, and lets go of it again, and
+held down it lists the keys that go with it.
+
 A third page shows the machine's serial console as text, for machines without a display
 and for watching a guest boot; new machines have a serial port for it.
 
