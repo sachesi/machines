@@ -48,6 +48,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.1.3" date="2026-09-26">
+      <description>
+        <p>The details have a Passthrough group for Looking Glass, the memory balloon, hiding the hypervisor from the guest, and the host's keyboard and mouse. Looking Glass gets the SPICE listener and screen it needs, and is turned on only where its client is installed. Advanced settings reach from the machine type and power actions to disk and network card tuning, and the scripts libvirt runs as a machine starts and stops can be edited, saved through an administrator's password. The definition opens in a resizable editor with XML highlighting, line numbers, and find and replace. A stopped machine opens on its details and shows its screen once it starts, and a machine that cannot start for want of huge pages says how many are missing.</p>
+        <p>A disk or network card whose settings change at the next start is marked as such, and a setting libvirt refuses shows as it was. Settings QEMU cannot have, such as the host's system information on the user's own connection, are no longer offered.</p>
+        <p>The window no longer waits on libvirt as a connection or serial console closes, as a screenshot is saved, or as the details look at the host's devices and scripts. Usage graphs no longer take a sample from the machine shown before, and the New Virtual Machine and Add Storage dialogs free their memory once closed.</p>
+      </description>
+    </release>
     <release version="0.1.2" date="2026-09-25">
       <description>
         <p>A click in the console gives the virtual machine the shortcuts the desktop would otherwise take, such as Super and Alt+Tab, until Ctrl+Alt releases the keyboard, which the console says as it takes them. Fullscreen has a button in the main window too, and in fullscreen the machine's controls, with the keys to send, come down from the top edge of the screen: for a moment as fullscreen starts, while the pointer is at the edge, and at a tap there on a touch screen. The serial console says so while nothing has arrived from the guest.</p>

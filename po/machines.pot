@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: machines 0.1.2\n"
+"Project-Id-Version: machines 0.1.3\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-09-26 12:21+0300\n"
+"POT-Creation-Date: 2026-09-26 13:34+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -171,6 +171,37 @@ msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:53
 msgid ""
+"The details have a Passthrough group for Looking Glass, the memory balloon, "
+"hiding the hypervisor from the guest, and the host's keyboard and mouse. "
+"Looking Glass gets the SPICE listener and screen it needs, and is turned on "
+"only where its client is installed. Advanced settings reach from the machine "
+"type and power actions to disk and network card tuning, and the scripts "
+"libvirt runs as a machine starts and stops can be edited, saved through an "
+"administrator's password. The definition opens in a resizable editor with "
+"XML highlighting, line numbers, and find and replace. A stopped machine "
+"opens on its details and shows its screen once it starts, and a machine that "
+"cannot start for want of huge pages says how many are missing."
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:54
+msgid ""
+"A disk or network card whose settings change at the next start is marked as "
+"such, and a setting libvirt refuses shows as it was. Settings QEMU cannot "
+"have, such as the host's system information on the user's own connection, "
+"are no longer offered."
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:55
+msgid ""
+"The window no longer waits on libvirt as a connection or serial console "
+"closes, as a screenshot is saved, or as the details look at the host's "
+"devices and scripts. Usage graphs no longer take a sample from the machine "
+"shown before, and the New Virtual Machine and Add Storage dialogs free their "
+"memory once closed."
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:60
+msgid ""
 "A click in the console gives the virtual machine the shortcuts the desktop "
 "would otherwise take, such as Super and Alt+Tab, until Ctrl+Alt releases the "
 "keyboard, which the console says as it takes them. Fullscreen has a button "
@@ -181,7 +212,7 @@ msgid ""
 "guest."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:54
+#: data/io.github.sachesi.machines.metainfo.xml:61
 msgid ""
 "A libvirt daemon that stops answering now shows as a lost connection instead "
 "of leaving the window waiting. SPICE is offered only where QEMU has its "
@@ -190,7 +221,7 @@ msgid ""
 "screen readers know it by the machine's name."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:59
+#: data/io.github.sachesi.machines.metainfo.xml:66
 msgid ""
 "New virtual machines boot with the firmware chosen for them: BIOS, UEFI, or "
 "UEFI with Secure Boot, which is the default where the host's firmware has "
@@ -199,7 +230,7 @@ msgid ""
 "socket, so that Windows uses all of them."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:60
+#: data/io.github.sachesi.machines.metainfo.xml:67
 msgid ""
 "The serial console is offered only to machines with a serial port, which is "
 "added and removed with the other devices. The sidebar selects a machine on a "
@@ -209,7 +240,7 @@ msgid ""
 "a keyboard shortcuts dialog lists what the keyboard does."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:64
+#: data/io.github.sachesi.machines.metainfo.xml:71
 msgid "First release."
 msgstr ""
 
