@@ -79,6 +79,8 @@ struct StorageForm {
     host_disk: adw::ComboRow,
     file_row: adw::ActionRow,
     file: RefCell<Option<String>>,
+    /// Why QEMU may not open the file, looked for once as it is chosen.
+    file_warning: RefCell<Option<String>>,
     add: gtk::Button,
     /// Whether QEMU runs as a user of its own, who may not reach the file.
     qemu_is_other_user: bool,
@@ -132,16 +134,10 @@ impl StorageForm {
         });
         let file = self.file.borrow();
         self.file_row.set_subtitle(&match (file.as_deref(), kind) {
-            (Some(path), _) => {
-                let warning = self
-                    .qemu_is_other_user
-                    .then(|| dialogs::qemu_access_warning(std::path::Path::new(path)))
-                    .flatten();
-                match warning {
-                    Some(warning) => format!("{path}\n{warning}"),
-                    None => path.to_owned(),
-                }
-            }
+            (Some(path), _) => match self.file_warning.borrow().as_deref() {
+                Some(warning) => format!("{path}\n{warning}"),
+                None => path.to_owned(),
+            },
             (None, StorageKind::Cdrom) => gettext("None, the drive starts empty"),
             (None, _) => gettext("None chosen"),
         });
@@ -342,6 +338,7 @@ fn present_storage(
         host_disk,
         file_row,
         file: RefCell::default(),
+        file_warning: RefCell::default(),
         add: add.clone(),
         qemu_is_other_user: window(view).is_some_and(|w| w.host().qemu_is_other_user),
     });
@@ -381,9 +378,19 @@ fn present_storage(
                 dialog,
                 async move {
                     let image = form.kind() == StorageKind::Image;
-                    if let Some(path) = new_machine::choose_file(&dialog, image).await {
-                        form.file.replace(Some(path.to_string_lossy().into_owned()));
-                        form.sync();
+                    let Some(path) = new_machine::choose_file(&dialog, image).await else {
+                        return;
+                    };
+                    let file = path.to_string_lossy().into_owned();
+                    form.file.replace(Some(file.clone()));
+                    form.file_warning.take();
+                    form.sync();
+                    if form.qemu_is_other_user {
+                        let warning = dialogs::qemu_access_warning(path).await;
+                        if form.file.borrow().as_ref() == Some(&file) {
+                            form.file_warning.replace(warning);
+                            form.sync();
+                        }
                     }
                 }
             ));

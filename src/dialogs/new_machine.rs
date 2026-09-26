@@ -26,6 +26,8 @@ struct Form {
     source: adw::ComboRow,
     file_row: adw::ActionRow,
     file: RefCell<Option<PathBuf>>,
+    /// Why QEMU may not open the file, looked for once as it is chosen.
+    file_warning: RefCell<Option<String>>,
     /// The system on the chosen ISO.
     detected: RefCell<Option<Os>>,
     name: adw::EntryRow,
@@ -161,11 +163,7 @@ impl Form {
         self.file_row.set_subtitle(&match file.as_deref() {
             Some(path) => {
                 let shown = path.to_string_lossy().into_owned();
-                let warning = self
-                    .qemu_is_other_user
-                    .then(|| dialogs::qemu_access_warning(path))
-                    .flatten();
-                match warning {
+                match self.file_warning.borrow().as_deref() {
                     Some(warning) => format!("{shown}\n{warning}"),
                     None => shown,
                 }
@@ -326,6 +324,7 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
         source,
         file_row,
         file: RefCell::default(),
+        file_warning: RefCell::default(),
         detected: RefCell::default(),
         name,
         name_is_derived: Cell::new(true),
@@ -445,9 +444,18 @@ pub fn present(win: &MachinesWindow, on_create: impl Fn(&MachinesWindow, CreateR
                         form.name.set_text(&unique_name(&path, &form.taken));
                     }
                     form.file.replace(Some(path.clone()));
+                    form.file_warning.take();
                     form.detect(None);
                     form.sync();
-                    if form.importing() {
+                    let importing = form.importing();
+                    if form.qemu_is_other_user {
+                        let warning = dialogs::qemu_access_warning(path.clone()).await;
+                        if form.file.borrow().as_ref() == Some(&path) {
+                            form.file_warning.replace(warning);
+                            form.sync();
+                        }
+                    }
+                    if importing {
                         return;
                     }
                     let iso = path.clone();

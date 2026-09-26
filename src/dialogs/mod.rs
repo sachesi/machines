@@ -118,15 +118,21 @@ fn closed_to_qemu(path: &Path) -> Option<PathBuf> {
     })
 }
 
-/// What to tell of `path` before QEMU, running as a user of its own, fails to open it.
-pub fn qemu_access_warning(path: &Path) -> Option<String> {
-    closed_to_qemu(path).map(|dir| {
+/// What to tell of `path` before QEMU, running as a user of its own, fails to open it. The
+/// folders on the way are looked at off the main loop, as a network share among them can be
+/// slow to answer.
+pub async fn qemu_access_warning(path: PathBuf) -> Option<String> {
+    let dir = gio::spawn_blocking(move || closed_to_qemu(&path))
+        .await
+        .ok()
+        .flatten()?;
+    Some(
         gettext(
             "QEMU runs as a user of its own, which cannot open files in {folder}. Move the \
              file elsewhere, such as /var/lib/libvirt/images, or let that user into the folder.",
         )
-        .replace("{folder}", &dir.to_string_lossy())
-    })
+        .replace("{folder}", &dir.to_string_lossy()),
+    )
 }
 
 /// A dialog of `page` with Cancel and a suggested `confirm` button in its header bar; the

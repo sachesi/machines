@@ -2,7 +2,7 @@
 //! without editing its XML.
 
 use std::cell::RefCell;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -916,7 +916,8 @@ fn disk_row(view: &MachineView, disk: &Disk, pending: Pending, advanced: bool) -
                 async move {
                     if let Some(path) = choose_iso(&view).await {
                         if let Some(win) = window(&view).filter(|w| w.host().qemu_is_other_user)
-                            && let Some(warning) = dialogs::qemu_access_warning(Path::new(&path))
+                            && let Some(warning) =
+                                dialogs::qemu_access_warning(PathBuf::from(&path)).await
                         {
                             win.toast(&warning);
                         }
