@@ -176,8 +176,13 @@ pub fn group(
             history.borrow_mut().polling = true;
             let (history, uuid, show) = (history.clone(), uuid.clone(), show.clone());
             glib::spawn_future_local(async move {
-                let usage = win.call(move |hv| hv.usage(&uuid)).await;
+                let machine = uuid.clone();
+                let usage = win.call(move |hv| hv.usage(&machine)).await;
                 let mut h = history.borrow_mut();
+                // The view went on to another machine meanwhile, whose history this is now.
+                if h.uuid != uuid {
+                    return;
+                }
                 h.polling = false;
                 if let Some(Ok(usage)) = usage {
                     h.add(Instant::now(), usage);
