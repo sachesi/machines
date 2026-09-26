@@ -411,7 +411,8 @@ fn present_storage(
         }
     ));
     form.sync();
-    // As the new machine's form is held.
+    // Its widgets hold the form weakly, as it holds them; the dialog holds it for as long as
+    // it lives.
     dialog.add_weak_ref_notify_local(move || drop(form));
     dialog.present(Some(view));
 }

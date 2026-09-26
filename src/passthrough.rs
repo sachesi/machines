@@ -10,7 +10,8 @@ use std::os::fd::AsRawFd;
 
 use crate::glib;
 
-/// All of it at once, read off the main loop, as reading it opens some of the devices.
+/// What the host has to pass through, read at once off the main loop, as reading it opens
+/// some of the devices.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Devices {
     /// The graphics cards, by PCI address as sysfs names them.

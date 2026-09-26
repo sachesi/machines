@@ -93,6 +93,7 @@ mod imp {
         pub(super) changed_handler: RefCell<Option<glib::SignalHandlerId>>,
         /// What the details page was last built from.
         pub(super) shown: RefCell<Option<MachineInfo>>,
+        /// What was last read of the host's own files, which the details fill from.
         pub(super) host_files: RefCell<details::HostFiles>,
         /// Whether the machine was running when last seen, for the page to follow it as
         /// it starts and stops.
