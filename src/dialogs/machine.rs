@@ -1137,14 +1137,17 @@ pub fn screenshot(view: &MachineView) {
     };
     glib::spawn_future_local(async move {
         let uuid = info.uuid.clone();
-        let image = match win.call(move |hv| hv.screenshot(&uuid)).await {
-            Some(Ok(image)) => image,
+        // Made a PNG there too, which for a large screen takes long enough to hold up the
+        // window.
+        let png = win.call(move |hv| {
+            gdk::Texture::from_bytes(&glib::Bytes::from_owned(hv.screenshot(&uuid)?))
+                .map(|texture| texture.save_to_png_bytes())
+                .map_err(|e| e.to_string())
+        });
+        let png = match png.await {
+            Some(Ok(png)) => png,
             Some(Err(e)) => return win.toast(&e),
             None => return,
-        };
-        let png = match gdk::Texture::from_bytes(&glib::Bytes::from_owned(image)) {
-            Ok(texture) => texture.save_to_png_bytes(),
-            Err(e) => return win.toast(&e.to_string()),
         };
         let time = glib::DateTime::now_local()
             .and_then(|t| t.format("%Y-%m-%d %H-%M-%S"))
