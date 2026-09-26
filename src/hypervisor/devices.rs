@@ -51,6 +51,21 @@ impl Hypervisor {
         self.change_device(uuid, xml, true)
     }
 
+    /// Add the USB device `xml`, as [`Self::attach`] does, with a port of the machine's USB
+    /// controller for it from the machine's next start: see [`domain_xml::with_usb_ports`].
+    pub fn attach_usb(&self, uuid: &str, xml: &str) -> Result<Change> {
+        let dom = self.domain(uuid)?;
+        if dom.is_persistent().map_err(message)? {
+            let definition = dom
+                .get_xml_desc(sys::VIR_DOMAIN_XML_INACTIVE | sys::VIR_DOMAIN_XML_SECURE)
+                .map_err(message)?;
+            if let Some(edited) = domain_xml::with_usb_ports(&definition)? {
+                Domain::define_xml(&self.conn, &edited).map_err(message)?;
+            }
+        }
+        self.attach(uuid, xml)
+    }
+
     /// Remove the device `xml`, as [`Self::attach`] adds one.
     pub fn detach(&self, uuid: &str, xml: &str) -> Result<Change> {
         self.change_device(uuid, xml, false)

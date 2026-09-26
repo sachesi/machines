@@ -669,6 +669,7 @@ fn host_devices_page(
         dialogs::set_plain_text(&row, &device_title(dev), &subtitle);
         row.add_suffix(&gtk::Image::from_icon_name("list-add-symbolic"));
         let xml = dev.passthrough_id(devices).hostdev_xml();
+        let is_usb = matches!(dev.id, HostDeviceId::Usb { .. });
         let chosen = dev.clone();
         row.connect_activated(glib::clone!(
             #[weak]
@@ -685,7 +686,13 @@ fn host_devices_page(
                     async move {
                         if confirm_pass_through(&dialog, &dev, running).await {
                             dialog.close();
-                            view.change(move |hv, uuid| hv.attach(uuid, &xml));
+                            view.change(move |hv, uuid| {
+                                if is_usb {
+                                    hv.attach_usb(uuid, &xml)
+                                } else {
+                                    hv.attach(uuid, &xml)
+                                }
+                            });
                         }
                     }
                 ));

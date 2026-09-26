@@ -868,6 +868,46 @@ pub fn folder_tag(path: &str, taken: &[&str]) -> String {
         .expect("an unused tag")
 }
 
+/// `xml` with a qemu-xhci USB controller given the 15 ports it can have, or `None` where it
+/// has them or is some other controller.
+///
+/// Where the controller has too few ports for its devices, libvirt adds a hub of its own,
+/// which runs at full speed, and a USB 2 device behind it fails to start the machine. Such
+/// hubs go as well, and where they put devices, for libvirt to put them on the controller.
+pub fn with_usb_ports(xml: &str) -> Result<Option<String>, String> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
+    let devices = child(doc.root_element(), "devices").ok_or("the domain has no devices")?;
+    let on_bus_0 = |node: roxmltree::Node| node.attribute("bus").unwrap_or("0") == "0";
+    let Some(controller) = devices.children().find(|n| {
+        n.has_tag_name("controller")
+            && n.attribute("type") == Some("usb")
+            && n.attribute("index").unwrap_or("0") == "0"
+            && matches!(n.attribute("model"), Some("qemu-xhci" | "nec-xhci"))
+    }) else {
+        return Ok(None);
+    };
+    let ports = controller
+        .attribute("ports")
+        .and_then(|p| p.parse::<u32>().ok());
+    if ports.is_some_and(|p| p >= 15) {
+        return Ok(None);
+    }
+    let mut edits = vec![set_attribute(xml, controller, "ports", Some("15"))];
+    for device in devices.children().filter(|n| n.is_element()) {
+        let address = device
+            .children()
+            .find(|a| a.has_tag_name("address") && a.attribute("type") == Some("usb"));
+        if device.has_tag_name("hub") && address.is_none_or(on_bus_0) {
+            edits.push((device.range(), String::new()));
+        } else if let Some(address) =
+            address.filter(|a| on_bus_0(*a) && a.attribute("port").is_some_and(|p| p.contains('.')))
+        {
+            edits.push((address.range(), String::new()));
+        }
+    }
+    Ok(Some(apply_edits(xml, edits)))
+}
+
 /// `xml` with the memory QEMU shares with virtiofsd, which virtiofs needs, or `None` where it
 /// has it already.
 pub fn with_shared_memory(xml: &str) -> Result<Option<String>, String> {
@@ -2963,6 +3003,29 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(empty, format!("<domain>{shared}</domain>"));
+    }
+
+    #[test]
+    fn usb_devices_get_the_controller_s_own_ports() {
+        let full = "<domain><devices>\
+             <controller type='usb' index='0' model='qemu-xhci'><address type='pci'/></controller>\
+             <hub type='usb'><address type='usb' bus='0' port='4'/></hub>\
+             <hostdev mode='subsystem' type='usb'><source/><address type='usb' bus='0' port='4.1'/></hostdev>\
+             <input type='tablet' bus='usb'><address type='usb' bus='0' port='1'/></input>\
+             </devices></domain>";
+        let fixed = with_usb_ports(full).unwrap().unwrap();
+        assert_eq!(
+            fixed,
+            "<domain><devices>\
+             <controller type='usb' index='0' model='qemu-xhci' ports='15'><address type='pci'/></controller>\
+             <hostdev mode='subsystem' type='usb'><source/></hostdev>\
+             <input type='tablet' bus='usb'><address type='usb' bus='0' port='1'/></input>\
+             </devices></domain>"
+        );
+        assert_eq!(with_usb_ports(&fixed).unwrap(), None);
+        let ehci =
+            "<domain><devices><controller type='usb' model='ich9-ehci1'/></devices></domain>";
+        assert_eq!(with_usb_ports(ehci).unwrap(), None);
     }
 
     #[test]
