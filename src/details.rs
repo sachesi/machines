@@ -20,7 +20,7 @@ use crate::host_xml::HostDeviceId;
 use crate::hypervisor::{Host, MachineInfo};
 use crate::machine_view::MachineView;
 use crate::window::MachinesWindow;
-use crate::{adw, glib, gtk, passthrough, prefs, usage};
+use crate::{adw, gio, glib, gtk, passthrough, prefs, usage};
 
 /// How long a spin row has to rest before its value is saved.
 const SETTLE: Duration = Duration::from_millis(700);
@@ -1646,14 +1646,16 @@ fn scripts(
         row.connect_activated(glib::clone!(
             #[weak]
             view,
-            move |_| edit_script(&view, &uuid, &name, event, script.clone())
+            move |_| edit_script(&view, &uuid, &name, event)
         ));
         group.add(&row);
     }
     Some(group)
 }
 
-fn edit_script(view: &MachineView, uuid: &str, name: &str, event: Event, script: Option<String>) {
+/// Edit the script as it is now, which the row may not show yet: it shows what was read
+/// before this machine's scripts were.
+fn edit_script(view: &MachineView, uuid: &str, name: &str, event: Event) {
     let Some(win) = window(view) else {
         return;
     };
@@ -1662,22 +1664,29 @@ fn edit_script(view: &MachineView, uuid: &str, name: &str, event: Event, script:
         Event::Release => gettext("After “{name}” Stops"),
     }
     .replace("{name}", name);
-    let text = script.unwrap_or_else(|| "#!/bin/sh\n".to_owned());
     let (view, uuid) = (view.downgrade(), uuid.to_owned());
-    dialogs::machine::edit_text(&win, &title, &text, "sh", move |text| {
-        let (view, uuid) = (view.clone(), uuid.clone());
-        async move {
-            match hooks::set_script(&uuid, event, &text).await {
-                Ok(true) => {
-                    if let Some(view) = view.upgrade() {
-                        view.refresh_details();
+    glib::spawn_future_local(async move {
+        let read = uuid.clone();
+        let script = gio::spawn_blocking(move || hooks::script(&read, event))
+            .await
+            .ok()
+            .flatten();
+        let text = script.unwrap_or_else(|| "#!/bin/sh\n".to_owned());
+        dialogs::machine::edit_text(&win, &title, &text, "sh", move |text| {
+            let (view, uuid) = (view.clone(), uuid.clone());
+            async move {
+                match hooks::set_script(&uuid, event, &text).await {
+                    Ok(true) => {
+                        if let Some(view) = view.upgrade() {
+                            view.refresh_details();
+                        }
+                        Some(Ok(()))
                     }
-                    Some(Ok(()))
+                    Ok(false) => None,
+                    Err(e) => Some(Err(e)),
                 }
-                Ok(false) => None,
-                Err(e) => Some(Err(e)),
             }
-        }
+        });
     });
 }
 
