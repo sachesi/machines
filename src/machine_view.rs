@@ -29,6 +29,9 @@ const TOUCH_REVEAL_EDGE: f64 = 24.0;
 const GRAB_HINT_TIME: std::time::Duration = std::time::Duration::from_secs(3);
 /// How long the controls stay when they come down by themselves or for a touch.
 const CONTROLS_PEEK_TIME: std::time::Duration = std::time::Duration::from_secs(3);
+/// How long the display stays connected once the view leaves the screen, which it does
+/// for a moment as the sidebar folds away for fullscreen.
+const UNMAPPED_LINGER: std::time::Duration = std::time::Duration::from_secs(1);
 
 mod imp {
     use super::*;
@@ -138,6 +141,8 @@ mod imp {
         pub(super) grab_hint_timeout: RefCell<Option<glib::SourceId>>,
         /// While set, the controls stay down wherever the pointer goes.
         pub(super) controls_timeout: RefCell<Option<glib::SourceId>>,
+        /// While set, the view left the screen only just, and the display stays.
+        pub(super) unmapped: RefCell<Option<glib::SourceId>>,
     }
 
     #[glib::object_subclass]
@@ -242,8 +247,29 @@ mod imp {
                     obj,
                     move |_| view.update()
                 ));
-            obj.connect_map(|view| view.update());
-            obj.connect_unmap(|view| view.update());
+            obj.connect_map(|view| {
+                if let Some(linger) = view.imp().unmapped.take() {
+                    linger.remove();
+                }
+                view.update();
+            });
+            obj.connect_unmap(|view| {
+                let linger = glib::timeout_add_local_once(
+                    UNMAPPED_LINGER,
+                    glib::clone!(
+                        #[weak]
+                        view,
+                        move || {
+                            view.imp().unmapped.take();
+                            view.update();
+                        }
+                    ),
+                );
+                if let Some(linger) = view.imp().unmapped.replace(Some(linger)) {
+                    linger.remove();
+                }
+                view.update();
+            });
 
             let settings = crate::prefs::settings();
             let details = gio::SimpleActionGroup::new();
@@ -1159,7 +1185,8 @@ impl MachineView {
     /// them out from under it.
     fn console_wanted(&self) -> bool {
         let imp = self.imp();
-        self.is_mapped() && imp.view_stack.visible_child_name().as_deref() == Some("console")
+        let shown = self.is_mapped() || imp.unmapped.borrow().is_some();
+        shown && imp.view_stack.visible_child_name().as_deref() == Some("console")
             || imp.detached.borrow().is_some()
             || imp.console.redirects_usb()
     }
