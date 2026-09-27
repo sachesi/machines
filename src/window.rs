@@ -618,8 +618,9 @@ impl MachinesWindow {
         if self.is_fullscreen() {
             imp.collapsed_before_fullscreen
                 .set(Some(imp.split_view.is_collapsed()));
-            imp.split_view.set_collapsed(true);
+            // The content first, for the view not to slide over from the sidebar.
             imp.split_view.set_show_content(true);
+            imp.split_view.set_collapsed(true);
         } else if let Some(collapsed) = imp.collapsed_before_fullscreen.take() {
             imp.split_view.set_collapsed(collapsed);
         }
