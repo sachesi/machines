@@ -24,6 +24,12 @@ use super::pointer_lock::PointerLock;
 /// How long Scroll Lock is held before the keys that go with it are shown, as long as
 /// the Looking Glass client waits.
 const KEYS_DELAY: Duration = Duration::from_millis(200);
+/// How long the pointer stays still before the guest's is checked to be where it was sent.
+const SETTLE_DELAY: Duration = Duration::from_millis(100);
+/// How many times in a row the guest's pointer has to be found astray before the host
+/// puts it in place on every move: once can be a move the guest lost, or a pointer the
+/// guest held back at an edge.
+const STRAYING: u8 = 2;
 /// How far the pointer's sensitivity goes either way from 0, as in Looking Glass, where
 /// each step is a tenth.
 const SENSITIVITY_STEPS: i32 = 9;
@@ -53,9 +59,16 @@ pub(super) struct LookingGlass {
     /// is, and as the user turned it on top of that.
     frame_turns: u32,
     turns: u32,
-    /// Where the guest's pointer is, as the guest last said, moved by what was sent it
-    /// since.
+    /// Where the guest's pointer is, as the guest last said.
     pointer: Option<(i32, i32)>,
+    /// Where the console last had the guest's pointer go, since the pointer came over the
+    /// screen.
+    aim: Option<(i32, i32)>,
+    /// What checks where the guest's pointer went, once the pointer stays still.
+    settle: Option<glib::SourceId>,
+    /// How many times in a row the guest's pointer was found elsewhere than it was sent,
+    /// as where Windows speeds up what a mouse moves, up to [`STRAYING`].
+    strays: u8,
     cursor: Option<gdk::Cursor>,
     /// The guest's pointer and its hotspot, drawn over the screen while the console
     /// holds the pointer.
@@ -71,6 +84,16 @@ pub(super) struct LookingGlass {
     escape: Option<Escape>,
     /// The keys pressed with Scroll Lock, which the guest is not to see let go either.
     swallowed: Vec<u32>,
+}
+
+impl LookingGlass {
+    /// Forget where the console last had the guest's pointer go, and stop checking it.
+    fn lose_aim(&mut self) {
+        self.aim = None;
+        if let Some(settle) = self.settle.take() {
+            settle.remove();
+        }
+    }
 }
 
 /// Scroll Lock, while it is down.
@@ -134,24 +157,72 @@ impl Console {
         Some((lg.texture.clone()?, lg.screen, turns))
     }
 
-    /// How far the guest's pointer is from (`x`, `y`), where Looking Glass says where it
-    /// is, counting it as moved there.
+    /// How far to move the guest's pointer, as a mouse moves it, for it to follow the
+    /// pointer over the screen Looking Glass shows, now at (`x`, `y`) on the guest's.
+    ///
+    /// As in Looking Glass's own client, the host puts it in place only as the pointer
+    /// comes over the screen: it takes such a request only every 10 ms, and Windows keeps
+    /// a hidden pointer hidden until a mouse moves it, which the host putting it in place
+    /// does not count as. Where the guest's pointer keeps straying, as where Windows speeds
+    /// up what a mouse moves, the host puts it in place on every move instead, while it
+    /// shows.
     pub(super) fn looking_glass_pointer_to(&self, x: i32, y: i32) -> Option<(i32, i32)> {
         let mut lg = self.imp().looking_glass.borrow_mut();
-        let (gx, gy) = lg.pointer?;
-        lg.pointer = Some((x, y));
-        Some((x - gx, y - gy))
+        let reader = lg.reader.as_ref().filter(|_| lg.texture.is_some())?;
+        let straying = lg.strays >= STRAYING && lg.visible;
+        if lg.places_pointer && (lg.aim.is_none() || reader.placing() || straying) {
+            reader.place(x, y);
+            lg.aim = Some((x, y));
+            // A check left from moving it as a mouse would catch it on its way here.
+            if let Some(settle) = lg.settle.take() {
+                settle.remove();
+            }
+            return Some((0, 0));
+        }
+        let (ax, ay) = lg.aim.or(lg.pointer)?;
+        lg.aim = Some((x, y));
+        if (ax, ay) != (x, y) {
+            if let Some(settle) = lg.settle.take() {
+                settle.remove();
+            }
+            lg.settle = Some(glib::timeout_add_local_once(
+                SETTLE_DELAY,
+                glib::clone!(
+                    #[weak(rename_to = console)]
+                    self,
+                    move || console.check_looking_glass_pointer()
+                ),
+            ));
+        }
+        Some((x - ax, y - ay))
     }
 
-    /// Have the host put the guest's pointer at (`x`, `y`), where it can, while it shows
-    /// the screen; whether it does.
-    pub(super) fn place_looking_glass_pointer(&self, x: i32, y: i32) -> bool {
-        let lg = self.imp().looking_glass.borrow();
-        let places = lg.places_pointer && lg.texture.is_some();
-        if let (true, Some(reader)) = (places, &lg.reader) {
-            reader.place(x, y);
+    /// The pointer stayed still: have the host put the guest's in place if it went
+    /// elsewhere, and on every move once it keeps doing so.
+    fn check_looking_glass_pointer(&self) {
+        let mut lg = self.imp().looking_glass.borrow_mut();
+        lg.settle = None;
+        let (Some((ax, ay)), Some((px, py))) = (lg.aim, lg.pointer) else {
+            return;
+        };
+        if !(lg.visible && lg.places_pointer) {
+            return;
         }
-        places
+        if (ax - px).abs() <= 1 && (ay - py).abs() <= 1 {
+            if lg.strays < STRAYING {
+                lg.strays = 0;
+            }
+            return;
+        }
+        lg.strays = (lg.strays + 1).min(STRAYING);
+        if let Some(reader) = &lg.reader {
+            reader.place(ax, ay);
+        }
+    }
+
+    /// The pointer left the console, for the host to put the guest's where it comes back.
+    pub(super) fn looking_glass_pointer_left(&self) {
+        self.imp().looking_glass.borrow_mut().lose_aim();
     }
 
     /// Whether SPICE is to be in its server mouse mode, where the guest's mouse moves only
@@ -397,6 +468,7 @@ impl Console {
         let Some(held) = self.imp().looking_glass.borrow_mut().held.take() else {
             return;
         };
+        self.looking_glass_pointer_left();
         drop(held);
         self.follow_looking_glass_cursor();
         self.follow_mouse_mode();
@@ -489,6 +561,7 @@ impl Console {
             if *status != Status::Showing {
                 lg.texture = None;
                 lg.pointer = None;
+                lg.lose_aim();
             }
             lg.status = Some(status.clone());
         }

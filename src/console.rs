@@ -645,6 +645,11 @@ impl Console {
             self,
             move |_, x, y| console.send_pointer(x, y)
         ));
+        motion.connect_leave(glib::clone!(
+            #[weak(rename_to = console)]
+            self,
+            move |_| console.looking_glass_pointer_left()
+        ));
         self.add_controller(motion);
 
         let click = gtk::GestureClick::builder().button(0).build();

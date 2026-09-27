@@ -492,9 +492,9 @@ impl Console {
         i32::from(self.imp().buttons.get())
     }
 
-    /// Move the guest's pointer to (`x`, `y`): there, where SPICE or Looking Glass places
-    /// the pointer, else by as much as it is away, where Looking Glass says where it is.
-    /// Not while the console holds the pointer, which moves by as much as it is moved.
+    /// Move the guest's pointer to (`x`, `y`): there, where SPICE places the pointer, else
+    /// as Looking Glass has it follow the console's. Not while the console holds the
+    /// pointer, which moves by as much as it is moved.
     pub(super) fn spice_pointer(&self, x: u16, y: u16) {
         let (inputs, main) = {
             let spice = self.imp().spice.borrow();
@@ -509,9 +509,6 @@ impl Console {
         let (x, y) = (i32::from(x), i32::from(y));
         if main.is_none_or(|m| m.mouse_mode() == MOUSE_MODE_CLIENT) {
             inputs.position(x, y, 0, self.spice_buttons());
-            return;
-        }
-        if self.place_looking_glass_pointer(x, y) {
             return;
         }
         if let Some((dx, dy)) = self.looking_glass_pointer_to(x, y)

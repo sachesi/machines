@@ -188,6 +188,8 @@ struct Shared {
     woken: bool,
     /// Where to put the guest's pointer, not yet asked of the host.
     place: Option<(i32, i32)>,
+    /// Whether the host has yet to take what it was last asked, or be asked it.
+    placing: bool,
     /// The formats frames are handed on in without copying them out of the device, where
     /// it makes DMA buffers of its memory.
     shareable: Vec<Format>,
@@ -240,7 +242,14 @@ impl Reader {
 
     /// Have the host put the guest's pointer at (`x`, `y`) on its screen, if it can.
     pub fn place(&self, x: i32, y: i32) {
-        lock(&self.shared).place = Some((x, y));
+        let mut shared = lock(&self.shared);
+        shared.place = Some((x, y));
+        shared.placing = true;
+    }
+
+    /// Whether the host has yet to put the guest's pointer where it was last asked.
+    pub fn placing(&self) -> bool {
+        lock(&self.shared).placing
     }
 
     /// Copy the frames out of the device from now on.
@@ -662,7 +671,11 @@ impl Worker {
         self.serial = None;
         self.whole = true;
         self.dmabufs.clear();
-        lock(&self.shared).place = None;
+        {
+            let mut shared = lock(&self.shared);
+            shared.place = None;
+            shared.placing = false;
+        }
         self.publish(|update| update.places_pointer = Some(welcome.places_pointer));
         self.follow(shm, &mut client, &mut frames, &mut pointer);
         frames.unsubscribe(&client);
@@ -739,7 +752,12 @@ impl Worker {
             }
             *placing = None;
         }
-        let Some((x, y)) = lock(&self.shared).place.take() else {
+        let place = {
+            let mut shared = lock(&self.shared);
+            shared.placing = shared.place.is_some();
+            shared.place.take()
+        };
+        let Some((x, y)) = place else {
             return Ok(());
         };
         let mut message = [0; 12];
