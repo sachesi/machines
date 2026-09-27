@@ -511,6 +511,13 @@ impl Console {
         };
         let mut lg = imp.looking_glass.borrow_mut();
         let blank = lg.texture.is_none();
+        // The pointer is drawn over the screen only while the console holds it.
+        let redraw = update.frame.is_some()
+            || update.status.is_some()
+            || lg.held.is_some()
+                && (update.shape.is_some()
+                    || update.visible.is_some()
+                    || update.position.is_some());
         if let Some(frame) = update.frame {
             lg.screen = match frame.screen {
                 (0, _) | (_, 0) => (frame.width as i32, frame.height as i32),
@@ -580,7 +587,9 @@ impl Console {
             // What the SPICE display has, if anything, shows again.
             self.invalidate(None);
         }
-        self.queue_draw();
+        if redraw {
+            self.queue_draw();
+        }
         if status.is_some() {
             self.emit_by_name::<()>("looking-glass-changed", &[]);
         }
