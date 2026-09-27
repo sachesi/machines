@@ -659,6 +659,26 @@ impl MachineView {
         ));
         imp.console_overlay.add_controller(touch);
 
+        // Not an application shortcut: those look for the action from the window, above
+        // the view that has it. This one works in whichever window the display is in, except
+        // while the display has the keyboard, which keeps F11 for the guest.
+        let fullscreen = gtk::ShortcutController::new();
+        fullscreen.set_scope(gtk::ShortcutScope::Managed);
+        fullscreen.add_shortcut(gtk::Shortcut::new(
+            gtk::ShortcutTrigger::parse_string("F11"),
+            Some(gtk::CallbackAction::new(glib::clone!(
+                #[weak(rename_to = view)]
+                self,
+                #[upgrade_or]
+                glib::Propagation::Proceed,
+                move |_, _| {
+                    let _ = view.activate_action("machine.fullscreen", None);
+                    glib::Propagation::Stop
+                }
+            ))),
+        ));
+        imp.console_overlay.add_controller(fullscreen);
+
         imp.console.connect_grab_changed(glib::clone!(
             #[weak(rename_to = view)]
             self,
