@@ -44,6 +44,9 @@ pub(super) struct Spice {
     pub cursor: Option<spice::CursorChannel>,
     pub audio: Option<spice::Audio>,
     pub usb: Option<spice::UsbDeviceManager>,
+    /// The buttons the guest was last told are down, which may lag the pointer's while
+    /// Looking Glass keeps a click back.
+    pub buttons: u8,
     /// Watches the host's clipboard, to offer what is copied there to the guest.
     pub clipboard_changed: Option<glib::SignalHandlerId>,
     /// Whether the host's clipboard changed while the console did not have the keyboard,
@@ -489,7 +492,7 @@ impl Console {
     }
 
     fn spice_buttons(&self) -> i32 {
-        i32::from(self.imp().buttons.get())
+        i32::from(self.imp().spice.borrow().buttons)
     }
 
     /// Move the guest's pointer to (`x`, `y`): there, where SPICE places the pointer, else
@@ -526,18 +529,34 @@ impl Console {
         }
     }
 
-    /// Press or release GTK button `button`; the button mask is already updated.
+    /// Press or release GTK button `button`, where the guest's pointer shows.
     pub(super) fn spice_button(&self, button: u32, down: bool) {
+        if button_bit(button) != 0 && !self.looking_glass_keeps_button(button, down) {
+            self.send_spice_button(button, down);
+        }
+    }
+
+    pub(super) fn send_spice_button(&self, button: u32, down: bool) {
         let inputs = self.imp().spice.borrow().inputs.clone();
-        let (Some(inputs), true) = (inputs, button_bit(button) != 0) else {
+        let Some(inputs) = inputs else {
             return;
+        };
+        let bit = button_bit(button);
+        let buttons = {
+            let mut spice = self.spice_state();
+            spice.buttons = if down {
+                spice.buttons | bit
+            } else {
+                spice.buttons & !bit
+            };
+            i32::from(spice.buttons)
         };
         // SPICE numbers left, middle and right 1, 2 and 3, as GTK does.
         let button = button as i32;
         if down {
-            inputs.button_press(button, self.spice_buttons());
+            inputs.button_press(button, buttons);
         } else {
-            inputs.button_release(button, self.spice_buttons());
+            inputs.button_release(button, buttons);
         }
     }
 

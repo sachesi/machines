@@ -27,6 +27,8 @@ use super::pointer_lock::PointerLock;
 const KEYS_DELAY: Duration = Duration::from_millis(200);
 /// How long the pointer stays still before the guest's is checked to be where it was sent.
 const SETTLE_DELAY: Duration = Duration::from_millis(100);
+/// How long a click waits for the guest's pointer to get where the pointer shows.
+const CLICK_WAIT: Duration = Duration::from_millis(100);
 /// How many times in a row the guest's pointer has to be found astray before the host
 /// puts it in place on every move: once can be a move the guest lost, or a pointer the
 /// guest held back at an edge.
@@ -79,6 +81,13 @@ pub(super) struct LookingGlass {
     /// How many times in a row the guest's pointer was found elsewhere than it was sent,
     /// as where Windows speeds up what a mouse moves, up to [`STRAYING`].
     strays: u8,
+    /// Buttons pressed or let go while the guest's pointer was on its way to the aim, in
+    /// order, for the guest to have once it gets there.
+    clicks: Vec<(u32, bool)>,
+    /// What sends the clicks if the guest's pointer does not get there.
+    click_wait: Option<glib::SourceId>,
+    /// Where the pointer went while the clicks waited.
+    moved_to: Option<(i32, i32)>,
     cursor: Option<gdk::Cursor>,
     /// The guest's pointer and its hotspot, drawn over the screen while the console
     /// holds the pointer.
@@ -141,6 +150,7 @@ impl Console {
     }
 
     pub(super) fn close_looking_glass(&self) {
+        self.send_looking_glass_clicks();
         self.release_looking_glass();
         if let Some(retire) = self.imp().looking_glass.take().retire {
             retire.remove();
@@ -199,7 +209,12 @@ impl Console {
     /// shows.
     pub(super) fn looking_glass_pointer_to(&self, x: i32, y: i32) -> Option<(i32, i32)> {
         let mut lg = self.imp().looking_glass.borrow_mut();
-        let reader = lg.reader.as_ref().filter(|_| lg.texture.is_some())?;
+        lg.texture.as_ref()?;
+        if !lg.clicks.is_empty() {
+            lg.moved_to = Some((x, y));
+            return Some((0, 0));
+        }
+        let reader = lg.reader.as_ref()?;
         let straying = lg.strays >= STRAYING && lg.visible;
         if lg.places_pointer && (lg.aim.is_none() || reader.placing() || straying) {
             reader.place(x, y);
@@ -239,7 +254,7 @@ impl Console {
         if !(lg.visible && lg.places_pointer) {
             return;
         }
-        if (ax - px).abs() <= 1 && (ay - py).abs() <= 1 {
+        if near((ax, ay), (px, py)) {
             if lg.strays < STRAYING {
                 lg.strays = 0;
             }
@@ -251,8 +266,59 @@ impl Console {
         }
     }
 
+    /// Keep the press or release of GTK button `button` back while the guest's pointer is
+    /// not where the pointer shows, and have the host put it there, for the click to land
+    /// there; whether it was kept back. Moved as a mouse, the guest's pointer can be astray
+    /// until the pointer stays still, as where Windows speeds up what a mouse moves.
+    pub(super) fn looking_glass_keeps_button(&self, button: u32, down: bool) -> bool {
+        let mut lg = self.imp().looking_glass.borrow_mut();
+        if lg.clicks.is_empty() {
+            let (Some(aim), Some(pointer), Some(reader)) = (lg.aim, lg.pointer, &lg.reader) else {
+                return false;
+            };
+            if !(lg.visible && lg.places_pointer && lg.held.is_none()) || near(aim, pointer) {
+                return false;
+            }
+            reader.place(aim.0, aim.1);
+            lg.click_wait = Some(glib::timeout_add_local_once(
+                CLICK_WAIT,
+                glib::clone!(
+                    #[weak(rename_to = console)]
+                    self,
+                    move || {
+                        console.imp().looking_glass.borrow_mut().click_wait = None;
+                        console.send_looking_glass_clicks();
+                    }
+                ),
+            ));
+        }
+        lg.clicks.push((button, down));
+        true
+    }
+
+    /// Send the guest the buttons kept back, then where the pointer went meanwhile.
+    fn send_looking_glass_clicks(&self) {
+        let (clicks, moved_to) = {
+            let mut lg = self.imp().looking_glass.borrow_mut();
+            if let Some(wait) = lg.click_wait.take() {
+                wait.remove();
+            }
+            (std::mem::take(&mut lg.clicks), lg.moved_to.take())
+        };
+        for (button, down) in clicks {
+            self.send_spice_button(button, down);
+        }
+        if let Some((x, y)) = moved_to
+            && let Some((dx, dy)) = self.looking_glass_pointer_to(x, y)
+            && (dx, dy) != (0, 0)
+        {
+            self.spice_motion(dx, dy);
+        }
+    }
+
     /// The pointer left the console, for the host to put the guest's where it comes back.
     pub(super) fn looking_glass_pointer_left(&self) {
+        self.send_looking_glass_clicks();
         self.imp().looking_glass.borrow_mut().lose_aim();
     }
 
@@ -599,6 +665,11 @@ impl Console {
         if let Some(position) = update.position {
             lg.pointer = Some(position);
         }
+        let mut clicks_due = !lg.clicks.is_empty()
+            && lg
+                .aim
+                .zip(lg.pointer)
+                .is_some_and(|(aim, pointer)| near(aim, pointer));
         if let Some(places_pointer) = update.places_pointer {
             lg.places_pointer = places_pointer;
         }
@@ -611,6 +682,7 @@ impl Console {
                 }
                 lg.pointer = None;
                 lg.lose_aim();
+                clicks_due = !lg.clicks.is_empty();
             }
             lg.status = Some(status.clone());
         }
@@ -624,6 +696,9 @@ impl Console {
         }
         let showing = lg.texture.is_some();
         drop(lg);
+        if clicks_due {
+            self.send_looking_glass_clicks();
+        }
         if !showing {
             self.release_pointer();
         }
@@ -733,6 +808,11 @@ fn frame_texture(
             }
         }
     }
+}
+
+/// Whether the pointers at `a` and `b` are at most a pixel apart either way.
+fn near(a: (i32, i32), b: (i32, i32)) -> bool {
+    (a.0 - b.0).abs() <= 1 && (a.1 - b.1).abs() <= 1
 }
 
 fn shape_texture(shape: &Shape) -> gdk::Texture {
