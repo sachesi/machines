@@ -488,7 +488,8 @@ fn widen_rgb10(src: &[u8], width: usize, height: usize, pitch: usize, dst: &mut 
 /// monochrome shape has half of what it says, its two masks one above the other.
 ///
 /// GTK cannot invert what is under the pointer, which monochrome and masked shapes can,
-/// so those pixels are black, or the masked shape's color.
+/// so those pixels are black in a white outline, as a text pointer is on the desktop, or
+/// the masked shape's color.
 fn cursor_pixels(
     kind: u32,
     width: usize,
@@ -529,10 +530,18 @@ fn cursor_pixels(
             }
             let masks = data.get(..pitch * height * 2)?;
             let (and, xor) = masks.split_at(pitch * height);
+            let bit =
+                |mask: &[u8], x: usize, y: usize| mask[y * pitch + x / 8] & (0x80 >> (x % 8)) != 0;
+            let inverts = |x, y| bit(and, x, y) && bit(xor, x, y);
             for y in 0..height {
                 for x in 0..width {
-                    let bit = |mask: &[u8]| mask[y * pitch + x / 8] & (0x80 >> (x % 8)) != 0;
-                    pixels.extend_from_slice(match (bit(and), bit(xor)) {
+                    let outlines = || {
+                        (y.saturating_sub(1)..=(y + 1).min(height - 1)).any(|y| {
+                            (x.saturating_sub(1)..=(x + 1).min(width - 1)).any(|x| inverts(x, y))
+                        })
+                    };
+                    pixels.extend_from_slice(match (bit(and, x, y), bit(xor, x, y)) {
+                        (true, false) if outlines() => &[255, 255, 255, 255],
                         (true, false) => &[0, 0, 0, 0],
                         (false, true) => &[255, 255, 255, 255],
                         _ => &[0, 0, 0, 255],
@@ -1166,6 +1175,10 @@ mod tests {
         assert_eq!(pixels, [0, 0, 0, 255, 255, 255, 255, 255]);
         let (clear, _) = cursor_pixels(CURSOR_TYPE_MONOCHROME, 1, 2, 1, &[0x80, 0]).unwrap();
         assert_eq!(clear, [0, 0, 0, 0]);
+        // A 3×1 shape clear around a pixel that inverts: black in a white outline.
+        let inverting = [0b1110_0000, 0b0100_0000];
+        let (pixels, _) = cursor_pixels(CURSOR_TYPE_MONOCHROME, 3, 2, 1, &inverting).unwrap();
+        assert_eq!(pixels, [[255; 4], [0, 0, 0, 255], [255; 4]].concat());
 
         let masked = [1, 2, 3, 0, 0, 0, 0, 255, 9, 9, 9, 255];
         let (pixels, _) = cursor_pixels(CURSOR_TYPE_MASKED_COLOR, 3, 1, 12, &masked).unwrap();
