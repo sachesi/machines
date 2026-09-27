@@ -72,6 +72,9 @@ const ALIVE_CHECK: Duration = Duration::from_millis(100);
 const FRAME_STALL: Duration = Duration::from_millis(500);
 /// How many pixel buffers are kept to use again once GTK lets go of them.
 const POOL: usize = 4;
+/// How long a frame shared in the device's memory is kept from the host at most, however
+/// long it is held: the host gives up on a client that keeps one past a second.
+const KEEP_LIMIT: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
@@ -118,9 +121,22 @@ pub enum Format {
 #[derive(Debug, Clone)]
 pub enum Pixels {
     Copied(Copied),
-    /// Left in the device, at the start of a DMA buffer of its memory. The host writes
-    /// the frame after the next one there.
-    Shared(Arc<OwnedFd>),
+    /// Left in the device, at the start of a DMA buffer of its memory, which the host
+    /// writes a later frame to once `hold` is let go of.
+    Shared {
+        fd: Arc<OwnedFd>,
+        hold: Arc<Hold>,
+    },
+}
+
+/// Keeps the host from writing over a frame left in the device's memory, until dropped.
+#[derive(Debug)]
+pub struct Hold(Arc<AtomicBool>);
+
+impl Drop for Hold {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
 }
 
 /// Pixels copied out of the device, into a buffer the reader uses again once nothing else
@@ -699,6 +715,9 @@ impl Worker {
     fn follow(&mut self, shm: &Shm, client: &mut Client, frames: &mut Queue, pointer: &mut Queue) {
         let mut checked = Instant::now();
         let mut placing = None;
+        // The frames left in the device, which the host has yet to have back: their
+        // messages, what says they were let go of, and since when they are kept.
+        let mut kept: Vec<(u32, Arc<AtomicBool>, Instant)> = Vec::new();
         while !self.stopped() {
             if self.place_pointer(client, pointer, &mut placing).is_err() {
                 return;
@@ -707,13 +726,30 @@ impl Worker {
             match frames.peek(client) {
                 Ok(message) => {
                     busy = true;
-                    let read = self.frame(shm, &message);
-                    if read.is_err() || frames.done(client).is_err() {
+                    let passed = match self.frame(shm, &message) {
+                        Ok(Some(released)) => frames
+                            .keep(client)
+                            .map(|index| kept.push((index, released, Instant::now()))),
+                        Ok(None) => frames.done(client),
+                        Err(e) => Err(e),
+                    };
+                    if passed.is_err() {
                         return;
                     }
                 }
                 Err(Error::Empty) => {}
                 Err(_) => return,
+            }
+            let mut failed = false;
+            kept.retain(|(index, released, since)| {
+                let back = released.load(Ordering::Acquire) || since.elapsed() >= KEEP_LIMIT;
+                if back {
+                    failed |= frames.release(client, *index).is_err();
+                }
+                !back
+            });
+            if failed {
+                return;
             }
             match pointer.peek(client) {
                 Ok(message) => {
@@ -872,7 +908,9 @@ impl Worker {
         }
     }
 
-    fn frame(&mut self, shm: &Shm, message: &Message) -> Result<(), Error> {
+    /// Hand on the frame of `message`; what says it was let go of, where it is left in
+    /// the device, for the host not to write over it until then.
+    fn frame(&mut self, shm: &Shm, message: &Message) -> Result<Option<Arc<AtomicBool>>, Error> {
         let mut header = [0; FRAME_HEADER];
         if message.size < FRAME_HEADER {
             return Err(Error::Corrupted);
@@ -881,11 +919,11 @@ impl Worker {
         let header = FrameHeader::parse(&header);
         // A host sends its last frame again as a client subscribes.
         if self.serial.replace(header.serial) == Some(header.serial) {
-            return Ok(());
+            return Ok(None);
         }
         let Some((format, bpp)) = header.format() else {
             self.whole = true;
-            return Ok(());
+            return Ok(None);
         };
         let (width, height, pitch) = (header.width, header.height, header.pitch);
         if !(1..=MAX_SIDE).contains(&width)
@@ -904,20 +942,25 @@ impl Worker {
                 header.screen.1.max(height),
                 pitch,
             )));
-            return Ok(());
+            return Ok(None);
         }
         let write_pointer = message.offset + header.offset as usize;
         let data = write_pointer + WRITE_POINTER;
         let shared = header
             .shared_format()
             .and_then(|format| Some((format, self.dmabuf(data, size, format)?)));
+        let mut kept = None;
         let (pixels, format, stride) = if let Some((format, fd)) = shared {
             let complete = Self::follow_writes(shm, write_pointer, size, |_| Ok(()))?;
-            (
-                complete.then_some(Pixels::Shared(fd)),
-                format,
-                pitch as usize,
-            )
+            let pixels = complete.then(|| {
+                let released = Arc::<AtomicBool>::default();
+                kept = Some(released.clone());
+                Pixels::Shared {
+                    fd,
+                    hold: Arc::new(Hold(released)),
+                }
+            });
+            (pixels, format, pitch as usize)
         } else if matches!(format, Format::Rgb16 | Format::Rgb16Pq) {
             let mut raw = std::mem::take(&mut self.raw);
             raw.resize(size, 0);
@@ -943,7 +986,7 @@ impl Worker {
         };
         let Some(pixels) = pixels else {
             self.whole = true;
-            return Ok(());
+            return Ok(None);
         };
         let frame = Frame {
             pixels,
@@ -967,7 +1010,7 @@ impl Worker {
             };
             update.frame = Some(frame);
         });
-        Ok(())
+        Ok(kept)
     }
 
     fn pointer(&mut self, shm: &Shm, message: &Message) -> Result<(), Error> {

@@ -7,6 +7,7 @@
 //! another key it does what that key is for there.
 
 use std::os::fd::AsRawFd;
+use std::sync::Arc;
 use std::time::Duration;
 
 use gettextrs::gettext;
@@ -15,7 +16,7 @@ use crate::adw::prelude::*;
 use crate::adw::subclass::prelude::*;
 use crate::gtk::{cairo, graphene};
 use crate::keymap;
-use crate::looking_glass::{Format, Frame, Pixels, Reader, Rect, Shape, Status};
+use crate::looking_glass::{Format, Frame, Hold, Pixels, Reader, Rect, Shape, Status};
 use crate::{gdk, glib, gtk};
 
 use super::Console;
@@ -50,6 +51,15 @@ pub(super) struct LookingGlass {
     reader: Option<Reader>,
     status: Option<Status>,
     texture: Option<gdk::Texture>,
+    /// What keeps the host from writing over the texture's frame, where it is left in the
+    /// device.
+    hold: Option<Arc<Hold>>,
+    /// What kept it from writing over the frame shown before, until GTK starts its next
+    /// frame: the last to draw that frame started a refresh earlier, time enough for the
+    /// GPU to be done reading it. Only the last is kept: the host sends a frame only once
+    /// it has back the one two before it.
+    retiring: Option<Arc<Hold>>,
+    retire: Option<gtk::TickCallbackId>,
     /// How the texture's frame was laid out, which the next frame's changes are counted
     /// from only if it is laid out the same.
     format: Option<Format>,
@@ -132,7 +142,9 @@ impl Console {
 
     pub(super) fn close_looking_glass(&self) {
         self.release_looking_glass();
-        self.imp().looking_glass.take();
+        if let Some(retire) = self.imp().looking_glass.take().retire {
+            retire.remove();
+        }
     }
 
     /// How the Looking Glass host application is doing, while the console watches for it.
@@ -140,9 +152,28 @@ impl Console {
         self.imp().looking_glass.borrow().status.clone()
     }
 
-    /// The guest's screen as Looking Glass last showed it, while it shows it.
+    /// The guest's screen as Looking Glass last showed it, while it shows it; a copy, where
+    /// it is left in the device, which the host writes over once the console moves on.
     pub fn looking_glass_frame(&self) -> Option<gdk::Texture> {
-        self.imp().looking_glass.borrow().texture.clone()
+        let lg = self.imp().looking_glass.borrow();
+        let texture = lg.texture.clone()?;
+        if lg.hold.is_none() {
+            return Some(texture);
+        }
+        let (format, color_state) = (texture.format(), texture.color_state());
+        let mut downloader = gdk::TextureDownloader::new(&texture);
+        downloader.set_format(format);
+        downloader.set_color_state(&color_state);
+        let (bytes, stride) = downloader.download_bytes();
+        let copy = gdk::MemoryTextureBuilder::new()
+            .set_bytes(Some(&bytes))
+            .set_width(texture.width())
+            .set_height(texture.height())
+            .set_format(format)
+            .set_color_state(&color_state)
+            .set_stride(stride)
+            .build();
+        Some(copy)
     }
 
     pub(super) fn watches_looking_glass(&self) -> bool {
@@ -525,11 +556,19 @@ impl Console {
             };
             lg.frame_turns = frame.turns;
             let format = frame.format;
+            let hold = match &frame.pixels {
+                Pixels::Shared { hold, .. } => Some(hold.clone()),
+                Pixels::Copied(_) => None,
+            };
             let before = lg.texture.clone().filter(|_| lg.format == Some(format));
             match frame_texture(&self.display(), frame, update.damage, before) {
                 Ok(texture) => {
                     lg.texture = Some(texture);
                     lg.format = Some(format);
+                    let shown = std::mem::replace(&mut lg.hold, hold);
+                    if shown.is_some() {
+                        lg.retiring = shown;
+                    }
                 }
                 Err(e) => {
                     eprintln!(
@@ -567,10 +606,21 @@ impl Console {
         if let Some(status) = &status {
             if *status != Status::Showing {
                 lg.texture = None;
+                if let Some(shown) = lg.hold.take() {
+                    lg.retiring = Some(shown);
+                }
                 lg.pointer = None;
                 lg.lose_aim();
             }
             lg.status = Some(status.clone());
+        }
+        if lg.retiring.is_some() && lg.retire.is_none() {
+            lg.retire = Some(self.add_tick_callback(|console, _| {
+                let mut lg = console.imp().looking_glass.borrow_mut();
+                lg.retiring = None;
+                lg.retire = None;
+                glib::ControlFlow::Break
+            }));
         }
         let showing = lg.texture.is_some();
         drop(lg);
@@ -655,7 +705,7 @@ fn frame_texture(
             }
             Ok(builder.build())
         }
-        Pixels::Shared(fd) => {
+        Pixels::Shared { fd, .. } => {
             let (_, code) = DMABUF_FORMATS
                 .iter()
                 .find(|(format, _)| *format == frame.format)

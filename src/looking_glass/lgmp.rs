@@ -344,26 +344,31 @@ impl Queue {
         1 << self.id
     }
 
-    fn check(&self, shm: &Shm) -> Result<(), Error> {
+    fn check_subscribed(&self, shm: &Shm) -> Result<(), Error> {
         let subs = shm.atomic_u64(self.base + queue::SUBS)?.load(SeqCst);
         if dropped(subs) & self.bit() != 0 || subscribed(subs) & self.bit() == 0 {
             return Err(Error::SessionOver);
         }
+        Ok(())
+    }
+
+    fn check(&self, shm: &Shm) -> Result<(), Error> {
+        self.check_subscribed(shm)?;
         if shm.atomic_u32(self.base + queue::POSITION)?.load(SeqCst) == self.position {
             return Err(Error::Empty);
         }
         Ok(())
     }
 
-    /// Where the header of the message at `self.position` is, and how many the queue has.
-    fn header(&self, shm: &Shm) -> Result<(usize, u32), Error> {
+    /// Where the header of message `index` is, and how many the queue has.
+    fn header(&self, shm: &Shm, index: u32) -> Result<(usize, u32), Error> {
         let count = shm.u32(self.base + queue::NUM_MESSAGES)?;
-        if self.position >= count {
+        if index >= count {
             return Err(Error::Corrupted);
         }
         let messages = shm.u32(self.base + queue::MESSAGES)? as usize;
         let at = messages
-            .checked_add(self.position as usize * message::SIZE)
+            .checked_add(index as usize * message::SIZE)
             .ok_or(Error::Corrupted)?;
         Ok((at, count))
     }
@@ -372,7 +377,7 @@ impl Queue {
     pub fn peek(&self, client: &Client) -> Result<Message, Error> {
         let shm = client.shm;
         self.check(shm)?;
-        let (at, _) = self.header(shm)?;
+        let (at, _) = self.header(shm, self.position)?;
         let message = Message {
             udata: shm.u32(at + message::UDATA)?,
             size: shm.u32(at + message::LEN)? as usize,
@@ -384,18 +389,35 @@ impl Queue {
 
     /// Be done with the message [`Queue::peek`] gave, and move on to the next.
     pub fn done(&mut self, client: &Client) -> Result<(), Error> {
+        let index = self.keep(client)?;
+        self.release(client, index)
+    }
+
+    /// Move on to the next message, leaving the host the one [`Queue::peek`] gave, which
+    /// it cannot use again, until [`Queue::release`] of the number this gives it.
+    pub fn keep(&mut self, client: &Client) -> Result<u32, Error> {
         let shm = client.shm;
         self.check(shm)?;
-        let (at, count) = self.header(shm)?;
+        let (_, count) = self.header(shm, self.position)?;
+        let index = self.position;
+        self.position = (index + 1) % count;
+        Ok(index)
+    }
+
+    /// Be done with message `index`, which [`Queue::keep`] left the host.
+    pub fn release(&self, client: &Client, index: u32) -> Result<(), Error> {
+        let shm = client.shm;
+        self.check_subscribed(shm)?;
+        let (at, count) = self.header(shm, index)?;
         let bit = self.bit();
         // The last subscriber done with the message takes it off the queue.
         let pending = shm.atomic_u32(at + message::PENDING)?;
         if pending.fetch_and(!bit, SeqCst) & !bit == 0
             && let Some(_lock) =
                 Lock::take(shm.atomic_u32(self.base + queue::LOCK)?, Duration::ZERO)
-            && shm.u32(self.base + queue::START)? == self.position
+            && shm.u32(self.base + queue::START)? == index
         {
-            shm.set_u32(self.base + queue::START, (self.position + 1) % count)?;
+            shm.set_u32(self.base + queue::START, (index + 1) % count)?;
             let queued = shm.atomic_u32(self.base + queue::COUNT)?;
             if queued.fetch_sub(1, SeqCst) == 0 {
                 queued.store(0, SeqCst);
@@ -406,7 +428,6 @@ impl Queue {
             shm.atomic_u64(self.base + queue::MSG_TIMEOUT)?
                 .store(timestamp.wrapping_add(u64::from(max_time)), SeqCst);
         }
-        self.position = (self.position + 1) % count;
         Ok(())
     }
 
@@ -601,6 +622,28 @@ mod tests {
         queue.unsubscribe(&client);
         assert_eq!(host.get(452), 0);
         assert_eq!(host.get(312), 0);
+    }
+
+    #[test]
+    fn a_kept_message_is_the_hosts_until_released() {
+        let mut host = Host::new();
+        let shm = host.shm();
+        let client = Client::new(&shm, 5).unwrap();
+        let mut queue = client.subscribe(2).unwrap();
+        host.post(0, 16384, 16);
+        let kept = queue.keep(&client).unwrap();
+        assert_eq!(host.get(8204), 1, "still pending");
+        assert_eq!(host.get(472), 1, "still on the queue");
+        assert_eq!(queue.peek(&client), Err(Error::Empty));
+
+        host.post(1, 16400, 16);
+        assert_eq!(queue.peek(&client).unwrap().offset, 16400, "the next one");
+        queue.release(&client, kept).unwrap();
+        assert_eq!(host.get(8204), 0, "no longer pending");
+        assert_eq!(host.get(456), 1, "off the queue");
+        assert_eq!(host.get(472), 1, "the next one left");
+        queue.done(&client).unwrap();
+        assert_eq!(host.get(472), 0);
     }
 
     #[test]
