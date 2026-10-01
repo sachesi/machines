@@ -294,7 +294,7 @@ fn lock(shared: &Mutex<Shared>) -> std::sync::MutexGuard<'_, Shared> {
 fn parse_uuid(uuid: &str) -> Option<[u8; 16]> {
     let hex: Vec<u8> = uuid.bytes().filter(|&b| b != b'-').collect();
     let mut bytes = [0; 16];
-    for (byte, pair) in bytes.iter_mut().zip(hex.chunks_exact(2)) {
+    for (byte, pair) in bytes.iter_mut().zip(hex.as_chunks::<2>().0) {
         *byte = u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok()?;
     }
     (hex.len() == 32).then_some(bytes)
@@ -474,8 +474,8 @@ fn widen_rgb10(src: &[u8], width: usize, height: usize, pitch: usize, dst: &mut 
     dst.clear();
     dst.reserve(width * height * 6);
     for row in src.chunks(pitch).take(height) {
-        for pixel in row[..width * 4].chunks_exact(4) {
-            let v = u32::from_le_bytes(pixel.try_into().expect("4 bytes"));
+        for pixel in row[..width * 4].as_chunks::<4>().0 {
+            let v = u32::from_le_bytes(*pixel);
             for channel in [v & 0x3ff, v >> 10 & 0x3ff, v >> 20 & 0x3ff] {
                 let wide = (channel << 6 | channel >> 4) as u16;
                 dst.extend_from_slice(&wide.to_ne_bytes());
@@ -511,7 +511,7 @@ fn cursor_pixels(
         }
         CURSOR_TYPE_MASKED_COLOR => {
             for row in rows(height) {
-                for pixel in row.get(..width * 4)?.chunks_exact(4) {
+                for pixel in row.get(..width * 4)?.as_chunks::<4>().0 {
                     let masked = pixel[3] != 0;
                     let color = [pixel[0], pixel[1], pixel[2]];
                     if masked && color == [0; 3] {
@@ -1204,8 +1204,10 @@ mod tests {
         let mut dst = Vec::new();
         widen_rgb10(&src, 2, 1, 12, &mut dst);
         let channels: Vec<u16> = dst
-            .chunks_exact(2)
-            .map(|c| u16::from_ne_bytes([c[0], c[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_ne_bytes(*c))
             .collect();
         assert_eq!(channels, [0xffff, 0xffff, 0xffff, 0xffff, 0, 0]);
     }
