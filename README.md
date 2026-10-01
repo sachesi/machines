@@ -40,65 +40,29 @@ also offers the host's own system information and locked memory, and edits the s
 starts and after it stops, to set huge pages aside or hand a graphics card over, say. A
 helper writes them through pkexec, so saving one asks for an administrator's password.
 
-The console reaches a machine's display through libvirt rather than over the network, so
-new machines have a display with no listening socket at all: SPICE where
-QEMU has it, which carries sound and, with the SPICE agent in the guest, sizes the guest's
-screen to the window and shares the clipboard's text with it; VNC otherwise. A machine
-hears the computer's microphone only where its display settings allow it. SPICE also
-lends USB devices of the computer the console runs on to the machine, which works on
-remote connections and the user session too. With 3D acceleration, SPICE hands the console
-the GPU's frames as they are, while VNC has QEMU read them back. The display can also move
-to a window of its own, to put it on another screen, and be saved as a screenshot. While
-it has the keyboard, the console passes every key to the machine, Tab included; pressing
-Ctrl+Alt together and letting go hands the keyboard back.
+The console reaches a machine's display through libvirt, with no listening socket, over
+SPICE where QEMU has it and VNC otherwise. SPICE carries sound, the clipboard's text, USB
+devices of the computer Machines runs on, and, where a machine's display settings allow
+it, the computer's microphone. The console can also show a passed-through graphics card's
+screen through Looking Glass. A third page shows the machine's serial console as text.
 
-A machine with Looking Glass set up in its Passthrough group shows, once the Looking Glass
-host application runs in the guest, the screen of the graphics card passed through to it,
-read straight from the kvmfr device. Scroll Lock does what it does in the Looking Glass
-client: a tap holds the pointer for the machine, for games, and lets go of it again, and
-held down it lists the keys that go with it.
+## Installing
 
-A third page shows the machine's serial console as text, for machines without a display
-and for watching a guest boot; new machines have a serial port for it.
-
-You need libvirt with its QEMU driver, gvnc (from gtk-vnc), spice-glib, VTE for GTK 4,
-GTK 4.22 and libadwaita 1.9. With osinfo-db installed, as it is alongside virt-manager or
-GNOME Boxes, Machines recognizes the system on an installation ISO and gives the new machine
-the memory, disk and firmware that system recommends.
-
-## Building and installing
-
-On Fedora the build needs:
-
-    sudo dnf install cargo blueprint-compiler gtk4-devel libadwaita-devel libvirt-devel \
-        gvnc-devel spice-glib-devel libusb1-devel vte291-gtk4-devel gtksourceview5-devel
-
-Then:
+Each [release](https://github.com/sachesi/machines/releases) has packages for Fedora,
+Debian, Ubuntu and Arch Linux, and the same release is in Copr (`sachesi/software`), on the
+openSUSE Build Service (`home:sachesi:software`) and in the AUR (`machines`). To build from
+source:
 
     just build
     sudo just install        # or: just prefix=$HOME/.local install
 
-`just run` starts the debug build without installing it, and `just check` and `just test`
-are what a change has to pass. Besides the app, `install` puts the helper that writes the
-start and stop scripts in `libexec`, and its polkit policy in `/usr/share/polkit-1/actions`,
-the one place polkit reads policies from.
+## Documentation
 
-## Connections
-
-The system connection (`qemu:///system`) is the one virt-manager uses, and the default. Its
-machines run as the `qemu` user and can start with the host. Using it takes either
-membership of the `libvirt` group or a polkit agent to ask for your password, which every
-full desktop has. The user session (`qemu:///session`) needs neither: its machines run as
-you, with QEMU's own user-mode networking in place of libvirt's virtual networks. The
-main menu switches between the two.
-
-Virtual networks, and passing PCI devices through, need the system connection. A PCI
-device also needs the IOMMU turned on in the firmware and on the kernel command line
-(`intel_iommu=on` on Intel), and the host goes without the device while the machine has it.
-
-On the system connection, QEMU runs as `qemu` and has to be able to read the installation
-ISO. One kept under your home folder usually cannot be read by it; put it in
-`/var/lib/libvirt/images` or another place the `qemu` user can reach.
+- [Installing](docs/installing.md): requirements, building, and what `install` puts where
+- [Connections](docs/connections.md): the system connection, the user session, and others
+- [The console](docs/console.md): VNC, SPICE, Looking Glass and the serial console
+- [Start and stop scripts](docs/scripts.md): what Machines installs for them, and where
+- [Metadata](docs/metadata.md): what Machines keeps in a machine's definition
 
 ## License
 
