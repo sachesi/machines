@@ -47,6 +47,8 @@ const RESET_NVRAM: &str = "reset-nvram";
 const VIDEO_BEFORE_LOOKING_GLASS: &str = "video-before-looking-glass";
 /// Marks a machine whose video card rendered 3D before Looking Glass.
 const ACCEL3D_BEFORE_LOOKING_GLASS: &str = "accel3d-before-looking-glass";
+/// Lets the console give the guest what the host's microphone hears.
+const HOST_MICROPHONE: &str = "host-microphone";
 
 /// The marks in the app's metadata element, by name, with their text.
 fn parse_marks(element: &str) -> Vec<(String, String)> {
@@ -211,6 +213,8 @@ pub struct MachineInfo {
     /// What QEMU can give this kind of machine.
     pub capabilities: Capabilities,
     pub snapshots: Vec<Snapshot>,
+    /// Whether the console lets the guest record from the host's microphone.
+    pub microphone: bool,
 }
 
 impl MachineInfo {
@@ -414,6 +418,7 @@ impl Hypervisor {
             live,
             capabilities,
             snapshots: snapshots::snapshots(dom),
+            microphone: marks(dom).iter().any(|(n, _)| n == HOST_MICROPHONE),
         })
     }
 
@@ -535,6 +540,11 @@ impl Hypervisor {
     /// the mark.
     fn set_reset_nvram(&self, dom: &Domain, reset: bool) -> Result<()> {
         set_mark(dom, RESET_NVRAM, reset.then_some(""))
+    }
+
+    /// Let the console give the guest the host's microphone, or keep it from it.
+    pub fn set_microphone(&self, uuid: &str, allowed: bool) -> Result<()> {
+        set_mark(&self.domain(uuid)?, HOST_MICROPHONE, allowed.then_some(""))
     }
 
     pub fn shut_down(&self, uuid: &str) -> Result<()> {

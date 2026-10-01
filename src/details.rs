@@ -1784,6 +1784,26 @@ fn display(
     ));
     group.add(&protocol);
 
+    if current.protocol == Protocol::Spice {
+        let microphone = adw::SwitchRow::builder()
+            .title(gettext("Microphone"))
+            .subtitle(gettext(
+                "Lets the guest record from this computer’s microphone; changes reconnect \
+                 the console",
+            ))
+            .active(info.microphone)
+            .build();
+        microphone.connect_active_notify(glib::clone!(
+            #[weak]
+            view,
+            move |row| {
+                let allowed = row.is_active();
+                view.run(move |hv, uuid| hv.set_microphone(uuid, allowed));
+            }
+        ));
+        group.add(&microphone);
+    }
+
     let mut models = options.video.clone();
     // The ones worth choosing first, the rest as QEMU lists them, and none last.
     let rank = |m: &String| {

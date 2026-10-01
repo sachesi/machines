@@ -116,6 +116,8 @@ mod imp {
         /// previous one is closed rather than shown.
         pub(super) generation: Cell<u64>,
         pub(super) connecting: Cell<bool>,
+        /// Whether the display was opened letting the guest have the host's microphone.
+        pub(super) console_microphone: Cell<bool>,
         /// Why the display went away while the machine kept running.
         pub(super) console_error: RefCell<Option<String>>,
         pub(super) fullscreen: Cell<bool>,
@@ -1128,6 +1130,9 @@ impl MachineView {
             self.release_console();
             return;
         }
+        if imp.console_microphone.get() != info.microphone {
+            self.release_console();
+        }
         if imp.console.is_open() || imp.connecting.get() {
             return;
         }
@@ -1160,7 +1165,7 @@ impl MachineView {
                         Some((&gettext("_Reconnect"), "machine.reconnect")),
                     );
                 } else {
-                    self.open_console(protocol == "spice", looking_glass);
+                    self.open_console(protocol == "spice", looking_glass, info.microphone);
                 }
             }
             Some(other) => self.console_message(
@@ -1313,8 +1318,9 @@ impl MachineView {
 
     /// Open the machine's display, and watch the kvmfr device at `looking_glass` for its
     /// screen.
-    fn open_console(&self, spice: bool, looking_glass: Option<String>) {
+    fn open_console(&self, spice: bool, looking_glass: Option<String>, microphone: bool) {
         let imp = self.imp();
+        imp.console_microphone.set(microphone);
         let (Some(win), Some(machine)) = (self.window(), self.machine()) else {
             return;
         };
@@ -1338,7 +1344,7 @@ impl MachineView {
                 imp.connecting.set(false);
                 match opened {
                     Some(Ok(fd)) if spice => {
-                        imp.console.open_spice(fd, view.fd_source());
+                        imp.console.open_spice(fd, view.fd_source(), microphone);
                         if let Some(path) = looking_glass {
                             imp.console.watch_looking_glass(&path, &machine.uuid());
                         }

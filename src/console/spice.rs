@@ -47,6 +47,8 @@ pub(super) struct Spice {
     /// The buttons the guest was last told are down, which may lag the pointer's while
     /// Looking Glass keeps a click back.
     pub buttons: u8,
+    /// Whether the guest may record from the host's microphone.
+    pub microphone: bool,
     /// Watches the host's clipboard, to offer what is copied there to the guest.
     pub clipboard_changed: Option<glib::SignalHandlerId>,
     /// Whether the host's clipboard changed while the console did not have the keyboard,
@@ -63,8 +65,9 @@ impl Console {
         self.imp().spice.borrow_mut()
     }
 
-    /// Speak SPICE over `fd`, and over the sockets `more` gives for its other channels.
-    pub fn open_spice(&self, fd: i32, more: FdSource) {
+    /// Speak SPICE over `fd`, and over the sockets `more` gives for its other channels; with
+    /// `microphone`, the guest records what the host's microphone hears.
+    pub fn open_spice(&self, fd: i32, more: FdSource, microphone: bool) {
         self.close();
         let session = spice::Session::new();
         session.set_enable_audio(true);
@@ -88,6 +91,7 @@ impl Console {
             }
         ));
         self.spice_state().session = Some(session.clone());
+        self.spice_state().microphone = microphone;
         self.spice_state().audio = spice::Audio::get(&session, None);
         // Before the session opens, so the manager sees every USB redirection channel.
         self.spice_state().usb = spice::UsbDeviceManager::get(&session)
@@ -351,6 +355,10 @@ impl Console {
             ));
             ChannelExt::connect(channel);
             self.spice_state().cursor = Some(cursor.clone());
+        } else if channel.is::<spice::RecordChannel>() && !self.spice_state().microphone {
+            // spice-glib's audio takes only a channel not yet connecting, and records from
+            // the microphone into it; connected here first, the guest records nothing.
+            ChannelExt::connect(channel);
         }
     }
 
