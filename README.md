@@ -43,7 +43,8 @@ helper writes them through pkexec, so saving one asks for an administrator's pas
 The console reaches a machine's display through libvirt rather than over the network, so
 new machines have a display with no listening socket at all: SPICE where
 QEMU has it, which carries sound and, with the SPICE agent in the guest, sizes the guest's
-screen to the window and shares the clipboard's text with it; VNC otherwise. SPICE also
+screen to the window and shares the clipboard's text with it; VNC otherwise. A machine
+hears the computer's microphone only where its display settings allow it. SPICE also
 lends USB devices of the computer the console runs on to the machine, which works on
 remote connections and the user session too. With 3D acceleration, SPICE hands the console
 the GPU's frames as they are, while VNC has QEMU read them back. The display can also move
