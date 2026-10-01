@@ -1,6 +1,7 @@
 //! The client side of LGMP, the protocol the Looking Glass host application posts its
 //! messages through, in the memory the guest shares with this computer, laid out as
-//! LGMP 6 lays it out.
+//! LGMP 6 lays it out. It follows LGMP's own client, © Geoffrey McRae,
+//! <https://github.com/gnif/LGMP>, under GPL-2.0-or-later.
 //!
 //! The guest writes that memory as it likes, so every offset and count read from it is
 //! checked against the memory before it is used, and read once.

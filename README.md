@@ -103,3 +103,7 @@ ISO. One kept under your home folder usually cannot be read by it; put it in
 ## License
 
 GPL-3.0-or-later. Contact: sachesi <xsachesi@pm.me>.
+
+The Looking Glass console follows the protocols of
+[Looking Glass](https://looking-glass.io), © The Looking Glass Authors, and of
+[LGMP](https://github.com/gnif/LGMP), © Geoffrey McRae, both under GPL-2.0-or-later.

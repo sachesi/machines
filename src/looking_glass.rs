@@ -1,6 +1,9 @@
 //! A Looking Glass client: the guest's screen and pointer, as the Looking Glass host
 //! application in the guest shares them through a kvmfr device, read on a thread of its
 //! own, the way Looking Glass B7 does: LGMP 6 and KVMFR 20.
+//!
+//! The layout of KVMFR, and of the kvmfr module's requests, follows Looking Glass,
+//! © The Looking Glass Authors, <https://looking-glass.io>, under GPL-2.0-or-later.
 
 mod lgmp;
 
