@@ -49,6 +49,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.2.0" date="2026-10-01">
+      <description>
+        <p>The console shows the screen Looking Glass shares from a passed-through graphics card, read straight from the kvmfr device, so the Looking Glass client no longer has to be installed to turn Looking Glass on. Scroll Lock does what it does in the client: a tap holds the pointer for the guest, for games, and held down it lists the keys that go with it, to go fullscreen, turn the screen, change the pointer's speed and send volume keys. A screenshot saves the screen Looking Glass shows, and the console says why it shows none, such as a host application of another version or a kvmfr device too small for the guest's screen.</p>
+        <p>A machine no longer records from this computer's microphone unless the Microphone switch in its display settings allows it. The guest's sound now plays over SPICE.</p>
+        <p>Adding a USB device of this computer gives the machine's USB controller all its ports, as a USB 2 device behind the hub libvirt added otherwise kept the machine from starting. F11 works in the console's own window, and fullscreen goes straight to the display without reconnecting it. A screen shown scaled no longer leaves traces around what changed.</p>
+      </description>
+    </release>
     <release version="0.1.3" date="2026-09-26">
       <description>
         <p>The details have a Passthrough group for Looking Glass, the memory balloon, hiding the hypervisor from the guest, and the host's keyboard and mouse. Looking Glass gets the SPICE listener and screen it needs, and is turned on only where its client is installed. Advanced settings reach from the machine type and power actions to disk and network card tuning, and the scripts libvirt runs as a machine starts and stops can be edited, saved through an administrator's password. The definition opens in a resizable editor with XML highlighting, line numbers, and find and replace. A stopped machine opens on its details and shows its screen once it starts, and a machine that cannot start for want of huge pages says how many are missing.</p>
