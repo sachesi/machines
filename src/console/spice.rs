@@ -351,8 +351,6 @@ impl Console {
             ));
             ChannelExt::connect(channel);
             self.spice_state().cursor = Some(cursor.clone());
-        } else if channel.is::<spice::PlaybackChannel>() {
-            ChannelExt::connect(channel);
         }
     }
 
