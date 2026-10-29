@@ -75,6 +75,8 @@ mod imp {
                 gtk::Expression::NONE,
                 "name",
             )));
+            // Numbers in names in their order: "vm-2" before "vm-10".
+            sorter.set_collation(gtk::Collation::Filename);
             let sorted = gtk::SortListModel::new(Some(store.clone()), Some(sorter));
             Self {
                 toasts: Default::default(),
