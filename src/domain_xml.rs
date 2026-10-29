@@ -257,6 +257,8 @@ pub struct MachineConfig {
     pub looking_glass: Option<String>,
     /// Whether it has a memory balloon, which libvirt adds unless told there is none.
     pub balloon: bool,
+    /// Whether the balloon is asked for the guest's memory statistics at an interval.
+    pub balloon_stats: bool,
     /// Whether KVM hides itself from the guest.
     pub hypervisor_hidden: bool,
     pub evdev: Vec<Evdev>,
@@ -346,6 +348,7 @@ impl MachineConfig {
         let mut boot = Vec::new();
         let mut serial = false;
         let mut balloon = true;
+        let mut balloon_stats = false;
         let mut evdev = Vec::new();
         for dev in devices {
             let xml = xml[dev.range()].to_owned();
@@ -466,7 +469,13 @@ impl MachineConfig {
                         });
                     }
                 }
-                "memballoon" => balloon = dev.attribute("model") != Some("none"),
+                "memballoon" => {
+                    balloon = dev.attribute("model") != Some("none");
+                    balloon_stats = sub("stats")
+                        .and_then(|s| s.attribute("period"))
+                        .and_then(|p| p.parse::<u32>().ok())
+                        .is_some_and(|p| p > 0);
+                }
                 "input" if dev.attribute("type") == Some("evdev") => {
                     if let Some(source) = sub("source") {
                         evdev.push(Evdev {
@@ -536,6 +545,7 @@ impl MachineConfig {
             serial,
             looking_glass: kvmfr_args(root).map(|k| k.path),
             balloon,
+            balloon_stats,
             hypervisor_hidden: child("features")
                 .and_then(|f| self::child(f, "kvm"))
                 .and_then(|k| self::child(k, "hidden"))
@@ -3321,6 +3331,18 @@ mod tests {
         let on = set_balloon(&off, true).unwrap();
         assert!(MachineConfig::parse(&on).unwrap().balloon);
         assert_eq!(set_balloon(&on, true).unwrap(), on);
+    }
+
+    #[test]
+    fn a_balloon_asked_for_statistics_says_so() {
+        assert!(!MachineConfig::parse(VIRT_MANAGER).unwrap().balloon_stats);
+        let asked = set_balloon(VIRT_MANAGER, true).unwrap().replace(
+            "<memballoon model='virtio'/>",
+            "<memballoon model='virtio'><stats period='2'/></memballoon>",
+        );
+        assert!(MachineConfig::parse(&asked).unwrap().balloon_stats);
+        let stopped = asked.replace("period='2'", "period='0'");
+        assert!(!MachineConfig::parse(&stopped).unwrap().balloon_stats);
     }
 
     #[test]
