@@ -14,6 +14,7 @@ pub use spice::FdSource;
 
 use std::cell::{Cell, RefCell};
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use gettextrs::gettext;
 use gvnc::prelude::*;
@@ -23,7 +24,7 @@ use crate::adw::subclass::prelude::*;
 use crate::glib::translate::{FromGlibPtrFull, IntoGlib, ToGlibPtr};
 use crate::keymap;
 use crate::{gdk, glib, gtk};
-use gtk::{cairo, graphene};
+use gtk::{cairo, graphene, gsk};
 
 /// What changed of the desktop, and the texture it was in before.
 type TextureUpdate = (cairo::Region, gdk::Texture);
@@ -72,6 +73,30 @@ fn memory_texture(
 }
 
 const BYTES_PER_PIXEL: usize = 4;
+/// How long the window's size has to hold before the guest is asked to take it.
+const RESIZE_SETTLE: Duration = Duration::from_millis(300);
+
+/// Where a desktop goes in the widget, in the screen's pixels: a texture drawn to a
+/// rectangle of fractional widget pixels is resampled even where it lines up with the
+/// screen's.
+struct Placement {
+    /// How many of the screen's pixels one of the widget's takes.
+    device: f64,
+    /// Where the desktop's corner goes, from the widget's.
+    x: f64,
+    y: f64,
+    /// How many of the screen's pixels one of the desktop's takes.
+    scale: f64,
+    filter: gsk::ScalingFilter,
+}
+
+impl Placement {
+    /// Have `snapshot` draw in the screen's pixels from here on.
+    fn to_screen_pixels(&self, snapshot: &gtk::Snapshot) {
+        let inverse = (1.0 / self.device) as f32;
+        snapshot.scale(inverse, inverse);
+    }
+}
 
 /// 32-bit little-endian xRGB: in memory B, G, R, unused, which is `B8g8r8x8`.
 fn local_format() -> gvnc::PixelFormat {
@@ -121,6 +146,11 @@ mod imp {
         pub(super) remote_cursor: RefCell<Option<gdk::Cursor>>,
         /// Whether the texture has its first row at the bottom, as GL frames can.
         pub(super) flipped: Cell<bool>,
+        /// Asks the guest to take the console's size once it has settled.
+        pub(super) resize: RefCell<Option<glib::SourceId>>,
+        /// Watches the scale of the window's surface, which the compositor may change by a
+        /// fraction without the console's size in widget pixels changing.
+        pub(super) scale_watch: RefCell<Option<(gdk::Surface, glib::SignalHandlerId)>>,
     }
 
     #[glib::object_subclass]
@@ -211,35 +241,51 @@ mod imp {
                 return;
             };
             let flipped = self.flipped.get();
-            let (x, y, scale) = obj.placement(texture.width(), texture.height());
+            let place = obj.placement(texture.width(), texture.height());
+            snapshot.save();
+            place.to_screen_pixels(snapshot);
             let rect = graphene::Rect::new(
-                x as f32,
-                y as f32,
-                (f64::from(texture.width()) * scale) as f32,
-                (f64::from(texture.height()) * scale) as f32,
+                place.x as f32,
+                place.y as f32,
+                (f64::from(texture.width()) * place.scale) as f32,
+                (f64::from(texture.height()) * place.scale) as f32,
             );
-            let filter = if (scale - 1.0).abs() < f64::EPSILON {
-                gtk::gsk::ScalingFilter::Nearest
-            } else {
-                gtk::gsk::ScalingFilter::Linear
-            };
             if flipped {
-                snapshot.save();
                 snapshot.translate(&graphene::Point::new(0.0, rect.y() * 2.0 + rect.height()));
                 snapshot.scale(1.0, -1.0);
-                snapshot.append_scaled_texture(&texture, filter, &rect);
-                snapshot.restore();
-            } else {
-                snapshot.append_scaled_texture(&texture, filter, &rect);
             }
+            snapshot.append_scaled_texture(&texture, place.filter, &rect);
+            snapshot.restore();
             obj.after_spice_frame();
+        }
+
+        fn realize(&self) {
+            self.parent_realize();
+            let obj = self.obj();
+            let Some(surface) = obj.native().and_then(|native| native.surface()) else {
+                return;
+            };
+            let handler = surface.connect_scale_notify(glib::clone!(
+                #[weak]
+                obj,
+                move |_| {
+                    obj.queue_draw();
+                    obj.resize_guest();
+                }
+            ));
+            self.scale_watch.replace(Some((surface, handler)));
+        }
+
+        fn unrealize(&self) {
+            if let Some((surface, handler)) = self.scale_watch.take() {
+                surface.disconnect(handler);
+            }
+            self.parent_unrealize();
         }
 
         fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
             self.parent_size_allocate(width, height, baseline);
-            if self.obj().spice_is_open() {
-                self.obj().resize_guest();
-            }
+            self.obj().resize_guest();
         }
 
         fn measure(&self, _orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
@@ -336,6 +382,9 @@ impl Console {
         let imp = self.imp();
         if let Some(conn) = imp.connection.take() {
             conn.shutdown();
+        }
+        if let Some(source) = imp.resize.take() {
+            source.remove();
         }
         self.close_spice();
         self.close_looking_glass();
@@ -481,6 +530,8 @@ impl Console {
         let _ = conn.framebuffer_update_request(false, 0, 0, width, height);
         self.imp().framebuffer.replace(Some(framebuffer));
         self.invalidate(None);
+        // The server says whether it takes a size from the client only as it gives one.
+        self.resize_guest();
     }
 
     /// Have the texture follow `area` of the desktop, or all of it, at the next redraw.
@@ -540,13 +591,95 @@ impl Console {
         ))
     }
 
-    /// Where a desktop of `width`×`height` goes in the widget: its offset and scale, as
-    /// large as fits with the aspect ratio kept.
-    fn placement(&self, width: i32, height: i32) -> (f64, f64, f64) {
-        let (w, h) = (f64::from(self.width()), f64::from(self.height()));
+    /// How many of the screen's pixels one of the widget's takes, a fraction where the
+    /// compositor scales the window by one.
+    fn device_scale(&self) -> f64 {
+        self.native()
+            .and_then(|native| native.surface())
+            .map_or_else(|| f64::from(self.scale_factor()), |surface| surface.scale())
+    }
+
+    /// Ask the guest to make its screen the console's size in the screen's pixels, once the
+    /// size has settled: through SPICE's agent, or by VNC's SetDesktopSize, which QEMU
+    /// passes on to a video card that can take it.
+    ///
+    /// Not with Looking Glass, whose guest has a graphics card of the host's, and screens
+    /// that take only the sizes they have.
+    fn resize_guest(&self) {
+        let imp = self.imp();
+        if let Some(source) = imp.resize.take() {
+            source.remove();
+        }
+        if !self.is_open() || self.watches_looking_glass() {
+            return;
+        }
+        let source = glib::timeout_add_local_once(
+            RESIZE_SETTLE,
+            glib::clone!(
+                #[weak(rename_to = console)]
+                self,
+                move || {
+                    console.imp().resize.replace(None);
+                    // Rounded down: a screen pixel the console has only part of is not its own.
+                    let scale = console.device_scale();
+                    let width = (f64::from(console.width()) * scale).floor() as i32;
+                    let height = (f64::from(console.height()) * scale).floor() as i32;
+                    if width <= 0 || height <= 0 {
+                        return;
+                    }
+                    if let Some(conn) = console.connection() {
+                        if (conn.width(), conn.height()) != (width, height)
+                            && let (Ok(w), Ok(h)) = (u16::try_from(width), u16::try_from(height))
+                        {
+                            let _ = conn.set_size(u32::from(w), u32::from(h));
+                        }
+                    } else {
+                        console.resize_spice_guest(width, height);
+                    }
+                }
+            ),
+        );
+        imp.resize.replace(Some(source));
+    }
+
+    /// Where a desktop of `width`×`height` goes in the widget: as large as fits with the
+    /// aspect ratio kept, centred. A desktop within a pixel of fitting at a whole multiple of
+    /// its size is shown at that multiple, unfiltered, with its corner on a pixel of the
+    /// screen, where anything else would blur it.
+    fn placement(&self, width: i32, height: i32) -> Placement {
+        let device = self.device_scale();
+        let (w, h) = (
+            f64::from(self.width()) * device,
+            f64::from(self.height()) * device,
+        );
         let (fw, fh) = (f64::from(width.max(1)), f64::from(height.max(1)));
-        let scale = (w / fw).min(h / fh);
-        ((w - fw * scale) / 2.0, (h - fh * scale) / 2.0, scale)
+        let fit = (w / fw).min(h / fh);
+        let whole = fit.round();
+        let (scale, filter) = if whole >= 1.0 && ((fit - whole) * fw.max(fh)).abs() < 1.0 {
+            (whole, gsk::ScalingFilter::Nearest)
+        } else {
+            (fit, gsk::ScalingFilter::Linear)
+        };
+        // The widget's corner in the screen's pixels of the surface, which may fall between
+        // two of them.
+        let (ox, oy) = self.native().map_or((0.0, 0.0), |native| {
+            let (sx, sy) = native.surface_transform();
+            let at = self
+                .compute_point(&native, &graphene::Point::zero())
+                .unwrap_or_else(graphene::Point::zero);
+            (
+                (f64::from(at.x()) + sx) * device,
+                (f64::from(at.y()) + sy) * device,
+            )
+        });
+        let snap = |origin: f64, room: f64| (origin + room / 2.0).round() - origin;
+        Placement {
+            device,
+            x: snap(ox, w - fw * scale),
+            y: snap(oy, h - fh * scale),
+            scale,
+            filter,
+        }
     }
 
     /// The desktop pixel under the widget point (`x`, `y`), clamped to the desktop. The
@@ -561,12 +694,15 @@ impl Console {
             }
         };
         let (w, h) = (texture.width(), texture.height());
-        let (ox, oy, scale) = if turns % 2 == 1 {
+        let place = if turns % 2 == 1 {
             self.placement(h, w)
         } else {
             self.placement(w, h)
         };
-        let (x, y) = ((x - ox) / scale, (y - oy) / scale);
+        let (x, y) = (
+            (x * place.device - place.x) / place.scale,
+            (y * place.device - place.y) / place.scale,
+        );
         let (w, h) = (f64::from(w.max(1)), f64::from(h.max(1)));
         // Back from turned clockwise to the frame as it came.
         let (x, y) = match turns {

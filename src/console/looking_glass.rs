@@ -350,18 +350,14 @@ impl Console {
         };
         let (w, h) = (texture.width(), texture.height());
         let (shown_w, shown_h) = if turns % 2 == 1 { (h, w) } else { (w, h) };
-        let (x, y, scale) = self.placement(shown_w, shown_h);
-        let filter = if (scale - 1.0).abs() < f64::EPSILON {
-            gtk::gsk::ScalingFilter::Nearest
-        } else {
-            gtk::gsk::ScalingFilter::Linear
-        };
-        let scale = scale as f32;
+        let place = self.placement(shown_w, shown_h);
+        let (filter, scale) = (place.filter, place.scale as f32);
         let (w, h) = (w as f32 * scale, h as f32 * scale);
         snapshot.save();
+        place.to_screen_pixels(snapshot);
         snapshot.translate(&graphene::Point::new(
-            x as f32 + shown_w as f32 * scale / 2.0,
-            y as f32 + shown_h as f32 * scale / 2.0,
+            place.x as f32 + shown_w as f32 * scale / 2.0,
+            place.y as f32 + shown_h as f32 * scale / 2.0,
         ));
         if turns != 0 {
             snapshot.rotate(90.0 * turns as f32);
