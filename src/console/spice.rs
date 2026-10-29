@@ -7,7 +7,6 @@
 
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::rc::Rc;
-use std::time::Duration;
 
 use spice_client_glib as spice;
 use spice_client_glib::prelude::*;
@@ -26,8 +25,6 @@ const MOUSE_MODE_SERVER: i32 = 1;
 const MOUSE_MODE_CLIENT: i32 = 2;
 const MOUSE_BUTTON_UP: i32 = 4;
 const MOUSE_BUTTON_DOWN: i32 = 5;
-/// How long the window's size has to hold before the guest is asked to take it.
-const RESIZE_SETTLE: Duration = Duration::from_millis(300);
 /// `DRM_FORMAT_MOD_INVALID`: the buffer's layout is whatever the driver made it.
 const DRM_FORMAT_MOD_INVALID: u64 = 0x00ff_ffff_ffff_ffff;
 /// The agent's `VD_AGENT_CLIPBOARD_SELECTION_CLIPBOARD` and `VD_AGENT_CLIPBOARD_UTF8_TEXT`:
@@ -56,7 +53,6 @@ pub(super) struct Spice {
     pub clipboard_offer_pending: bool,
     /// A 3D frame drawn that QEMU waits to hear is done with.
     pub draw_pending: bool,
-    pub resize: Option<glib::SourceId>,
     pub error: Option<String>,
 }
 
@@ -113,9 +109,6 @@ impl Console {
         let state = self.imp().spice.take();
         if let Some(changed) = state.clipboard_changed {
             self.clipboard().disconnect(changed);
-        }
-        if let Some(source) = state.resize {
-            source.remove();
         }
         if let (true, Some(display)) = (state.draw_pending, &state.display) {
             display.gl_draw_done();
@@ -600,38 +593,12 @@ impl Console {
         }
     }
 
-    /// Ask the guest, through its agent, to make its screen the console's size, once the
-    /// size has settled.
-    ///
-    /// Not with Looking Glass, whose guest has a graphics card of the host's, and screens
-    /// that take only the sizes they have.
-    pub(super) fn resize_guest(&self) {
-        if let Some(source) = self.spice_state().resize.take() {
-            source.remove();
+    /// Ask the guest, through its agent, to make its screen `width`×`height`.
+    pub(super) fn resize_spice_guest(&self, width: i32, height: i32) {
+        let main = self.imp().spice.borrow().main.clone();
+        if let Some(main) = main.filter(|m| m.is_agent_connected()) {
+            main.update_display_enabled(0, true, false);
+            main.update_display(0, 0, 0, width, height, true);
         }
-        if self.watches_looking_glass() {
-            return;
-        }
-        let source = glib::timeout_add_local_once(
-            RESIZE_SETTLE,
-            glib::clone!(
-                #[weak(rename_to = console)]
-                self,
-                move || {
-                    console.spice_state().resize = None;
-                    let main = console.imp().spice.borrow().main.clone();
-                    let Some(main) = main.filter(|m| m.is_agent_connected()) else {
-                        return;
-                    };
-                    let scale = console.scale_factor();
-                    let (width, height) = (console.width() * scale, console.height() * scale);
-                    if width > 0 && height > 0 {
-                        main.update_display_enabled(0, true, false);
-                        main.update_display(0, 0, 0, width, height, true);
-                    }
-                }
-            ),
-        );
-        self.spice_state().resize = Some(source);
     }
 }
