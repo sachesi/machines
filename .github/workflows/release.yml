@@ -69,11 +69,11 @@ jobs:
           sed -i 's|^directory = .*|directory = "vendor"|' "$dir/.cargo/config.toml"
           tar --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
             -cJf "dist/$dir-vendor.tar.xz" "$dir"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: notes
           path: notes/notes.md
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vendor
           path: dist/*
@@ -89,7 +89,7 @@ jobs:
       # The spec of this workflow's revision, which builds the tag's sources.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The spec's Source1, which the release is not yet there to serve.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: vendor
           path: rpmbuild/SOURCES
@@ -104,7 +104,7 @@ jobs:
           mkdir dist && mv rpmbuild/RPMS/*/*.rpm dist/
           # The dependencies resolve on the release it was built for.
           dnf install -y dist/*.rpm
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fedora
           path: dist/*
@@ -183,7 +183,7 @@ jobs:
           dpkg-deb --root-owner-group -Zxz --build stage "$deb"
           # The dependencies resolve on the release it was built for.
           apt-get install -y "./$deb"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.artifact }}
           path: dist/*
@@ -208,7 +208,7 @@ jobs:
           mkdir dist && mv pkg/machines-"${TAG#v}"-1-*.pkg.tar.zst dist/
           # The dependencies resolve on Arch as it is today.
           pacman -U --noconfirm dist/*.pkg.tar.zst
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: arch
           path: dist/*
@@ -222,11 +222,11 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: notes
           name: notes
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           pattern: "{vendor,fedora,debian,ubuntu,arch}"
