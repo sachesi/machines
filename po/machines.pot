@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: machines 0.2.0\n"
+"Project-Id-Version: machines 0.2.1\n"
 "Report-Msgid-Bugs-To: https://github.com/sachesi/machines/issues\n"
-"POT-Creation-Date: 2026-10-01 14:56+0300\n"
+"POT-Creation-Date: 2026-10-29 22:32+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -178,6 +178,21 @@ msgstr ""
 
 #: data/io.github.sachesi.machines.metainfo.xml:54
 msgid ""
+"At a fractional display scale, the console shows the guest's screen at the "
+"window's real pixel size, so it is sharp instead of stretched, over SPICE, "
+"VNC and Looking Glass alike. A machine shown over VNC now takes the window's "
+"size as one shown over SPICE does, where its video card allows it."
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:55
+msgid ""
+"Machines whose names end in numbers are listed in numeric order, and a "
+"connection to libvirt that stops answering says it was lost instead of "
+"showing libvirt's internal error."
+msgstr ""
+
+#: data/io.github.sachesi.machines.metainfo.xml:60
+msgid ""
 "The console shows the screen Looking Glass shares from a passed-through "
 "graphics card, read straight from the kvmfr device, so the Looking Glass "
 "client no longer has to be installed to turn Looking Glass on. Scroll Lock "
@@ -189,14 +204,14 @@ msgid ""
 "too small for the guest's screen."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:55
+#: data/io.github.sachesi.machines.metainfo.xml:61
 msgid ""
 "A machine no longer records from this computer's microphone unless the "
 "Microphone switch in its display settings allows it. The guest's sound now "
 "plays over SPICE."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:56
+#: data/io.github.sachesi.machines.metainfo.xml:62
 msgid ""
 "Adding a USB device of this computer gives the machine's USB controller all "
 "its ports, as a USB 2 device behind the hub libvirt added otherwise kept the "
@@ -205,7 +220,7 @@ msgid ""
 "no longer leaves traces around what changed."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:61
+#: data/io.github.sachesi.machines.metainfo.xml:67
 msgid ""
 "The details have a Passthrough group for Looking Glass, the memory balloon, "
 "hiding the hypervisor from the guest, and the host's keyboard and mouse. "
@@ -219,7 +234,7 @@ msgid ""
 "cannot start for want of huge pages says how many are missing."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:62
+#: data/io.github.sachesi.machines.metainfo.xml:68
 msgid ""
 "A disk or network card whose settings change at the next start is marked as "
 "such, and a setting libvirt refuses shows as it was. Settings QEMU cannot "
@@ -227,7 +242,7 @@ msgid ""
 "are no longer offered."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:63
+#: data/io.github.sachesi.machines.metainfo.xml:69
 msgid ""
 "The window no longer waits on libvirt as a connection or serial console "
 "closes, as a screenshot is saved, or as the details look at the host's "
@@ -236,7 +251,7 @@ msgid ""
 "memory once closed."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:68
+#: data/io.github.sachesi.machines.metainfo.xml:74
 msgid ""
 "A click in the console gives the virtual machine the shortcuts the desktop "
 "would otherwise take, such as Super and Alt+Tab, until Ctrl+Alt releases the "
@@ -248,7 +263,7 @@ msgid ""
 "guest."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:69
+#: data/io.github.sachesi.machines.metainfo.xml:75
 msgid ""
 "A libvirt daemon that stops answering now shows as a lost connection instead "
 "of leaving the window waiting. SPICE is offered only where QEMU has its "
@@ -257,7 +272,7 @@ msgid ""
 "screen readers know it by the machine's name."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:74
+#: data/io.github.sachesi.machines.metainfo.xml:80
 msgid ""
 "New virtual machines boot with the firmware chosen for them: BIOS, UEFI, or "
 "UEFI with Secure Boot, which is the default where the host's firmware has "
@@ -266,7 +281,7 @@ msgid ""
 "socket, so that Windows uses all of them."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:75
+#: data/io.github.sachesi.machines.metainfo.xml:81
 msgid ""
 "The serial console is offered only to machines with a serial port, which is "
 "added and removed with the other devices. The sidebar selects a machine on a "
@@ -276,7 +291,7 @@ msgid ""
 "a keyboard shortcuts dialog lists what the keyboard does."
 msgstr ""
 
-#: data/io.github.sachesi.machines.metainfo.xml:79
+#: data/io.github.sachesi.machines.metainfo.xml:85
 msgid "First release."
 msgstr ""
 
@@ -300,24 +315,24 @@ msgstr ""
 msgid "translator-credits"
 msgstr ""
 
-#: src/console.rs:148
+#: src/console.rs:178
 #, no-c-format
 msgid ""
 "Takes every key for the virtual machine; press Ctrl+Alt to release "
 "the                  keyboard"
 msgstr ""
 
-#: src/console/looking_glass.rs:502
+#: src/console/looking_glass.rs:498
 #, no-c-format
 msgid "Pointer sensitivity: {}"
 msgstr ""
 
-#: src/console/looking_glass.rs:547
+#: src/console/looking_glass.rs:543
 #, no-c-format
 msgid "The pointer cannot be held on this desktop"
 msgstr ""
 
-#: src/console/looking_glass.rs:560
+#: src/console/looking_glass.rs:556
 #, no-c-format
 msgid "Press Scroll Lock to release the pointer"
 msgstr ""
@@ -1975,7 +1990,7 @@ msgstr ""
 msgid "Storage _Pool"
 msgstr ""
 
-#: src/dialogs/new_machine.rs:349 src/window.rs:633
+#: src/dialogs/new_machine.rs:349 src/window.rs:647
 #, no-c-format
 msgid "System"
 msgstr ""
@@ -2302,7 +2317,7 @@ msgstr ""
 msgid "Saved"
 msgstr ""
 
-#: src/hypervisor.rs:470
+#: src/hypervisor.rs:475
 #, no-c-format
 msgid ""
 "The host’s devices cannot be listed, as libvirt’s node device service "
@@ -2310,7 +2325,7 @@ msgid ""
 "virtnodedevd.socket”."
 msgstr ""
 
-#: src/hypervisor.rs:530
+#: src/hypervisor.rs:535
 #, no-c-format
 msgid ""
 "The host has too few huge pages free for this virtual machine’s "
@@ -2319,17 +2334,17 @@ msgid ""
 "details."
 msgstr ""
 
-#: src/hypervisor.rs:768
+#: src/hypervisor.rs:773
 #, no-c-format
 msgid "The definition has a NUL character in it"
 msgstr ""
 
-#: src/hypervisor.rs:778
+#: src/hypervisor.rs:783
 #, no-c-format
 msgid "The definition has to keep the UUID {uuid}"
 msgstr ""
 
-#: src/hypervisor.rs:826
+#: src/hypervisor.rs:831
 #, no-c-format
 msgid "Shut the virtual machine down to clone it"
 msgstr ""
@@ -2603,32 +2618,32 @@ msgstr ""
 msgid "Received {received} · Sent {sent}"
 msgstr ""
 
-#: src/window.rs:398
+#: src/window.rs:400 src/window.rs:519
 #, no-c-format
 msgid "The connection to libvirt was lost"
 msgstr ""
 
-#: src/window.rs:412
+#: src/window.rs:414
 #, no-c-format
 msgid "{device} went back to {machine}"
 msgstr ""
 
-#: src/window.rs:477
+#: src/window.rs:479
 #, no-c-format
 msgid "The connection attempt failed"
 msgstr ""
 
-#: src/window.rs:584 ui/window.ui:164
+#: src/window.rs:598 ui/window.ui:164
 #, no-c-format
 msgid "Virtual Machine"
 msgstr ""
 
-#: src/window.rs:592
+#: src/window.rs:606
 #, no-c-format
 msgid "Creating “{name}”…"
 msgstr ""
 
-#: src/window.rs:634
+#: src/window.rs:648
 #, no-c-format
 msgid "User Session"
 msgstr ""
