@@ -49,6 +49,12 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.2.1" date="2026-10-29">
+      <description>
+        <p>At a fractional display scale, the console shows the guest's screen at the window's real pixel size, so it is sharp instead of stretched, over SPICE, VNC and Looking Glass alike. A machine shown over VNC now takes the window's size as one shown over SPICE does, where its video card allows it.</p>
+        <p>Machines whose names end in numbers are listed in numeric order, and a connection to libvirt that stops answering says it was lost instead of showing libvirt's internal error.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-01">
       <description>
         <p>The console shows the screen Looking Glass shares from a passed-through graphics card, read straight from the kvmfr device, so the Looking Glass client no longer has to be installed to turn Looking Glass on. Scroll Lock does what it does in the client: a tap holds the pointer for the guest, for games, and held down it lists the keys that go with it, to go fullscreen, turn the screen, change the pointer's speed and send volume keys. A screenshot saves the screen Looking Glass shows, and the console says why it shows none, such as a host application of another version or a kvmfr device too small for the guest's screen.</p>
