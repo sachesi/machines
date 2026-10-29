@@ -37,9 +37,12 @@ impl Hypervisor {
             Some((available, unused)) => (available.saturating_sub(unused), available),
             None => {
                 // The guest reports only once asked to; until it does, QEMU's share of the
-                // host's memory stands in.
-                let _ =
-                    dom.set_memory_stats_period(MEMORY_STATS_PERIOD, sys::VIR_DOMAIN_AFFECT_LIVE);
+                // host's memory stands in. Asked once: a guest without the balloon's driver
+                // never reports.
+                if config.balloon && !config.balloon_stats {
+                    let _ = dom
+                        .set_memory_stats_period(MEMORY_STATS_PERIOD, sys::VIR_DOMAIN_AFFECT_LIVE);
+                }
                 (
                     stat(sys::VIR_DOMAIN_MEMORY_STAT_RSS).unwrap_or(info.memory),
                     stat(sys::VIR_DOMAIN_MEMORY_STAT_ACTUAL_BALLOON).unwrap_or(info.max_mem),
