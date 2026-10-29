@@ -508,7 +508,19 @@ impl MachinesWindow {
             #[weak(rename_to = win)]
             self,
             async move {
-                let listed = win.call(|hv| hv.machines()).await;
+                let listed = win
+                    .call(|hv| {
+                        // A listing under way as the connection closes fails with libvirt's
+                        // internal reason, such as a keepalive timeout.
+                        hv.machines().map_err(|e| {
+                            if hv.is_alive() {
+                                e
+                            } else {
+                                gettext("The connection to libvirt was lost")
+                            }
+                        })
+                    })
+                    .await;
                 let imp = win.imp();
                 imp.listing.set(false);
                 match listed {

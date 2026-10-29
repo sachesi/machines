@@ -335,6 +335,11 @@ impl Hypervisor {
         self.uri.contains("/session")
     }
 
+    /// Whether the connection is still open, as the client sees it without asking.
+    pub fn is_alive(&self) -> bool {
+        self.conn.is_alive().unwrap_or(false)
+    }
+
     /// Whether libvirt runs on this host, and what the app sees of the host is its.
     fn is_local(&self) -> bool {
         self.uri
